@@ -1,0 +1,97 @@
+{
+  "_source": "GET https://www.nrl.com/draw/data?competition=111&round=8&season=2026",
+  "_captured": "2026-04-20",
+  "_note": "Trimmed for documentation. Original response includes 8 fixtures, 1 bye, 23 competitions in filterCompetitions, 119 seasons in filterSeasons, 17 teams in filterTeams. This sample keeps 2 fixtures and 3 entries per filter list.",
+  "fixtures": [
+    {
+      "isCurrentRound": true,
+      "roundTitle": "Round 8",
+      "type": "Match",
+      "matchMode": "Pre",
+      "matchState": "Upcoming",
+      "venue": "Leichhardt Oval",
+      "venueCity": "Sydney",
+      "matchCentreUrl": "/draw/nrl-premiership/2026/round-8/wests-tigers-v-raiders/",
+      "homeTeam": {
+        "teamId": 500023,
+        "nickName": "Wests Tigers",
+        "odds": "1.56",
+        "teamPosition": "3rd",
+        "theme": { "key": "wests-tigers" }
+      },
+      "awayTeam": {
+        "teamId": 500013,
+        "nickName": "Raiders",
+        "odds": "2.42",
+        "teamPosition": "13th",
+        "theme": { "key": "raiders" }
+      },
+      "clock": {
+        "kickOffTimeLong": "2026-04-23T09:50:00Z",
+        "gameTime": "0:00"
+      }
+    },
+    {
+      "isCurrentRound": true,
+      "roundTitle": "Round 8",
+      "type": "Match",
+      "matchMode": "Pre",
+      "matchState": "Upcoming",
+      "venue": "Queensland Country Bank Stadium",
+      "venueCity": "Townsville",
+      "matchCentreUrl": "/draw/nrl-premiership/2026/round-8/cowboys-v-sharks/",
+      "homeTeam": {
+        "teamId": 500012,
+        "nickName": "Cowboys",
+        "odds": "2.12",
+        "teamPosition": "11th",
+        "theme": { "key": "cowboys" }
+      },
+      "awayTeam": {
+        "teamId": 500028,
+        "nickName": "Sharks",
+        "odds": "1.73",
+        "teamPosition": "7th",
+        "theme": { "key": "sharks" }
+      },
+      "clock": {
+        "kickOffTimeLong": "2026-04-24T08:00:00Z",
+        "gameTime": "0:00"
+      }
+    }
+  ],
+  "byes": [
+    {
+      "isCurrentRound": true,
+      "roundTitle": "Round 8",
+      "type": "Bye",
+      "teamNickName": "Titans",
+      "theme": { "key": "titans" }
+    }
+  ],
+  "filterCompetitions": [
+    { "name": "Telstra Premiership", "value": 111, "theme": { "key": "nrl-premiership" } },
+    { "name": "Telstra Women's Premiership", "value": 161, "theme": { "key": "nrl-womens-premiership" } },
+    { "name": "Witzer Pre-Season Challenge", "value": 119, "theme": { "key": "pre-season-challenge" } }
+  ],
+  "filterSeasons": [
+    { "name": "2026", "value": 2026 },
+    { "name": "2025", "value": 2025 },
+    { "name": "2024", "value": 2024 }
+  ],
+  "filterRounds": [
+    { "name": "Round 1", "value": 1 },
+    { "name": "Round 8", "value": 8 },
+    { "name": "Round 27", "value": 27 }
+  ],
+  "filterTeams": [
+    { "name": "Wests Tigers", "value": 500023, "theme": { "key": "wests-tigers" } },
+    { "name": "Raiders", "value": 500013, "theme": { "key": "raiders" } },
+    { "name": "Cowboys", "value": 500012, "theme": { "key": "cowboys" } }
+  ],
+  "selectedCompetitionId": 111,
+  "selectedSeasonId": 2026,
+  "selectedRoundId": 8,
+  "showOdds": true,
+  "showTeamPositions": true
+}
