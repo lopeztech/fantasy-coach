@@ -1,0 +1,30 @@
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# IDEs
+.idea/
+.vscode/
+
+# Local data & secrets
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+data/raw/
+data/cache/
+
+# OS
+.DS_Store
