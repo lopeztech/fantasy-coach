@@ -7,6 +7,7 @@ from fantasy_coach.evaluation.metrics import accuracy, brier_score, ece, log_los
 from fantasy_coach.evaluation.predictors import (
     CalibratedLogisticPredictor,
     EloPredictor,
+    EnsemblePredictor,
     HomePickPredictor,
     LogisticPredictor,
     Predictor,
@@ -16,6 +17,7 @@ from fantasy_coach.evaluation.predictors import (
 __all__ = [
     "CalibratedLogisticPredictor",
     "EloPredictor",
+    "EnsemblePredictor",
     "EvaluationResult",
     "HomePickPredictor",
     "LogisticPredictor",

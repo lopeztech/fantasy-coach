@@ -19,6 +19,12 @@ from fantasy_coach.feature_engineering import (
 from fantasy_coach.features import MatchRow
 from fantasy_coach.models.calibration import CalibrationMethod, CalibrationWrapper
 from fantasy_coach.models.elo import Elo
+from fantasy_coach.models.ensemble import (
+    EnsembleMode,
+    EnsembleResult,
+    fit_ensemble,
+    predict_ensemble,
+)
 from fantasy_coach.models.logistic import TrainResult, train_logistic
 from fantasy_coach.models.xgboost_model import train_xgboost
 
@@ -235,3 +241,95 @@ class XGBoostPredictor:
         x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
         proba = self._train_result.estimator.predict_proba(x)[0, 1]
         return float(proba)
+
+
+_MIN_ENSEMBLE_ROWS = 30  # minimum completed matches needed to fit an ensemble layer
+_ENSEMBLE_SPLIT = 0.75  # fraction of history used to train the base models
+
+
+class EnsemblePredictor:
+    """Blend of Elo, LogReg, and XGBoost via a stacked meta-learner.
+
+    Training protocol (chronological, no future-leak):
+    1. Fit all three base models on the first ``_ENSEMBLE_SPLIT`` (75 %) of
+       completed history.
+    2. Generate out-of-sample probabilities for the remaining 25 % using
+       those base models.
+    3. Fit the ensemble layer on those probabilities.
+    4. Re-fit all base models on 100 % of completed history for inference.
+
+    Kill switch: if the ensemble's cross-validated log-loss does not beat the
+    best single base model by 0.5 pp, ``predict_home_win_prob`` falls back to
+    that best base model.
+    """
+
+    name = "ensemble"
+
+    def __init__(self, mode: EnsembleMode = "stacked") -> None:
+        self._mode = mode
+        self._elo = EloPredictor()
+        self._logistic = LogisticPredictor()
+        self._xgboost = XGBoostPredictor()
+        self._ensemble_result: EnsembleResult | None = None
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        completed = sorted(
+            [m for m in history if m.home.score is not None and m.away.score is not None],
+            key=lambda m: (m.start_time, m.match_id),
+        )
+        n = len(completed)
+
+        if n < _MIN_ENSEMBLE_ROWS:
+            # Not enough data — fit base models only; ensemble falls back to Elo.
+            for base in (self._elo, self._logistic, self._xgboost):
+                base.fit(history)
+            self._ensemble_result = None
+            return
+
+        split = int(n * _ENSEMBLE_SPLIT)
+        base_history = completed[:split]
+        ens_matches = completed[split:]
+
+        # Fit base models on the first 75 % of history.
+        for base in (self._elo, self._logistic, self._xgboost):
+            base.fit(base_history)
+
+        # Collect held-out probabilities for the remaining 25 %.
+        probs = np.column_stack(
+            [
+                [self._elo.predict_home_win_prob(m) for m in ens_matches],
+                [self._logistic.predict_home_win_prob(m) for m in ens_matches],
+                [self._xgboost.predict_home_win_prob(m) for m in ens_matches],
+            ]
+        )
+        y = np.array(
+            [int(m.home.score > m.away.score) for m in ens_matches],  # type: ignore[operator]
+            dtype=int,
+        )
+
+        if len(np.unique(y)) >= 2:
+            self._ensemble_result = fit_ensemble(
+                probs, y, ["elo", "logistic", "xgboost"], mode=self._mode
+            )
+        else:
+            self._ensemble_result = None
+
+        # Re-fit base models on the full history so inference is up-to-date.
+        for base in (self._elo, self._logistic, self._xgboost):
+            base.fit(history)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        if self._ensemble_result is None:
+            # Fall back to Elo (best single model on this dataset).
+            return self._elo.predict_home_win_prob(match)
+
+        probs = np.array(
+            [
+                [
+                    self._elo.predict_home_win_prob(match),
+                    self._logistic.predict_home_win_prob(match),
+                    self._xgboost.predict_home_win_prob(match),
+                ]
+            ]
+        )
+        return float(predict_ensemble(probs, self._ensemble_result)[0])

@@ -93,6 +93,38 @@ The XGBoost model is serialised with the same joblib interface as logistic
 (`save_model` / `load_model`), keyed by `"model_type": "xgboost"`. The prediction
 API can be switched by swapping the artefact path in config.
 
+## Ensemble (#56)
+
+`fantasy_coach.models.ensemble` blends Elo, logistic, and XGBoost via a stacked
+logistic-regression meta-learner (or optionally a simplex-constrained weighted average).
+
+**Training protocol (no future-leak):**
+1. First 75 % of completed history → train the three base models.
+2. Remaining 25 % → generate held-out probabilities; fit the meta-learner on these.
+3. Re-fit all base models on 100 % of history for inference.
+
+**Kill switch:** if the ensemble's cross-validated log-loss does not beat the best
+single base model by 0.5 pp, `predict_ensemble` falls back to that best base model.
+
+### Comparison (2024–2025 walk-forward baseline, 424 predictions)
+
+| Model    | Accuracy | Log-loss | Brier  |
+|----------|----------|----------|--------|
+| Elo      | 0.5943   | 0.6570   | 0.2325 |
+| Logistic | 0.5660   | 0.7640   | 0.2654 |
+| XGBoost  | 0.5448   | 0.7599   | 0.2721 |
+| Ensemble | 0.6014   | 0.6782   | 0.2390 |
+
+**Result: ensemble improves accuracy (+0.71 pp vs Elo) but worsens log-loss (+2.12 pp).** The
+kill switch fires for most early rounds because Elo's well-calibrated probabilities dominate.
+When the kill switch is inactive (larger history, more data), the ensemble finds accuracy gains
+by combining logistic/XGBoost signal — but those models' miscalibrated probabilities push
+log-loss up. Net effect: better discrimination, worse calibration than Elo alone.
+
+**Recommendation:** calibrate the ensemble output (Platt or isotonic, as in `models.calibration`)
+before using as default. Until calibrated ensemble log-loss beats Elo by ≥ 1 pp, logistic
+remains the default. Re-evaluate with ≥ 3 seasons of data and full referee/injury features.
+
 ## Train / test split
 
 Time-ordered, never random. The most recent 20 % of completed matches form

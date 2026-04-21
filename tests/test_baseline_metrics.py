@@ -20,6 +20,7 @@ import pytest
 
 from fantasy_coach.evaluation import (
     EloPredictor,
+    EnsemblePredictor,
     HomePickPredictor,
     LogisticPredictor,
     Predictor,
@@ -40,7 +41,13 @@ SEASONS = (2024, 2025)
 #
 # XGBoost (#25): log_loss 0.7599 vs logistic 0.7640 (Δ=+0.41pp) — below the 1-point
 # threshold; logistic remains the default model. See docs/model.md for comparison.
+#
+# Ensemble (#56): accuracy 0.6014 beats Elo (+0.71pp) but log_loss 0.6782 is worse
+# than Elo 0.6570 (+2.12pp). Kill switch fires for most rounds (ensemble degrades
+# Elo's log-loss by mixing in less-calibrated logistic/XGBoost signals). Recommend
+# calibrating ensemble output before using as default. See docs/model.md.
 EXPECTED = {
+    "ensemble": {"n": 424, "accuracy": 0.6014, "log_loss": 0.6782, "brier": 0.2390},
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "logistic": {"n": 424, "accuracy": 0.5660, "log_loss": 0.7640, "brier": 0.2654},
@@ -48,6 +55,7 @@ EXPECTED = {
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
+    "ensemble": EnsemblePredictor,
     "home": HomePickPredictor,
     "elo": EloPredictor,
     "logistic": LogisticPredictor,
