@@ -1,0 +1,82 @@
+"""`python -m fantasy_coach` entry point."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+from fantasy_coach.backfill import (
+    BackfillState,
+    RetryLog,
+    backfill_season,
+)
+from fantasy_coach.storage import SQLiteRepository
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m fantasy_coach")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    bf = sub.add_parser("backfill", help="Backfill a season's matches into a SQLite DB.")
+    bf.add_argument("--season", type=int, required=True)
+    bf.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    bf.add_argument(
+        "--state",
+        type=Path,
+        default=None,
+        help="Sidecar JSON tracking processed match URLs. Defaults to <db>.backfill.json",
+    )
+    bf.add_argument(
+        "--retry-file",
+        type=Path,
+        default=None,
+        help="Append failed matches here for a second pass. Defaults to <db>.retry.tsv",
+    )
+    bf.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
+    args = parser.parse_args(argv)
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    if args.command == "backfill":
+        return _run_backfill(args)
+    parser.error(f"unknown command {args.command!r}")
+    return 2  # unreachable
+
+
+def _run_backfill(args: argparse.Namespace) -> int:
+    db_path: Path = args.db
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path: Path = args.state or db_path.with_suffix(db_path.suffix + ".backfill.json")
+    retry_path: Path = args.retry_file or db_path.with_suffix(db_path.suffix + ".retry.tsv")
+
+    repo = SQLiteRepository(db_path)
+    state = BackfillState.load(state_path)
+    retry_log = RetryLog(retry_path)
+    try:
+        summaries = backfill_season(args.season, repo, state, retry_log)
+    finally:
+        repo.close()
+
+    totals = {
+        "fetched": sum(s.fetched for s in summaries),
+        "skipped": sum(s.skipped for s in summaries),
+        "failed": sum(s.failed for s in summaries),
+    }
+    print(
+        f"Season {args.season}: rounds={len(summaries)} "
+        f"fetched={totals['fetched']} skipped={totals['skipped']} failed={totals['failed']}"
+    )
+    return 0 if totals["failed"] == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
