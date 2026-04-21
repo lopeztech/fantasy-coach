@@ -1,9 +1,10 @@
 # SPA (web/)
 
 Lightweight frontend for triggering predictions and browsing results. Lives
-under `web/` and deploys to Firebase Hosting. Everything else (the Cloud Run
-API, the model, the scraper) is intentionally the main attraction — this
-frontend is deliberately thin.
+under `web/` and deploys to Firebase Hosting at
+[`fantasy.lopezcloud.dev`](https://fantasy.lopezcloud.dev). Everything else
+(the Cloud Run API, the model, the scraper) is intentionally the main
+attraction — this frontend is deliberately thin.
 
 ## Framework
 
@@ -56,9 +57,10 @@ firebase deploy --only hosting
 ```
 
 The `default` project alias is `fantasy-coach-lcd` (the same GCP project
-the Cloud Run API runs in — see `docs/deploy.md`). Enabling the Firebase
-Hosting product on the project is handled in
-[`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra).
+the Cloud Run API runs in — see `docs/deploy.md`). The `fantasy.lopezcloud.dev`
+custom domain, Firebase Hosting site, and Cloudflare DNS records are all
+provisioned via Terraform in [`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra)
+under `projects/fantasy-coach/`.
 
 CI (`.github/workflows/web-ci.yml`) builds the SPA on every PR that touches
 `web/`, the root Firebase config, or the workflow itself. Automatic deploys
@@ -98,3 +100,23 @@ token (see `src/fantasy_coach/auth.py`).
    race the auth state on first load.
 6. Sign-out calls `firebase/auth.signOut()`; `onAuthStateChanged` then
    clears `user` in context, which flips the UI back to the signed-out state.
+
+## CORS (SPA origin ≠ API origin)
+
+The SPA is served from `https://fantasy.lopezcloud.dev`; the API runs on a
+different origin (Cloud Run `*.run.app`). Every authenticated fetch is
+therefore a cross-origin request and triggers a preflight `OPTIONS`.
+
+`CORSMiddleware` sits in front of `FirebaseAuthMiddleware` so preflight
+requests short-circuit inside CORS before auth sees them (auth only
+understands `Bearer` tokens and would 401 an empty preflight otherwise).
+The default allowlist is:
+
+| Origin                                 | Purpose                   |
+|----------------------------------------|---------------------------|
+| `https://fantasy.lopezcloud.dev`       | Production SPA            |
+| `http://localhost:5173`                | Vite dev server           |
+| `http://localhost:4173`                | `npm run preview`         |
+
+Set `FANTASY_COACH_ALLOWED_ORIGINS` (comma-separated) to override — useful
+for staging origins or review apps.

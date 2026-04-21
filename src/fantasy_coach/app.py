@@ -1,11 +1,23 @@
 import os
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from fantasy_coach import __version__
 from fantasy_coach.auth import FirebaseAuthMiddleware
 from fantasy_coach.config import get_repository
 from fantasy_coach.predictions import PredictionOut, PredictionStore, compute_predictions
+
+ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
+DEFAULT_ALLOWED_ORIGINS = (
+    "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
+)
+
+
+def _allowed_origins() -> list[str]:
+    raw = os.getenv(ALLOWED_ORIGINS_ENV, DEFAULT_ALLOWED_ORIGINS)
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 
 app = FastAPI(
     title="Fantasy Coach",
@@ -15,8 +27,23 @@ app = FastAPI(
 
 # Enable Firebase token verification when a project ID is configured.
 # Omitting FIREBASE_PROJECT_ID disables the check (useful for local SQLite dev).
+#
+# Middleware ordering: the last-added middleware runs first on inbound requests,
+# so CORSMiddleware must be added after FirebaseAuthMiddleware. This lets the
+# browser's preflight OPTIONS request short-circuit inside CORS before auth
+# sees it — auth middleware only understands Bearer tokens and would 401 the
+# preflight otherwise.
 if os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT"):
     app.add_middleware(FirebaseAuthMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=600,
+)
 
 # Module-level prediction store — created lazily on first use.
 _store: PredictionStore | None = None
