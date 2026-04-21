@@ -54,6 +54,9 @@ FEATURE_NAMES = (
     "missing_weather",
     "venue_avg_total_points",
     "venue_home_win_rate",
+    "ref_avg_total_points",
+    "ref_home_penalty_diff",
+    "missing_referee",
 )
 
 VENUE_TOTAL_WINDOW = 10
@@ -62,6 +65,9 @@ VENUE_WIN_WINDOW = 20
 ROLLING_WINDOW = 5
 H2H_WINDOW = 3
 DEFAULT_DAYS_REST = 14
+
+REF_WINDOW = 20  # rolling window for referee stats
+REF_SHRINKAGE_N = 10  # shrink toward league mean for fewer than N prior matches
 
 
 @dataclass(frozen=True)
@@ -100,6 +106,13 @@ class FeatureBuilder:
         self._venue_home_wins: dict[str, deque[int]] = defaultdict(
             lambda: deque(maxlen=VENUE_WIN_WINDOW)
         )
+        # Referee-level rolling stats (keyed by referee profileId).
+        self._ref_total: dict[int, deque[int]] = defaultdict(lambda: deque(maxlen=REF_WINDOW))
+        self._ref_penalty_diff: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=REF_WINDOW)
+        )
+        # League-wide rolling totals for shrinkage prior.
+        self._league_total: deque[int] = deque(maxlen=REF_WINDOW * 5)
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -126,6 +139,7 @@ class FeatureBuilder:
         venue_hwr = (
             _avg(self._venue_home_wins[vkey]) if (vkey and self._venue_home_wins[vkey]) else 0.5
         )
+        ref_tp, ref_pd, missing_ref = self._referee_features(match.referee_id)
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -142,7 +156,38 @@ class FeatureBuilder:
             wx.missing,
             venue_avg_tp,
             venue_hwr,
+            ref_tp,
+            ref_pd,
+            missing_ref,
         ]
+
+    def _referee_features(self, referee_id: int | None) -> tuple[float, float, float]:
+        """Return (ref_avg_total_points, ref_home_penalty_diff, missing_referee).
+
+        Both numeric features are shrunk toward the league mean when the referee
+        has fewer than REF_SHRINKAGE_N prior observed matches.
+        """
+        if referee_id is None:
+            league_mean = _avg(self._league_total) if self._league_total else 0.0
+            return league_mean, 0.0, 1.0
+
+        history = self._ref_total[referee_id]
+        n = len(history)
+        league_mean = _avg(self._league_total) if self._league_total else 0.0
+
+        if n == 0:
+            ref_avg_tp = league_mean
+        elif n < REF_SHRINKAGE_N:
+            # Shrink toward league mean: weight = n / REF_SHRINKAGE_N
+            w = n / REF_SHRINKAGE_N
+            ref_avg_tp = w * _avg(history) + (1 - w) * league_mean
+        else:
+            ref_avg_tp = _avg(history)
+
+        penalty_hist = self._ref_penalty_diff[referee_id]
+        ref_pd = _avg(penalty_hist) if penalty_hist else 0.0
+
+        return ref_avg_tp, ref_pd, 0.0
 
     def advance_season_if_needed(self, match: MatchRow) -> None:
         """Apply Elo regression-to-mean when the season changes."""
@@ -174,6 +219,14 @@ class FeatureBuilder:
         if vkey:
             self._venue_total[vkey].append(h_score + a_score)
             self._venue_home_wins[vkey].append(1 if h_score > a_score else 0)
+        # Update referee rolling stats.
+        total_points = h_score + a_score
+        self._league_total.append(total_points)
+        if match.referee_id is not None:
+            self._ref_total[match.referee_id].append(total_points)
+            penalty_diff = _penalty_diff(match)
+            if penalty_diff is not None:
+                self._ref_penalty_diff[match.referee_id].append(penalty_diff)
 
 
 def build_training_frame(
@@ -262,3 +315,15 @@ def _signed_h2h(home_id: int, away_id: int, home_score: int, away_score: int) ->
     if home_id <= away_id:
         return home_score - away_score
     return away_score - home_score
+
+
+def _penalty_diff(match: MatchRow) -> float | None:
+    """Return home_penalties_conceded - away_penalties_conceded, or None if unavailable."""
+    for stat in match.team_stats:
+        if (
+            stat.title == "Penalties Conceded"
+            and stat.home_value is not None
+            and stat.away_value is not None
+        ):
+            return float(stat.home_value) - float(stat.away_value)
+    return None

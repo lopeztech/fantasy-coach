@@ -32,12 +32,14 @@ SEASONS = (2024, 2025)
 
 # Snapshot from a 2024+2025 backfill on 2026-04-21 (213 matches/season,
 # draws dropped → 424 scored predictions).
-# Logistic updated in #55 (travel) and #54 (weather/venue). Extra features
-# increase variance at this sample size; expected to help tree models with more data.
+# Logistic updated in #55 (travel), #54 (weather/venue), and #57 (referee). Extra
+# features increase variance at this sample size; expected to help tree models with
+# more data. Referee features show negligible signal on the 2024-2025 baseline (all
+# referee_id values NULL after v1→v2 migration) — see docs/model.md for ablation notes.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
-    "logistic": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7636, "brier": 0.2655},
+    "logistic": {"n": 424, "accuracy": 0.5660, "log_loss": 0.7640, "brier": 0.2654},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

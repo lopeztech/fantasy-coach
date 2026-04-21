@@ -121,6 +121,8 @@ class MatchRow(BaseModel):
     home: TeamRow
     away: TeamRow
     team_stats: list[TeamStat]
+    referee_id: int | None = None
+    video_referee_id: int | None = None
 
 
 def extract_match_features(raw: dict[str, Any]) -> MatchRow:
@@ -129,6 +131,7 @@ def extract_match_features(raw: dict[str, Any]) -> MatchRow:
     _log_unknown_keys("match", raw, _KNOWN_TOP_LEVEL_KEYS)
 
     start_time = _parse_iso_utc(raw["startTime"])
+    referee_id, video_referee_id = _extract_referee_ids(raw.get("officials") or [])
 
     return MatchRow(
         match_id=int(raw["matchId"]),
@@ -142,6 +145,8 @@ def extract_match_features(raw: dict[str, Any]) -> MatchRow:
         home=_extract_team(raw["homeTeam"]),
         away=_extract_team(raw["awayTeam"]),
         team_stats=_extract_team_stats(raw.get("stats") or {}),
+        referee_id=referee_id,
+        video_referee_id=video_referee_id,
     )
 
 
@@ -200,6 +205,26 @@ def _optional_int(raw: Any) -> int | None:
 def _parse_iso_utc(raw: str) -> datetime:
     # `2024-03-03T02:30:00Z` — fromisoformat handles `Z` from Python 3.11+.
     return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+
+
+def _extract_referee_ids(officials: list[dict[str, Any]]) -> tuple[int | None, int | None]:
+    """Return (referee_id, video_referee_id) from the officials array.
+
+    NRL positions: "Referee" = main on-field referee, "Senior Review Official" = video ref.
+    Both default to None when the officials block is absent (upcoming fixtures).
+    """
+    referee_id: int | None = None
+    video_referee_id: int | None = None
+    for official in officials:
+        pid = official.get("profileId")
+        if pid is None:
+            continue
+        position = (official.get("position") or "").strip()
+        if position == "Referee" and referee_id is None:
+            referee_id = int(pid)
+        elif position == "Senior Review Official" and video_referee_id is None:
+            video_referee_id = int(pid)
+    return referee_id, video_referee_id
 
 
 def _log_unknown_keys(scope: str, raw: dict[str, Any], known: set[str]) -> None:
