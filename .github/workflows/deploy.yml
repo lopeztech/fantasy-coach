@@ -71,9 +71,12 @@ jobs:
             --port 8080 \
             --execution-environment gen2 \
             --service-account "fantasy-coach-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
-            --set-secrets "FIREBASE_PROJECT_ID=firebase-project-id:latest" \
-            --set-env-vars "STORAGE_BACKEND=firestore" \
             --quiet
+          # Re-add once platform-infra provisions the matching infra:
+          #   --set-secrets "FIREBASE_PROJECT_ID=firebase-project-id:latest" \   # needs #16 (Secret Manager)
+          #   --set-env-vars "STORAGE_BACKEND=firestore" \                       # needs #15 (Firestore DB)
+          # Until then, auth.py falls back to GOOGLE_CLOUD_PROJECT (auto-set by
+          # Cloud Run) and config.py defaults STORAGE_BACKEND to sqlite.
 
       - name: Smoke-test /healthz
         env:
