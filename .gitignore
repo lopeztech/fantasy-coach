@@ -23,6 +23,7 @@ build/
 *.sqlite3
 .env
 .env.*
+!.env.example
 data/
 
 # Snapshotted DB fixture is committed deliberately — see
