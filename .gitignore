@@ -23,8 +23,11 @@ build/
 *.sqlite3
 .env
 .env.*
-data/raw/
-data/cache/
+data/
+
+# Snapshotted DB fixture is committed deliberately — see
+# tests/test_baseline_metrics.py for the regeneration recipe.
+!tests/fixtures/*.db
 
 # OS
 .DS_Store

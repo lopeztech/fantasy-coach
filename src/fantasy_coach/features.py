@@ -26,6 +26,8 @@ _KNOWN_TOP_LEVEL_KEYS = {
     "animateMatchClock",
     "attendance",
     "awayTeam",
+    "backgroundImageLarge",
+    "backgroundImageSmall",
     "broadcastChannels",
     "competition",
     "gameSeconds",
@@ -59,6 +61,7 @@ _KNOWN_TOP_LEVEL_KEYS = {
 _KNOWN_TEAM_KEYS = {
     "captainPlayerId",
     "coaches",
+    "discipline",
     "name",
     "nextOpponent",
     "nickName",

@@ -2,8 +2,11 @@
 
 Source: aussportsbetting.com NRL Excel sheet
 (`https://www.aussportsbetting.com/historical_data/nrl.xlsx`). The columns
-we read are `Date`, `Home Team`, `Away Team`, `Home Odds Close`,
-`Away Odds Close`. Everything else is ignored.
+we read are `Date`, `Home Team`, `Away Team`, and the home/away closing
+odds — preferring the explicit `Home Odds Close` / `Away Odds Close`
+columns and falling back to the unsuffixed `Home Odds` / `Away Odds`
+columns when they're empty (BlueBet sourcing from April 2024 onward
+populates the unsuffixed columns reliably and the Close columns sparsely).
 
 Decimal odds → implied probabilities via `1 / odds`. The two implied
 probabilities sum to slightly more than 1 (the bookmaker's overround /
@@ -43,6 +46,8 @@ _REQUIRED_HEADERS = (
     "Away Team",
     "Home Odds Close",
     "Away Odds Close",
+    "Home Odds",
+    "Away Odds",
 )
 
 
@@ -95,8 +100,8 @@ def _row_to_line(row: tuple, cols: dict[str, int]) -> ClosingLine:
     raw_date = row[cols["Date"]]
     home_raw = row[cols["Home Team"]]
     away_raw = row[cols["Away Team"]]
-    home_odds = row[cols["Home Odds Close"]]
-    away_odds = row[cols["Away Odds Close"]]
+    home_odds = row[cols["Home Odds Close"]] or row[cols["Home Odds"]]
+    away_odds = row[cols["Away Odds Close"]] or row[cols["Away Odds"]]
 
     if raw_date is None or home_raw is None or away_raw is None:
         raise _SkipRowError

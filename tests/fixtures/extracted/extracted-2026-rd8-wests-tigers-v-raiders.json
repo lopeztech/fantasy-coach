@@ -1,0 +1,96 @@
+{
+  "match_id": 20261110810,
+  "season": 2026,
+  "round": 8,
+  "start_time": "2026-04-23T09:50:00Z",
+  "match_state": "Upcoming",
+  "venue": "Leichhardt Oval",
+  "venue_city": "Sydney",
+  "weather": "Fine",
+  "home": {
+    "team_id": 500023,
+    "name": "Wests Tigers",
+    "nick_name": "Wests Tigers",
+    "score": null,
+    "players": []
+  },
+  "away": {
+    "team_id": 500013,
+    "name": "Canberra Raiders",
+    "nick_name": "Raiders",
+    "score": null,
+    "players": []
+  },
+  "team_stats": [
+    {
+      "title": "Wins this season",
+      "type": "PercentageAndFraction",
+      "units": null,
+      "home_value": 67.0,
+      "away_value": 43.0
+    },
+    {
+      "title": "Points Scored",
+      "type": "Number",
+      "units": null,
+      "home_value": 176.0,
+      "away_value": 141.0
+    },
+    {
+      "title": "Points Conceded",
+      "type": "Number",
+      "units": null,
+      "home_value": 113.0,
+      "away_value": 204.0
+    },
+    {
+      "title": "Completion Rate",
+      "type": "Percentage",
+      "units": null,
+      "home_value": 78.0,
+      "away_value": 78.0
+    },
+    {
+      "title": "Tackle Efficiency",
+      "type": "Percentage",
+      "units": null,
+      "home_value": 88.8,
+      "away_value": 88.3
+    },
+    {
+      "title": "Average Points Scored",
+      "type": "Number",
+      "units": null,
+      "home_value": 29.0,
+      "away_value": 20.0
+    },
+    {
+      "title": "Average Points Conceded",
+      "type": "Number",
+      "units": null,
+      "home_value": 18.0,
+      "away_value": 29.0
+    },
+    {
+      "title": "Average Play The Ball",
+      "type": "Range",
+      "units": "Seconds",
+      "home_value": 3.59,
+      "away_value": 3.5
+    },
+    {
+      "title": "Wins at this venue",
+      "type": "PercentageAndFraction",
+      "units": null,
+      "home_value": 56.0,
+      "away_value": 67.0
+    },
+    {
+      "title": "Wins overall",
+      "type": "PercentageAndFraction",
+      "units": null,
+      "home_value": 39.0,
+      "away_value": 48.0
+    }
+  ]
+}
