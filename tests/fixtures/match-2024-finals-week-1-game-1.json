@@ -1,0 +1,4784 @@
+{
+  "matchId": "20241112810",
+  "matchMode": "Post",
+  "matchState": "FullTime",
+  "updated": "2026-03-30T22:50:37Z",
+  "gameSeconds": 4800,
+  "roundNumber": 28,
+  "roundTitle": "Finals Week 1",
+  "startTime": "2024-09-13T09:50:00Z",
+  "url": "https://www.nrl.com/draw/nrl-premiership/2024/finals-week-1/game-1/",
+  "imageUrl": "https://www.nrl.com/contentassets/70c83d348c0c4d7aaff72ebed5fff3c6/76260253_yeoi-_240913_gp05330_202491320910.jpg",
+  "homeTeam": {
+    "teamId": 500014,
+    "nickName": "Panthers",
+    "name": "Penrith Panthers",
+    "score": 30,
+    "captainPlayerId": 504120,
+    "theme": {
+      "key": "panthers",
+      "logos": {
+        "badge-basic24-mono.svg": "202603300722",
+        "badge-basic24.svg": "202603300722",
+        "badge-light.png": "202603300722",
+        "badge-light.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722",
+        "header-background.png": "202603300722",
+        "header-background.svg": "202603300722",
+        "silhouette.png": "202603300722",
+        "silhouette.svg": "202603300722",
+        "text.svg": "202603300722"
+      }
+    },
+    "players": [
+      {
+        "firstName": "Dylan",
+        "lastName": "Edwards",
+        "position": "Fullback",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Dylan%20Edwards%20_260123_Panthers_MK2086.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Dylan%20Edwards%20_260123_Panthers_MK2086.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/dylan-edwards/",
+        "playerId": 503340,
+        "number": 1,
+        "isOnField": true
+      },
+      {
+        "firstName": "Sunia",
+        "lastName": "Turuva",
+        "position": "Winger",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500014/TARUVA%2C%20Sunia%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500014/TARUVA%2C%20Sunia%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 509455,
+        "number": 2,
+        "isOnField": true
+      },
+      {
+        "firstName": "Izack",
+        "lastName": "Tago",
+        "position": "Centre",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Izack%20Tago%20_260123_Panthers_MK1983.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Izack%20Tago%20_260123_Panthers_MK1983.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/izack-tago/",
+        "playerId": 509467,
+        "number": 3,
+        "isOnField": true
+      },
+      {
+        "firstName": "Paul",
+        "lastName": "Alamoti",
+        "position": "Centre",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Paul%20Alamoti%20_260123_Panthers_MK1222.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Paul%20Alamoti%20_260123_Panthers_MK1222.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/paul-alamoti/",
+        "playerId": 100004042,
+        "number": 4,
+        "isOnField": true
+      },
+      {
+        "firstName": "Brian",
+        "lastName": "To'o",
+        "position": "Winger",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Brian%20To%E2%80%99o%20_260123_Panthers_MK1706.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Brian%20To%E2%80%99o%20_260123_Panthers_MK1706.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/brian-too/",
+        "playerId": 505410,
+        "number": 5,
+        "isOnField": true
+      },
+      {
+        "firstName": "Jarome",
+        "lastName": "Luai",
+        "position": "Five-Eighth",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500014/LUAI%2C%20Jarome%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500014/LUAI%2C%20Jarome%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 504121,
+        "number": 6,
+        "isOnField": true
+      },
+      {
+        "firstName": "Nathan",
+        "lastName": "Cleary",
+        "position": "Halfback",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Nathan%20Cleary%20_260123_Panthers_MK1836.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Nathan%20Cleary%20_260123_Panthers_MK1836.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/nathan-cleary/",
+        "playerId": 504120,
+        "number": 7,
+        "isCaptain": true,
+        "isOnField": false
+      },
+      {
+        "firstName": "Moses",
+        "lastName": "Leota",
+        "position": "Prop",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Moses%20Leota%20_260123_Panthers_MK2424.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Moses%20Leota%20_260123_Panthers_MK2424.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/moses-leota/",
+        "playerId": 501461,
+        "number": 8,
+        "isOnField": false
+      },
+      {
+        "firstName": "Mitch",
+        "lastName": "Kenny",
+        "position": "Hooker",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Mitch%20Kenny%20_260123_Panthers_MK239.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Mitch%20Kenny%20_260123_Panthers_MK239.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/mitchell-kenny/",
+        "playerId": 505414,
+        "number": 9,
+        "isOnField": true
+      },
+      {
+        "firstName": "James",
+        "lastName": "Fisher-Harris",
+        "position": "Prop",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500014/FISCHER-HARRIS%2C%20James%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500014/FISCHER-HARRIS%2C%20James%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 502580,
+        "number": 10,
+        "isOnField": true
+      },
+      {
+        "firstName": "Liam",
+        "lastName": "Martin",
+        "position": "2nd Row",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Liam%20Martin%20_260123_Panthers_MK1012.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Liam%20Martin%20_260123_Panthers_MK1012.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/liam-martin/",
+        "playerId": 504125,
+        "number": 12,
+        "isOnField": true
+      },
+      {
+        "firstName": "Isaah",
+        "lastName": "Yeo",
+        "position": "Lock",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Isaah%20Yeo%20_260123_Panthers_MK886.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Isaah%20Yeo%20_260123_Panthers_MK886.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/isaah-yeo/",
+        "playerId": 500534,
+        "number": 13,
+        "isCaptain": true,
+        "isOnField": true
+      },
+      {
+        "firstName": "Lindsay",
+        "lastName": "Smith",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Lindsay%20Smith%20_260123_Panthers_MK950.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Lindsay%20Smith%20_260123_Panthers_MK950.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/lindsay-smith/",
+        "playerId": 505555,
+        "number": 15,
+        "isOnField": true
+      },
+      {
+        "firstName": "Liam",
+        "lastName": "Henry",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Liam%20Henry%20_260123_Panthers_MK1651.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Liam%20Henry%20_260123_Panthers_MK1651.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/liam-henry/",
+        "playerId": 100007929,
+        "number": 16,
+        "isOnField": false
+      },
+      {
+        "firstName": "Luke",
+        "lastName": "Garner",
+        "position": "2nd Row",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Luke%20Garner%20_260123_Panthers_MK1889.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Luke%20Garner%20_260123_Panthers_MK1889.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/luke-garner/",
+        "playerId": 501271,
+        "number": 17,
+        "isOnField": true
+      },
+      {
+        "firstName": "Matthew",
+        "lastName": "Eisenhuth",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500014/EISENHUTH%2CMatthew_NRL_2025_GP00001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500014/EISENHUTH%2CMatthew_NRL_2025_GP00001-COPY.png?center=0.5%2C0.5",
+        "playerId": 503322,
+        "number": 18,
+        "isOnField": false
+      },
+      {
+        "firstName": "Bradley",
+        "lastName": "Schneider",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500014/SCHNEIDER%2CBrad_NRL_2025_GP00001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500014/SCHNEIDER%2CBrad_NRL_2025_GP00001-COPY.png?center=0.5%2C0.5",
+        "playerId": 100002660,
+        "number": 19,
+        "isOnField": true
+      },
+      {
+        "firstName": "Casey",
+        "lastName": "McLean",
+        "position": "Replacement",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500014/Casey%20McLean%20_260123_Panthers_MK638.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500014/Casey%20McLean%20_260123_Panthers_MK638.png?center=0.5%2C0.5",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/casey-mclean/",
+        "playerId": 100011678,
+        "number": 20,
+        "isOnField": false
+      }
+    ],
+    "coaches": [
+      {
+        "firstName": "Ivan",
+        "lastName": "Cleary",
+        "profileId": 50018,
+        "position": "Coach",
+        "headImage": "https://www.penrithpanthers.com.au/contentassets/c743b3ef75c6412d935e93d77b1b91e6/clearyivan-coach_nrl_2025_gp00001-copy-1.png?center=0.38%2C0.48",
+        "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/ivan-cleary/"
+      }
+    ],
+    "scoring": {
+      "conversions": {
+        "summaries": [
+          "Nathan Cleary 12'",
+          "Nathan Cleary 19'",
+          "Nathan Cleary 23'",
+          "Nathan Cleary 71'"
+        ],
+        "attempts": 5,
+        "made": 4
+      },
+      "halfTimeScore": 24,
+      "penaltyGoals": {
+        "summaries": [
+          "Nathan Cleary 34'"
+        ],
+        "attempts": 1,
+        "made": 1
+      },
+      "tries": {
+        "summaries": [
+          "Brian To'o 5'",
+          "Izack Tago 10'",
+          "Jarome Luai 17'",
+          "Luke Garner 22'",
+          "Luke Garner 70'"
+        ],
+        "made": 5
+      }
+    },
+    "url": "https://www.penrithpanthers.com.au/teams/nrl-premiership/penrith-panthers/"
+  },
+  "awayTeam": {
+    "teamId": 500001,
+    "nickName": "Roosters",
+    "name": "Sydney Roosters",
+    "score": 10,
+    "captainPlayerId": 500663,
+    "theme": {
+      "key": "roosters",
+      "logos": {
+        "badge-basic24-mono.svg": "202603300722",
+        "badge-basic24.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722",
+        "header-background.png": "202603300722",
+        "header-background.svg": "202603300722",
+        "silhouette.png": "202603300722",
+        "silhouette.svg": "202603300722",
+        "text.svg": "202603300722"
+      }
+    },
+    "players": [
+      {
+        "firstName": "James",
+        "lastName": "Tedesco",
+        "position": "Fullback",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/James%20Tedesco%20260203_Roosters813.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/James%20Tedesco%20260203_Roosters813.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/james-tedesco/",
+        "playerId": 500663,
+        "number": 1,
+        "isCaptain": true,
+        "isOnField": true
+      },
+      {
+        "firstName": "Daniel",
+        "lastName": "Tupou",
+        "position": "Winger",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Daniel%20Tupou%20260203_Roosters1405.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Daniel%20Tupou%20260203_Roosters1405.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/daniel-tupou/",
+        "playerId": 500002,
+        "number": 2,
+        "isOnField": true
+      },
+      {
+        "firstName": "Joseph-Aukuso",
+        "lastName": "Sua'ali'i",
+        "position": "Centre",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/SUAALII%2C%20Joseph%20NRL%202024%20GP0002-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/SUAALII%2C%20Joseph%20NRL%202024%20GP0002-COPY.png?center=0.5%2C0.5",
+        "playerId": 509438,
+        "number": 3,
+        "isOnField": true
+      },
+      {
+        "firstName": "Joseph",
+        "lastName": "Manu",
+        "position": "Centre",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/MANU%2C%20Joseph%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/MANU%2C%20Joseph%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 502571,
+        "number": 4,
+        "isOnField": true
+      },
+      {
+        "firstName": "Dominic",
+        "lastName": "Young",
+        "position": "Winger",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500001/YOUNG%2CD%20NRL_2025_6563.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500001/YOUNG%2CD%20NRL_2025_6563.png?center=0.5%2C0.5",
+        "playerId": 100008071,
+        "number": 5,
+        "isOnField": true
+      },
+      {
+        "firstName": "Luke",
+        "lastName": "Keary",
+        "position": "Five-Eighth",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/KEARY%2C%20Luke%20NRL%202024%20GP0010-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/KEARY%2C%20Luke%20NRL%202024%20GP0010-COPY.png?center=0.5%2C0.5",
+        "playerId": 500093,
+        "number": 6,
+        "isOnField": true
+      },
+      {
+        "firstName": "Sandon",
+        "lastName": "Smith",
+        "position": "Halfback",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500001/SMITH%2CS%20NRL_2025_6426.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500001/SMITH%2CS%20NRL_2025_6426.png?center=0.5%2C0.5",
+        "playerId": 509579,
+        "number": 7,
+        "isOnField": true
+      },
+      {
+        "firstName": "Spencer",
+        "lastName": "Leniu",
+        "position": "Interchange",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Spencer%20Leniu%20260203_Roosters624.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Spencer%20Leniu%20260203_Roosters624.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/spencer-leniu/",
+        "playerId": 505560,
+        "number": 8,
+        "isOnField": true
+      },
+      {
+        "firstName": "Connor",
+        "lastName": "Watson",
+        "position": "Hooker",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Connor%20Watson%20260203_Roosters500.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Connor%20Watson%20260203_Roosters500.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/connor-watson/",
+        "playerId": 503327,
+        "number": 9,
+        "isOnField": true
+      },
+      {
+        "firstName": "Lindsay",
+        "lastName": "Collins",
+        "position": "Prop",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Lindsay%20Collins%20260203_Roosters1533.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Lindsay%20Collins%20260203_Roosters1533.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/lindsay-collins/",
+        "playerId": 501781,
+        "number": 10,
+        "isOnField": false
+      },
+      {
+        "firstName": "Angus",
+        "lastName": "Crichton",
+        "position": "2nd Row",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Angus%20Crichton%20260203_Roosters1332.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Angus%20Crichton%20260203_Roosters1332.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/angus-crichton/",
+        "playerId": 503240,
+        "number": 11,
+        "isOnField": true
+      },
+      {
+        "firstName": "Sitili",
+        "lastName": "Tupouniua",
+        "position": "2nd Row",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/TUPOUNIUA%2C%20Sitili%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/TUPOUNIUA%2C%20Sitili%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 505361,
+        "number": 12,
+        "isOnField": true
+      },
+      {
+        "firstName": "Nat",
+        "lastName": "Butcher",
+        "position": "Prop",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Nat%20Butcher%20260203_Roosters874.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Nat%20Butcher%20260203_Roosters874.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/nat-butcher/",
+        "playerId": 503639,
+        "number": 13,
+        "isOnField": false
+      },
+      {
+        "firstName": "Zach",
+        "lastName": "Dockar-Clay",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500001/Docker-Clay%20Zach%20Roosters%20Headshot.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500001/Docker-Clay%20Zach%20Roosters%20Bodyshot.png?center=0.5%2C0.5",
+        "playerId": 500889,
+        "number": 14,
+        "isOnField": false
+      },
+      {
+        "firstName": "Naufahu",
+        "lastName": "Whyte",
+        "position": "Interchange",
+        "headImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2026/500001/Naufahu%20Whyte%20260203_Roosters1578.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?http://rugbyimages.statsperform.com/Player%20Bodyshots/111/2026/500001/Naufahu%20Whyte%20260203_Roosters1578.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/naufahu-whyte/",
+        "playerId": 100006390,
+        "number": 15,
+        "isOnField": true
+      },
+      {
+        "firstName": "Siua",
+        "lastName": "Wong",
+        "position": "Interchange",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2025/500001/WONG%2CS%20NRL_2025_6735.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2025/500001/WONG%2CS%20NRL_2025_6735.png?center=0.5%2C0.5",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/siua-wong/",
+        "playerId": 100004373,
+        "number": 16,
+        "isOnField": false
+      },
+      {
+        "firstName": "Terrell",
+        "lastName": "May",
+        "position": "Lock",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/MAY%2C%20Terrell%20NRL%202024%20GP0003-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/MAY%2C%20Terrell%20NRL%202024%20GP0003-COPY.png?center=0.5%2C0.5",
+        "playerId": 508065,
+        "number": 17,
+        "isOnField": true
+      },
+      {
+        "firstName": "Michael",
+        "lastName": "Jennings",
+        "position": "Replacement",
+        "headImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Profile%20Headshots/111/2024/500001/JENNINGS%2C%20Michael%20NRL%202024%20GP0001-COPY.png?center=0.3%2C0.5",
+        "bodyImage": "/remote.axd?https://rugbyimages.statsperform.com/Player%20Bodyshots/111/2024/500001/JENNINGS%2C%20Michael%20NRL%202024%20GP0001-COPY.png?center=0.5%2C0.5",
+        "playerId": 500003,
+        "number": 18,
+        "isOnField": false
+      }
+    ],
+    "coaches": [
+      {
+        "firstName": "Trent",
+        "lastName": "Robinson",
+        "profileId": 50002,
+        "position": "Coach",
+        "headImage": "https://www.roosters.com.au/SysSiteAssets/teams/coach/trent-robinson-260203_roosters13911.png?center=0.37%2C0.51",
+        "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/trent-robinson/"
+      }
+    ],
+    "scoring": {
+      "conversions": {
+        "summaries": [
+          "Joseph-Aukuso Sua'ali'i 48'"
+        ],
+        "attempts": 2,
+        "made": 1
+      },
+      "halfTimeScore": 0,
+      "tries": {
+        "summaries": [
+          "Joseph-Aukuso Sua'ali'i 42'",
+          "James Tedesco 46'"
+        ],
+        "made": 2
+      }
+    },
+    "url": "https://www.roosters.com.au/teams/nrl-premiership/sydney-roosters/"
+  },
+  "venue": "BlueBet Stadium",
+  "venueCity": "Penrith",
+  "animateMatchClock": true,
+  "attendance": 21483,
+  "competition": {
+    "competitionId": 111,
+    "name": "Telstra Premiership",
+    "theme": {
+      "key": "nrl-premiership",
+      "logos": {
+        "badge-light.png": "202603300722",
+        "badge-light.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722"
+      }
+    }
+  },
+  "groundConditions": "Good",
+  "hasExtraTime": true,
+  "hasOnFieldTracking": true,
+  "backgroundImageLarge": "https://www.nrl.com/siteassets/draw/themed-rounds/grand-final/web-gf_desktop.png",
+  "backgroundImageSmall": "https://www.nrl.com/siteassets/draw/themed-rounds/grand-final/web-gf_mobile.png",
+  "officials": [
+    {
+      "firstName": "Ashley",
+      "lastName": "Klein",
+      "profileId": 500039,
+      "position": "Referee",
+      "headImage": "https://www.nrl.com/contentassets/83877c45ca144f2690d06991113ef234/kleina-referees-2023_nrl_0054-head-shot.png?center=0.37%2C0.52",
+      "url": "https://www.nrl.com/operations/the-officials/match-officials/ashley-klein/"
+    },
+    {
+      "firstName": "Liam",
+      "lastName": "Kennedy",
+      "profileId": 500042,
+      "position": "Touch Judge",
+      "headImage": "https://www.nrl.com/contentassets/06ebf006376041dc8e76fca2d57e80da/kennedyl-referees-2023_nrl_0084-head-shot.png?center=0.41%2C0.5",
+      "url": "https://www.nrl.com/operations/the-officials/match-officials/liam-kennedy/"
+    },
+    {
+      "firstName": "Chris",
+      "lastName": "Sutton",
+      "profileId": 500068,
+      "position": "Touch Judge",
+      "headImage": "https://www.nrl.com/contentassets/87be5eb0c270427b97f45d424e00373b/suttonc-referees-2023_nrl_0136-head-shot.png?center=0.39%2C0.51",
+      "url": "https://www.nrl.com/operations/the-officials/match-officials/chris-sutton/"
+    },
+    {
+      "firstName": "Grant",
+      "lastName": "Atkins",
+      "profileId": 500067,
+      "position": "Senior Review Official",
+      "headImage": "https://www.nrl.com/contentassets/0586ab6a55114404b178558792347181/atkinsg-referees-2023_nrl_0125-head-shot.png?center=0.38%2C0.51",
+      "url": "https://www.nrl.com/operations/the-officials/match-officials/grant-atkins/"
+    }
+  ],
+  "positionGroups": [
+    {
+      "title": "Backs",
+      "positions": [
+        {
+          "name": "Fullback",
+          "homeProfileId": 503340,
+          "awayProfileId": 500663
+        },
+        {
+          "name": "Winger",
+          "homeProfileId": 509455,
+          "awayProfileId": 500002
+        },
+        {
+          "name": "Centre",
+          "homeProfileId": 509467,
+          "awayProfileId": 509438
+        },
+        {
+          "name": "Centre",
+          "homeProfileId": 100004042,
+          "awayProfileId": 502571
+        },
+        {
+          "name": "Winger",
+          "homeProfileId": 505410,
+          "awayProfileId": 100008071
+        },
+        {
+          "name": "Five-Eighth",
+          "homeProfileId": 504121,
+          "awayProfileId": 500093
+        },
+        {
+          "name": "Halfback",
+          "homeProfileId": 504120,
+          "awayProfileId": 509579
+        }
+      ]
+    },
+    {
+      "title": "Forwards",
+      "positions": [
+        {
+          "name": "Prop",
+          "homeProfileId": 501461,
+          "awayProfileId": 501781
+        },
+        {
+          "name": "Hooker",
+          "homeProfileId": 505414,
+          "awayProfileId": 503327
+        },
+        {
+          "name": "Prop",
+          "homeProfileId": 502580,
+          "awayProfileId": 503639
+        },
+        {
+          "name": "2nd Row",
+          "homeProfileId": 504125,
+          "awayProfileId": 503240
+        },
+        {
+          "name": "2nd Row",
+          "homeProfileId": 501271,
+          "awayProfileId": 505361
+        },
+        {
+          "name": "Lock",
+          "homeProfileId": 500534,
+          "awayProfileId": 508065
+        }
+      ]
+    },
+    {
+      "title": "Interchange",
+      "positions": [
+        {
+          "name": "Interchange",
+          "homeProfileId": 505555,
+          "awayProfileId": 505560
+        },
+        {
+          "name": "Interchange",
+          "homeProfileId": 100007929,
+          "awayProfileId": 500889
+        },
+        {
+          "name": "Interchange",
+          "homeProfileId": 503322,
+          "awayProfileId": 100006390
+        },
+        {
+          "name": "Interchange",
+          "homeProfileId": 100002660,
+          "awayProfileId": 100004373
+        }
+      ]
+    },
+    {
+      "title": "Reserves",
+      "positions": [
+        {
+          "name": "Replacement",
+          "homeProfileId": 100011678,
+          "awayProfileId": 500003
+        }
+      ]
+    },
+    {
+      "title": "Coaches",
+      "positions": [
+        {
+          "name": "Coach",
+          "homeProfileId": 50018,
+          "awayProfileId": 50002
+        }
+      ]
+    }
+  ],
+  "segmentCount": 2,
+  "segmentDuration": 2400,
+  "showTeamPositions": false,
+  "showPlayerPositions": true,
+  "stats": {
+    "topPerformers": [
+      {
+        "title": "Most Tackles",
+        "homeTotal": 51.0,
+        "homePlayerId": 505555,
+        "awayTotal": 69.0,
+        "awayPlayerId": 503327
+      },
+      {
+        "title": "Most Run Metres",
+        "homeTotal": 281.0,
+        "homePlayerId": 503340,
+        "awayTotal": 171.0,
+        "awayPlayerId": 500663
+      },
+      {
+        "title": "Most Line Breaks",
+        "homeTotal": 1.0,
+        "homePlayerId": 503340,
+        "awayTotal": 1.0,
+        "awayPlayerId": 500663
+      },
+      {
+        "title": "Most Fantasy Points",
+        "homeTotal": 73.0,
+        "homePlayerId": 504120,
+        "awayTotal": 58.0,
+        "awayPlayerId": 503327
+      }
+    ],
+    "groups": [
+      {
+        "title": "Possession & Completions",
+        "stats": [
+          {
+            "title": "Possession %",
+            "type": "PercentageCombined",
+            "homeValue": {
+              "value": 54.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 46.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 1
+          },
+          {
+            "title": "Time In Possession",
+            "type": "Number",
+            "units": "Minutes",
+            "homeValue": {
+              "value": 1905.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 1662.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Completion Rate",
+            "type": "PercentageAndFraction",
+            "homeValue": {
+              "value": 88.0,
+              "numerator": 38,
+              "denominator": 43,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 81.0,
+              "numerator": 31,
+              "denominator": 38,
+              "isLeader": false
+            }
+          }
+        ]
+      },
+      {
+        "title": "Attack",
+        "stats": [
+          {
+            "title": "All Runs",
+            "type": "Number",
+            "homeValue": {
+              "value": 216.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 179.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 2
+          },
+          {
+            "title": "All Run Metres",
+            "type": "Number",
+            "homeValue": {
+              "value": 2029.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 1423.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 3
+          },
+          {
+            "title": "Post Contact Metres",
+            "type": "Number",
+            "homeValue": {
+              "value": 641.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 555.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Line Breaks",
+            "type": "Number",
+            "homeValue": {
+              "value": 4.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 2.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Tackle Breaks",
+            "type": "Number",
+            "homeValue": {
+              "value": 36.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 35.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Average Set Distance",
+            "type": "Number",
+            "homeValue": {
+              "value": 47.2,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 37.46,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Kick Return Metres",
+            "type": "Number",
+            "homeValue": {
+              "value": 310.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 87.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Average Play The Ball Speed",
+            "type": "Range",
+            "units": "Seconds",
+            "homeValue": {
+              "value": 3.38,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 3.3,
+              "isLeader": true
+            },
+            "maxValue": 5.0
+          }
+        ]
+      },
+      {
+        "title": "Passing",
+        "stats": [
+          {
+            "title": "Offloads",
+            "type": "Number",
+            "homeValue": {
+              "value": 2.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 5.0,
+              "isLeader": true
+            }
+          },
+          {
+            "title": "Receipts",
+            "type": "Number",
+            "homeValue": {
+              "value": 489.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 436.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Total Passes",
+            "type": "Number",
+            "homeValue": {
+              "value": 281.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 244.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Dummy Passes",
+            "type": "Number",
+            "homeValue": {
+              "value": 25.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 20.0,
+              "isLeader": false
+            }
+          }
+        ]
+      },
+      {
+        "title": "Kicking",
+        "stats": [
+          {
+            "title": "Kicks",
+            "type": "Number",
+            "homeValue": {
+              "value": 29.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 21.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 4
+          },
+          {
+            "title": "Kicking Metres",
+            "type": "Number",
+            "homeValue": {
+              "value": 660.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 704.0,
+              "isLeader": true
+            },
+            "keyStatOrder": 5
+          },
+          {
+            "title": "Forced Drop Outs",
+            "type": "Number",
+            "homeValue": {
+              "value": 4.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 0.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Kick Defusal %",
+            "type": "Percentage",
+            "homeValue": {
+              "value": 50.0,
+              "numerator": 4,
+              "denominator": 8,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 68.0,
+              "numerator": 13,
+              "denominator": 19,
+              "isLeader": true
+            }
+          },
+          {
+            "title": "Bombs",
+            "type": "Number",
+            "homeValue": {
+              "value": 11.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 7.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Grubbers",
+            "type": "Number",
+            "homeValue": {
+              "value": 8.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 0.0,
+              "isLeader": false
+            }
+          }
+        ]
+      },
+      {
+        "title": "Defence",
+        "stats": [
+          {
+            "title": "Effective Tackle %",
+            "type": "Percentage",
+            "homeValue": {
+              "value": 88.67,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 90.97,
+              "isLeader": true
+            }
+          },
+          {
+            "title": "Tackles Made",
+            "type": "Number",
+            "homeValue": {
+              "value": 360.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 403.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 6
+          },
+          {
+            "title": "Missed Tackles",
+            "type": "Number",
+            "homeValue": {
+              "value": 35.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 36.0,
+              "isLeader": false
+            },
+            "keyStatOrder": 7
+          },
+          {
+            "title": "Intercepts",
+            "type": "Number",
+            "homeValue": {
+              "value": 1.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 0.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Ineffective Tackles",
+            "type": "Number",
+            "homeValue": {
+              "value": 11.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 4.0,
+              "isLeader": true
+            }
+          }
+        ]
+      },
+      {
+        "title": "Negative Play",
+        "stats": [
+          {
+            "title": "Errors",
+            "type": "Number",
+            "homeValue": {
+              "value": 7.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 10.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Penalties Conceded",
+            "type": "Number",
+            "homeValue": {
+              "value": 3.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 6.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Ruck Infringements",
+            "type": "Number",
+            "homeValue": {
+              "value": 3.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 2.0,
+              "isLeader": true
+            }
+          },
+          {
+            "title": "Inside 10 Metres",
+            "type": "Number",
+            "homeValue": {
+              "value": 2.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 0.0,
+              "isLeader": true
+            }
+          },
+          {
+            "title": "On Reports",
+            "type": "Number",
+            "homeValue": {
+              "value": 0.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 1.0,
+              "isLeader": false
+            }
+          }
+        ]
+      },
+      {
+        "title": "Interchanges",
+        "stats": [
+          {
+            "title": "Used",
+            "type": "Number",
+            "homeValue": {
+              "value": 8.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 8.0,
+              "isLeader": false
+            }
+          }
+        ]
+      }
+    ],
+    "players": {
+      "homeTeam": [
+        {
+          "playerId": 503340,
+          "allRunMetres": 281,
+          "allRuns": 22,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 2,
+          "errors": 1,
+          "fantasyPointsTotal": 45,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 1,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 2,
+          "kickMetres": 0,
+          "kickReturnMetres": 147,
+          "lineBreakAssists": 0,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.77,
+          "passes": 17,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.35,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 62,
+          "receipts": 38,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 4,
+          "tackleEfficiency": 100.0,
+          "tacklesMade": 5,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 509455,
+          "allRunMetres": 172,
+          "allRuns": 18,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 18,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 1,
+          "kickMetres": 0,
+          "kickReturnMetres": 60,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 3,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.06,
+          "passes": 1,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 4.09,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 67,
+          "receipts": 19,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 66.67,
+          "tacklesMade": 6,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 509467,
+          "allRunMetres": 162,
+          "allRuns": 18,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 2,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 44,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 1,
+          "handlingErrors": 0,
+          "hitUps": 1,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 3,
+          "intercepts": 0,
+          "kicks": 1,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 16,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 1,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 2,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.33,
+          "passes": 6,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.51,
+          "penalties": 0,
+          "points": 4,
+          "penaltyGoals": 0,
+          "postContactMetres": 50,
+          "receipts": 21,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 3,
+          "tackleEfficiency": 68.75,
+          "tacklesMade": 11,
+          "tries": 1,
+          "tryAssists": 1,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100004042,
+          "allRunMetres": 116,
+          "allRuns": 12,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 2,
+          "fantasyPointsTotal": 28,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 1,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 9,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 2,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.08,
+          "passes": 1,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.57,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 47,
+          "receipts": 13,
+          "ruckInfringements": 2,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 5,
+          "tackleEfficiency": 90.48,
+          "tacklesMade": 19,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 505410,
+          "allRunMetres": 213,
+          "allRuns": 18,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 57,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 1,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 1,
+          "kicks": 1,
+          "kicksDead": 0,
+          "kicksDefused": 1,
+          "kickMetres": 5,
+          "kickReturnMetres": 41,
+          "lineBreakAssists": 0,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.17,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.36,
+          "penalties": 0,
+          "points": 4,
+          "penaltyGoals": 0,
+          "postContactMetres": 80,
+          "receipts": 22,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 6,
+          "tackleEfficiency": 90.0,
+          "tacklesMade": 9,
+          "tries": 1,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 504121,
+          "allRunMetres": 108,
+          "allRuns": 13,
+          "bombKicks": 3,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 12,
+          "dummyPasses": 7,
+          "errors": 0,
+          "fantasyPointsTotal": 54,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 2,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 1,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 7,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 248,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 3,
+          "offloads": 1,
+          "offsideWithinTenMetres": 1,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 2.31,
+          "passes": 30,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.94,
+          "penalties": 0,
+          "points": 4,
+          "penaltyGoals": 0,
+          "postContactMetres": 20,
+          "receipts": 44,
+          "ruckInfringements": 1,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 4,
+          "tackleEfficiency": 84.21,
+          "tacklesMade": 16,
+          "tries": 1,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 504120,
+          "allRunMetres": 107,
+          "allRuns": 14,
+          "bombKicks": 8,
+          "crossFieldKicks": 2,
+          "conversions": 4,
+          "conversionAttempts": 5,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 13,
+          "errors": 0,
+          "fantasyPointsTotal": 73,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 2,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 83.33,
+          "grubberKicks": 4,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 18,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 375,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 77,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 2.79,
+          "passes": 39,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.39,
+          "penalties": 0,
+          "points": 10,
+          "penaltyGoals": 1,
+          "postContactMetres": 7,
+          "receipts": 62,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4594,
+          "tackleBreaks": 4,
+          "tackleEfficiency": 88.89,
+          "tacklesMade": 16,
+          "tries": 0,
+          "tryAssists": 2,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 501461,
+          "allRunMetres": 115,
+          "allRuns": 12,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 0,
+          "fantasyPointsTotal": 26,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 12,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 37,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.3,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 44,
+          "receipts": 12,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1393,
+          "stintTwo": 836,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 89.47,
+          "tacklesMade": 17,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 505414,
+          "allRunMetres": 9,
+          "allRuns": 2,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 2,
+          "dummyHalfRunMetres": 9,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 30,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 1,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 1,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 5,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 1,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 10,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 75.0,
+          "passes": 150,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 0.0,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 0,
+          "receipts": 150,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 80.36,
+          "tacklesMade": 45,
+          "tries": 0,
+          "tryAssists": 1,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 502580,
+          "allRunMetres": 121,
+          "allRuns": 15,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 9,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 31,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 8,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 34,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 43,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.2,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.17,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 46,
+          "receipts": 15,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1585,
+          "stintTwo": 1001,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 95.45,
+          "tacklesMade": 21,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 504125,
+          "allRunMetres": 106,
+          "allRuns": 13,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 3,
+          "fantasyPointsTotal": 40,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 11,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 4,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.15,
+          "passes": 2,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.34,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 29,
+          "receipts": 14,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 3,
+          "tackleEfficiency": 86.49,
+          "tacklesMade": 32,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 500534,
+          "allRunMetres": 203,
+          "allRuns": 25,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 0,
+          "fantasyPointsTotal": 66,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 16,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 2,
+          "offloads": 1,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.96,
+          "passes": 24,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.9,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 73,
+          "receipts": 40,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 2,
+          "tackleEfficiency": 95.45,
+          "tacklesMade": 42,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 505555,
+          "allRunMetres": 94,
+          "allRuns": 10,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 1,
+          "fantasyPointsTotal": 53,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 7,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 26,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 47,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 1,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.15,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 27,
+          "receipts": 11,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 2156,
+          "stintTwo": 622,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 96.23,
+          "tacklesMade": 51,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100007929,
+          "allRunMetres": 70,
+          "allRuns": 8,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 35,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 8,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 30,
+          "missedTackles": 2,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.26,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 25,
+          "receipts": 8,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1757,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 94.12,
+          "tacklesMade": 32,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 501271,
+          "allRunMetres": 124,
+          "allRuns": 13,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 60,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 12,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 69,
+          "missedTackles": 4,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.23,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.56,
+          "penalties": 0,
+          "points": 8,
+          "penaltyGoals": 0,
+          "postContactMetres": 50,
+          "receipts": 15,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 2888,
+          "stintTwo": 1251,
+          "tackleBreaks": 5,
+          "tackleEfficiency": 86.67,
+          "tacklesMade": 26,
+          "tries": 2,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 503322,
+          "allRunMetres": 22,
+          "allRuns": 3,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 14,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 3,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 15,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.65,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 7,
+          "receipts": 3,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 911,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 100.0,
+          "tacklesMade": 12,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100002660,
+          "allRunMetres": 0,
+          "allRuns": 0,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": -2,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 3,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 2,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 0.0,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 0,
+          "receipts": 2,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 180,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 0.0,
+          "tacklesMade": 0,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100011678,
+          "allRunMetres": 0,
+          "allRuns": 0,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 0,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 0,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 0.0,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 0,
+          "receipts": 0,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 0,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 0.0,
+          "tacklesMade": 0,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        }
+      ],
+      "awayTeam": [
+        {
+          "playerId": 500663,
+          "allRunMetres": 171,
+          "allRuns": 22,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 3,
+          "dummyHalfRunMetres": 27,
+          "dummyPasses": 4,
+          "errors": 0,
+          "fantasyPointsTotal": 46,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 3,
+          "kickMetres": 0,
+          "kickReturnMetres": 31,
+          "lineBreakAssists": 1,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 3,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.32,
+          "passes": 7,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.55,
+          "penalties": 0,
+          "points": 4,
+          "penaltyGoals": 0,
+          "postContactMetres": 64,
+          "receipts": 30,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 5,
+          "tackleEfficiency": 50.0,
+          "tacklesMade": 3,
+          "tries": 1,
+          "tryAssists": 1,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 500002,
+          "allRunMetres": 151,
+          "allRuns": 16,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 10,
+          "dummyPasses": 0,
+          "errors": 4,
+          "fantasyPointsTotal": 16,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 4,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 2,
+          "kickMetres": 0,
+          "kickReturnMetres": 20,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.19,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.0,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 59,
+          "receipts": 21,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 2,
+          "tackleEfficiency": 75.0,
+          "tacklesMade": 3,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 509438,
+          "allRunMetres": 106,
+          "allRuns": 13,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 1,
+          "conversionAttempts": 2,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 2,
+          "errors": 1,
+          "fantasyPointsTotal": 39,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 50.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 1,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 45,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 1,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 2,
+          "offloads": 1,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.38,
+          "passes": 5,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.38,
+          "penalties": 0,
+          "points": 6,
+          "penaltyGoals": 0,
+          "postContactMetres": 36,
+          "receipts": 16,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 4,
+          "tackleEfficiency": 80.0,
+          "tacklesMade": 8,
+          "tries": 1,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 502571,
+          "allRunMetres": 111,
+          "allRuns": 14,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 39,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 2,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 2,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 3,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.5,
+          "passes": 7,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.45,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 38,
+          "receipts": 23,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 3,
+          "tackleEfficiency": 85.0,
+          "tacklesMade": 17,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100008071,
+          "allRunMetres": 85,
+          "allRuns": 14,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 1,
+          "fantasyPointsTotal": 26,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 5,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.86,
+          "passes": 12,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 4.13,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 31,
+          "receipts": 25,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 8,
+          "tackleEfficiency": 100.0,
+          "tacklesMade": 1,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 500093,
+          "allRunMetres": 33,
+          "allRuns": 6,
+          "bombKicks": 5,
+          "crossFieldKicks": 1,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 6,
+          "errors": 0,
+          "fantasyPointsTotal": 18,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 13,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 425,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 4,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 7.67,
+          "passes": 46,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 4.5,
+          "penalties": 3,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 3,
+          "receipts": 61,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 78.95,
+          "tacklesMade": 15,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 509579,
+          "allRunMetres": 66,
+          "allRuns": 12,
+          "bombKicks": 2,
+          "crossFieldKicks": 2,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 11,
+          "dummyPasses": 2,
+          "errors": 1,
+          "fantasyPointsTotal": 19,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 1,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 7,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 234,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 1,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 10,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 4.83,
+          "passes": 58,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.7,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 16,
+          "receipts": 70,
+          "ruckInfringements": 1,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 1,
+          "tackleEfficiency": 60.0,
+          "tacklesMade": 15,
+          "tries": 0,
+          "tryAssists": 1,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 505560,
+          "allRunMetres": 69,
+          "allRuns": 8,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 0,
+          "fantasyPointsTotal": 41,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 8,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 40,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.38,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.26,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 31,
+          "receipts": 11,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1967,
+          "stintTwo": 488,
+          "tackleBreaks": 1,
+          "tackleEfficiency": 96.67,
+          "tacklesMade": 29,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 503327,
+          "allRunMetres": 30,
+          "allRuns": 3,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 2,
+          "dummyHalfRunMetres": 16,
+          "dummyPasses": 3,
+          "errors": 1,
+          "fantasyPointsTotal": 58,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 5,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 1,
+          "passesToRunRatio": 31.67,
+          "passes": 95,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.41,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 9,
+          "receipts": 99,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 92.0,
+          "tacklesMade": 69,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 501781,
+          "allRunMetres": 51,
+          "allRuns": 6,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 47,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 6,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 48,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.74,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 26,
+          "receipts": 6,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1534,
+          "stintTwo": 1295,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 100.0,
+          "tacklesMade": 42,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 503240,
+          "allRunMetres": 88,
+          "allRuns": 12,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 1,
+          "fantasyPointsTotal": 34,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 12,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 1,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 4,
+          "offloads": 3,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.96,
+          "penalties": 1,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 42,
+          "receipts": 13,
+          "ruckInfringements": 1,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 87.5,
+          "tacklesMade": 28,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 505361,
+          "allRunMetres": 96,
+          "allRuns": 10,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 1,
+          "fantasyPointsTotal": 58,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 1,
+          "hitUps": 10,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 80,
+          "missedTackles": 3,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.3,
+          "passes": 3,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.76,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 48,
+          "receipts": 14,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 4800,
+          "tackleBreaks": 2,
+          "tackleEfficiency": 94.23,
+          "tacklesMade": 49,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 503639,
+          "allRunMetres": 69,
+          "allRuns": 9,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 7,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 41,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 7,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 12,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 40,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.02,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 18,
+          "receipts": 9,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1662,
+          "stintTwo": 703,
+          "tackleBreaks": 1,
+          "tackleEfficiency": 97.06,
+          "tacklesMade": 33,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 500889,
+          "allRunMetres": 0,
+          "allRuns": 0,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 0,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 0,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 0.0,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 0,
+          "receipts": 0,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 0,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 0.0,
+          "tacklesMade": 0,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100006390,
+          "allRunMetres": 136,
+          "allRuns": 14,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 52,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 14,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 37,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.14,
+          "passes": 2,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.79,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 75,
+          "receipts": 16,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1955,
+          "stintTwo": 315,
+          "tackleBreaks": 4,
+          "tackleEfficiency": 100.0,
+          "tacklesMade": 31,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 100004373,
+          "allRunMetres": 90,
+          "allRuns": 11,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 1,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 1,
+          "errors": 0,
+          "fantasyPointsTotal": 29,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 8,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 23,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 25,
+          "missedTackles": 1,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.18,
+          "passes": 2,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 3.63,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 31,
+          "receipts": 12,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1528,
+          "tackleBreaks": 2,
+          "tackleEfficiency": 94.74,
+          "tacklesMade": 18,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 508065,
+          "allRunMetres": 62,
+          "allRuns": 9,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 56,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 9,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 1,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 50,
+          "missedTackles": 0,
+          "offloads": 1,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.11,
+          "passes": 1,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 2.64,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 22,
+          "receipts": 10,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 1654,
+          "stintTwo": 1299,
+          "tackleBreaks": 2,
+          "tackleEfficiency": 97.67,
+          "tacklesMade": 42,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        },
+        {
+          "playerId": 500003,
+          "allRunMetres": 0,
+          "allRuns": 0,
+          "bombKicks": 0,
+          "crossFieldKicks": 0,
+          "conversions": 0,
+          "conversionAttempts": 0,
+          "dummyHalfRuns": 0,
+          "dummyHalfRunMetres": 0,
+          "dummyPasses": 0,
+          "errors": 0,
+          "fantasyPointsTotal": 0,
+          "fieldGoals": 0,
+          "forcedDropOutKicks": 0,
+          "fortyTwentyKicks": 0,
+          "goals": 0,
+          "goalConversionRate": 0.0,
+          "grubberKicks": 0,
+          "handlingErrors": 0,
+          "hitUps": 0,
+          "hitUpRunMetres": 0,
+          "ineffectiveTackles": 0,
+          "intercepts": 0,
+          "kicks": 0,
+          "kicksDead": 0,
+          "kicksDefused": 0,
+          "kickMetres": 0,
+          "kickReturnMetres": 0,
+          "lineBreakAssists": 0,
+          "lineBreaks": 0,
+          "lineEngagedRuns": 0,
+          "minutesPlayed": 0,
+          "missedTackles": 0,
+          "offloads": 0,
+          "offsideWithinTenMetres": 0,
+          "oneOnOneLost": 0,
+          "oneOnOneSteal": 0,
+          "onePointFieldGoals": 0,
+          "onReport": 0,
+          "passesToRunRatio": 0.0,
+          "passes": 0,
+          "playTheBallTotal": 0,
+          "playTheBallAverageSpeed": 0.0,
+          "penalties": 0,
+          "points": 0,
+          "penaltyGoals": 0,
+          "postContactMetres": 0,
+          "receipts": 0,
+          "ruckInfringements": 0,
+          "sendOffs": 0,
+          "sinBins": 0,
+          "stintOne": 0,
+          "tackleBreaks": 0,
+          "tackleEfficiency": 0.0,
+          "tacklesMade": 0,
+          "tries": 0,
+          "tryAssists": 0,
+          "twentyFortyKicks": 0,
+          "twoPointFieldGoals": 0
+        }
+      ],
+      "meta": [
+        {
+          "title": "General",
+          "stats": [
+            {
+              "name": "minutesPlayed",
+              "title": "Mins Played",
+              "type": "Number",
+              "units": "Minutes"
+            }
+          ]
+        },
+        {
+          "title": "Scoring",
+          "stats": [
+            {
+              "name": "points",
+              "title": "Points",
+              "type": "Number"
+            },
+            {
+              "name": "tries",
+              "title": "Tries",
+              "type": "Number"
+            },
+            {
+              "name": "conversions",
+              "title": "Conversions",
+              "type": "Number"
+            },
+            {
+              "name": "conversionAttempts",
+              "title": "Conversion Attempts",
+              "type": "Number"
+            },
+            {
+              "name": "penaltyGoals",
+              "title": "Penalty Goals",
+              "type": "Number"
+            },
+            {
+              "name": "goalConversionRate",
+              "title": "Goal Conversion Rate",
+              "type": "Percentage"
+            },
+            {
+              "name": "onePointFieldGoals",
+              "title": "1 Point Field Goals",
+              "type": "Number"
+            },
+            {
+              "name": "twoPointFieldGoals",
+              "title": "2 Point Field Goals",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Fantasy",
+          "stats": [
+            {
+              "name": "fantasyPointsTotal",
+              "title": "Total Points",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Running Metres",
+          "stats": [
+            {
+              "name": "allRuns",
+              "title": "All Runs",
+              "type": "Number"
+            },
+            {
+              "name": "allRunMetres",
+              "title": "All Run Metres",
+              "type": "Number"
+            },
+            {
+              "name": "kickReturnMetres",
+              "title": "Kick Return Metres",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Attack",
+          "stats": [
+            {
+              "name": "postContactMetres",
+              "title": "Post Contact Metres",
+              "type": "Number"
+            },
+            {
+              "name": "lineBreaks",
+              "title": "Line Breaks",
+              "type": "Number"
+            },
+            {
+              "name": "lineBreakAssists",
+              "title": "Line Break Assists",
+              "type": "Number"
+            },
+            {
+              "name": "tryAssists",
+              "title": "Try Assists",
+              "type": "Number"
+            },
+            {
+              "name": "lineEngagedRuns",
+              "title": "Line Engaged Runs",
+              "type": "Number"
+            },
+            {
+              "name": "tackleBreaks",
+              "title": "Tackle Breaks",
+              "type": "Number"
+            },
+            {
+              "name": "hitUps",
+              "title": "Hit Ups",
+              "type": "Number"
+            },
+            {
+              "name": "playTheBallTotal",
+              "title": "Play The Ball",
+              "type": "Number"
+            },
+            {
+              "name": "playTheBallAverageSpeed",
+              "title": "Average Play The Ball Speed",
+              "type": "Number",
+              "units": "Seconds"
+            },
+            {
+              "name": "dummyHalfRuns",
+              "title": "Dummy Half Runs",
+              "type": "Number"
+            },
+            {
+              "name": "dummyHalfRunMetres",
+              "title": "Dummy Half Run Metres",
+              "type": "Number"
+            },
+            {
+              "name": "oneOnOneSteal",
+              "title": "One on One Steal",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Passing",
+          "stats": [
+            {
+              "name": "offloads",
+              "title": "Offloads",
+              "type": "Number"
+            },
+            {
+              "name": "dummyPasses",
+              "title": "Dummy Passes",
+              "type": "Number"
+            },
+            {
+              "name": "passes",
+              "title": "Passes",
+              "type": "Number"
+            },
+            {
+              "name": "receipts",
+              "title": "Receipts",
+              "type": "Number"
+            },
+            {
+              "name": "passesToRunRatio",
+              "title": "Passes To Run Ratio",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Defence",
+          "stats": [
+            {
+              "name": "tackleEfficiency",
+              "title": "Tackle Efficiency",
+              "type": "Percentage"
+            },
+            {
+              "name": "tacklesMade",
+              "title": "Tackles Made",
+              "type": "Number"
+            },
+            {
+              "name": "missedTackles",
+              "title": "Missed Tackles",
+              "type": "Number"
+            },
+            {
+              "name": "ineffectiveTackles",
+              "title": "Ineffective Tackles",
+              "type": "Number"
+            },
+            {
+              "name": "intercepts",
+              "title": "Intercepts",
+              "type": "Number"
+            },
+            {
+              "name": "kicksDefused",
+              "title": "Kicks Defused",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Kicking",
+          "stats": [
+            {
+              "name": "kicks",
+              "title": "Kicks",
+              "type": "Number"
+            },
+            {
+              "name": "kickMetres",
+              "title": "Kicking Metres",
+              "type": "Number"
+            },
+            {
+              "name": "forcedDropOutKicks",
+              "title": "Forced Drop Outs",
+              "type": "Number"
+            },
+            {
+              "name": "bombKicks",
+              "title": "Bomb Kicks",
+              "type": "Number"
+            },
+            {
+              "name": "grubberKicks",
+              "title": "Grubbers",
+              "type": "Number"
+            },
+            {
+              "name": "fortyTwentyKicks",
+              "title": "40/20",
+              "type": "Number"
+            },
+            {
+              "name": "twentyFortyKicks",
+              "title": "20/40",
+              "type": "Number"
+            },
+            {
+              "name": "crossFieldKicks",
+              "title": "Cross Field Kicks",
+              "type": "Number"
+            },
+            {
+              "name": "kicksDead",
+              "title": "Kicked Dead",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Negative Play",
+          "stats": [
+            {
+              "name": "errors",
+              "title": "Errors",
+              "type": "Number"
+            },
+            {
+              "name": "handlingErrors",
+              "title": "Handling Errors",
+              "type": "Number"
+            },
+            {
+              "name": "oneOnOneLost",
+              "title": "One on One Lost",
+              "type": "Number"
+            },
+            {
+              "name": "penalties",
+              "title": "Penalties",
+              "type": "Number"
+            },
+            {
+              "name": "ruckInfringements",
+              "title": "Ruck Infringements",
+              "type": "Number"
+            },
+            {
+              "name": "offsideWithinTenMetres",
+              "title": "Inside 10 Metres",
+              "type": "Number"
+            },
+            {
+              "name": "onReport",
+              "title": "On Report",
+              "type": "Number"
+            },
+            {
+              "name": "sinBins",
+              "title": "Sin Bins",
+              "type": "Number"
+            },
+            {
+              "name": "sendOffs",
+              "title": "Send Offs",
+              "type": "Number"
+            }
+          ]
+        },
+        {
+          "title": "Interchange",
+          "stats": [
+            {
+              "name": "stintOne",
+              "title": "Stint One",
+              "type": "Number",
+              "units": "Seconds"
+            },
+            {
+              "name": "stintTwo",
+              "title": "Stint Two",
+              "type": "Number",
+              "units": "Seconds"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "title": "KICK OFF",
+      "type": "GameTime",
+      "gameSeconds": 0,
+      "teamId": 0
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 204,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 209,
+      "playerId": 500002,
+      "teamId": 500001
+    },
+    {
+      "title": "Ruck Infringement",
+      "type": "RuckInfringement",
+      "gameSeconds": 294,
+      "playerId": 509579,
+      "teamId": 500001
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 295,
+      "teamId": 500014
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 324,
+      "playerId": 505410,
+      "teamId": 500014
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 325,
+      "playerId": 505410,
+      "teamId": 500014,
+      "homeScore": 4,
+      "content": {
+        "contentId": 1726705,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76258660/keyframes/510972/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Brian To'o Try",
+        "published": "2024-09-13T10:09:26Z",
+        "url": "https://www.nrl.com/news/2024/09/13/brian-too-try/",
+        "type": "Video",
+        "summary": "Brian To'o Try",
+        "lastModified": "2024-09-13T10:14:43Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500014",
+              "name": "Penrith Panthers"
+            }
+          ]
+        },
+        "assetId": "76258660",
+        "autoplay": false,
+        "code": "8105f161-f911-4e58-bf1a-debbf900aaa1",
+        "duration": 14,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76258660-14/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Missed",
+      "type": "GoalMissed",
+      "gameSeconds": 412,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 470,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Ruck Infringement",
+      "type": "RuckInfringement",
+      "gameSeconds": 515,
+      "playerId": 100004042,
+      "teamId": 500014
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 516,
+      "teamId": 500001
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 641,
+      "playerId": 509467,
+      "teamId": 500014,
+      "homeScore": 8,
+      "content": {
+        "contentId": 1726706,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76258666/keyframes/510974/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Izack Tago Try",
+        "published": "2024-09-13T10:10:35Z",
+        "url": "https://www.nrl.com/news/2024/09/13/izack-tago-try/",
+        "type": "Video",
+        "summary": "Izack Tago Try",
+        "lastModified": "2024-09-13T10:16:18Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500014",
+              "name": "Penrith Panthers"
+            }
+          ]
+        },
+        "assetId": "76258666",
+        "autoplay": false,
+        "code": "8007f2d5-f183-4858-911a-e514f800b411",
+        "duration": 12,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76258666-12/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Made",
+      "type": "Goal",
+      "gameSeconds": 732,
+      "playerId": 504120,
+      "teamId": 500014,
+      "homeScore": 10
+    },
+    {
+      "title": "Penalty - 2nd Effort",
+      "type": "Penalty",
+      "gameSeconds": 762,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Verbal Dissent",
+      "type": "Penalty",
+      "gameSeconds": 772,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Line Dropout",
+      "type": "LineDropout",
+      "gameSeconds": 862,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 866,
+      "playerId": 503340,
+      "teamId": 500014
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 957,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Line Dropout",
+      "type": "LineDropout",
+      "gameSeconds": 993,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Ruck Infringement",
+      "type": "RuckInfringement",
+      "gameSeconds": 1030,
+      "playerId": 503240,
+      "teamId": 500001
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 1031,
+      "teamId": 500014
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 1073,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 1073,
+      "playerId": 504121,
+      "teamId": 500014,
+      "homeScore": 14,
+      "content": {
+        "contentId": 1726710,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76258693/keyframes/510984/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Jarome Luai Try",
+        "published": "2024-09-13T10:19:33Z",
+        "url": "https://www.nrl.com/news/2024/09/13/jarome-luai-try/",
+        "type": "Video",
+        "summary": "Jarome Luai Try",
+        "lastModified": "2024-09-13T10:50:51Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500014",
+              "name": "Penrith Panthers"
+            }
+          ]
+        },
+        "assetId": "76258693",
+        "autoplay": false,
+        "code": "2266f635-ef2e-4d58-bd1a-f6cea6006a71",
+        "duration": 15,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76258693-15/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Made",
+      "type": "Goal",
+      "gameSeconds": 1161,
+      "playerId": 504120,
+      "teamId": 500014,
+      "homeScore": 16
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 1218,
+      "playerId": 500002,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Dangerous Tackle",
+      "type": "Penalty",
+      "gameSeconds": 1283,
+      "playerId": 503327,
+      "teamId": 500001
+    },
+    {
+      "title": "On Report",
+      "type": "Penalty",
+      "gameSeconds": 1289,
+      "playerId": 503327,
+      "teamId": 500001
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 1323,
+      "playerId": 501271,
+      "teamId": 500014
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 1323,
+      "playerId": 501271,
+      "teamId": 500014,
+      "homeScore": 20,
+      "content": {
+        "contentId": 1726716,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76258700/keyframes/510985/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Luke Garner Try",
+        "published": "2024-09-13T10:25:19Z",
+        "url": "https://www.nrl.com/news/2024/09/13/luke-garner-try/",
+        "type": "Video",
+        "summary": "Luke Garner Try",
+        "lastModified": "2024-09-13T10:51:56Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500014",
+              "name": "Penrith Panthers"
+            }
+          ]
+        },
+        "assetId": "76258700",
+        "autoplay": false,
+        "code": "9f35fcca-4e5e-4258-8f1a-9f294f009b1a",
+        "duration": 14,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76258700-14/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Interchange #1",
+      "type": "Interchange",
+      "gameSeconds": 1393,
+      "playerId": 505555,
+      "teamId": 500014,
+      "offPlayerId": 501461
+    },
+    {
+      "title": "Conversion-Made",
+      "type": "Goal",
+      "gameSeconds": 1412,
+      "playerId": 504120,
+      "teamId": 500014,
+      "homeScore": 22
+    },
+    {
+      "title": "Penalty - Flop",
+      "type": "Penalty",
+      "gameSeconds": 1486,
+      "playerId": 505414,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #1",
+      "type": "Interchange",
+      "gameSeconds": 1534,
+      "playerId": 505560,
+      "teamId": 500001,
+      "offPlayerId": 501781
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 1568,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 1572,
+      "playerId": 100008071,
+      "teamId": 500001
+    },
+    {
+      "title": "Interchange #2",
+      "type": "Interchange",
+      "gameSeconds": 1585,
+      "playerId": 100007929,
+      "teamId": 500014,
+      "offPlayerId": 502580
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 1636,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #2",
+      "type": "Interchange",
+      "gameSeconds": 1654,
+      "playerId": 100006390,
+      "teamId": 500001,
+      "offPlayerId": 508065
+    },
+    {
+      "title": "Interchange #3",
+      "type": "Interchange",
+      "gameSeconds": 1662,
+      "playerId": 100004373,
+      "teamId": 500001,
+      "offPlayerId": 503639
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 1722,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 1766,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 1977,
+      "playerId": 503240,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Escorts",
+      "type": "Penalty",
+      "gameSeconds": 2033,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty Shot-Made",
+      "type": "Goal",
+      "gameSeconds": 2096,
+      "playerId": 504120,
+      "teamId": 500014,
+      "homeScore": 24
+    },
+    {
+      "title": "Line Dropout",
+      "type": "LineDropout",
+      "gameSeconds": 2212,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Slow Peel",
+      "type": "Penalty",
+      "gameSeconds": 2295,
+      "playerId": 505555,
+      "teamId": 500014
+    },
+    {
+      "title": "Ruck Infringement",
+      "type": "RuckInfringement",
+      "gameSeconds": 2334,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 2337,
+      "teamId": 500001
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 2390,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 2393,
+      "playerId": 500002,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 2456,
+      "playerId": 100004042,
+      "teamId": 500014
+    },
+    {
+      "title": "Inside 10 Metres",
+      "type": "OffsideWithinTenMetres",
+      "gameSeconds": 2508,
+      "playerId": 505555,
+      "teamId": 500014
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 2508,
+      "teamId": 500001
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 2555,
+      "playerId": 509438,
+      "teamId": 500001
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 2555,
+      "playerId": 509438,
+      "teamId": 500001,
+      "homeScore": 24,
+      "awayScore": 4,
+      "content": {
+        "contentId": 1726732,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76261292/keyframes/510989/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Joseph-Aukuso Suaalii Try",
+        "published": "2024-09-13T11:06:57Z",
+        "url": "https://www.nrl.com/news/2024/09/13/joseph-aukuso-suaalii-try/",
+        "type": "Video",
+        "summary": "Joseph-Aukuso Suaalii Try",
+        "lastModified": "2024-09-13T11:14:48Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500001",
+              "name": "Sydney Roosters"
+            }
+          ]
+        },
+        "assetId": "76261292",
+        "autoplay": false,
+        "code": "7ea60ceb-180b-4a59-bd1a-728e5e00ba2d",
+        "duration": 12,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76261292-12/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Missed",
+      "type": "GoalMissed",
+      "gameSeconds": 2646,
+      "playerId": 509438,
+      "teamId": 500001
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 2703,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Escorts",
+      "type": "Penalty",
+      "gameSeconds": 2707,
+      "playerId": 100004042,
+      "teamId": 500014
+    },
+    {
+      "title": "Inside 10 Metres",
+      "type": "OffsideWithinTenMetres",
+      "gameSeconds": 2771,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 2772,
+      "teamId": 500001
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 2814,
+      "playerId": 500663,
+      "teamId": 500001
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 2815,
+      "playerId": 500663,
+      "teamId": 500001,
+      "homeScore": 24,
+      "awayScore": 8,
+      "content": {
+        "contentId": 1726735,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76260326/keyframes/510990/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "James Tedesco Try",
+        "published": "2024-09-13T11:14:41Z",
+        "url": "https://www.nrl.com/news/2024/09/13/james-tedesco-try/",
+        "type": "Video",
+        "summary": "James Tedesco Try",
+        "lastModified": "2024-09-13T11:17:59Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500001",
+              "name": "Sydney Roosters"
+            }
+          ]
+        },
+        "assetId": "76260326",
+        "autoplay": false,
+        "code": "78e10f6c-a870-4c59-b41a-cf875e00070f",
+        "duration": 15,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76260326-15/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Made",
+      "type": "Goal",
+      "gameSeconds": 2888,
+      "playerId": 509438,
+      "teamId": 500001,
+      "homeScore": 24,
+      "awayScore": 10
+    },
+    {
+      "title": "Interchange #3",
+      "type": "Interchange",
+      "gameSeconds": 2888,
+      "playerId": 503322,
+      "teamId": 500014,
+      "offPlayerId": 501271
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3000,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3021,
+      "playerId": 503327,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3065,
+      "playerId": 504125,
+      "teamId": 500014
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3115,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3119,
+      "playerId": 509438,
+      "teamId": 500001
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3171,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #4",
+      "type": "Interchange",
+      "gameSeconds": 3190,
+      "playerId": 501781,
+      "teamId": 500001,
+      "offPlayerId": 100004373
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3273,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #4",
+      "type": "Interchange",
+      "gameSeconds": 3342,
+      "playerId": 501461,
+      "teamId": 500014,
+      "offPlayerId": 100007929
+    },
+    {
+      "title": "Interchange #5",
+      "type": "Interchange",
+      "gameSeconds": 3501,
+      "playerId": 508065,
+      "teamId": 500001,
+      "offPlayerId": 505560
+    },
+    {
+      "title": "Interchange #5",
+      "type": "Interchange",
+      "gameSeconds": 3549,
+      "playerId": 501271,
+      "teamId": 500014,
+      "offPlayerId": 505555
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3599,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3602,
+      "playerId": 504125,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #6",
+      "type": "Interchange",
+      "gameSeconds": 3609,
+      "playerId": 503639,
+      "teamId": 500001,
+      "offPlayerId": 100006390
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3700,
+      "playerId": 504121,
+      "teamId": 500014
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3745,
+      "playerId": 500002,
+      "teamId": 500001
+    },
+    {
+      "title": "Interchange #6",
+      "type": "Interchange",
+      "gameSeconds": 3799,
+      "playerId": 502580,
+      "teamId": 500014,
+      "offPlayerId": 503322
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 3832,
+      "playerId": 504120,
+      "teamId": 500014
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 3971,
+      "playerId": 509579,
+      "teamId": 500001
+    },
+    {
+      "title": "Line Dropout",
+      "type": "LineDropout",
+      "gameSeconds": 4084,
+      "playerId": 500093,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 4087,
+      "playerId": 504125,
+      "teamId": 500014
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 4145,
+      "playerId": 509579,
+      "teamId": 500001
+    },
+    {
+      "title": "Linebreak",
+      "type": "LineBreak",
+      "gameSeconds": 4155,
+      "playerId": 503340,
+      "teamId": 500014
+    },
+    {
+      "title": "Penalty - Offside inside 10m",
+      "type": "Penalty",
+      "gameSeconds": 4168,
+      "playerId": 503240,
+      "teamId": 500001
+    },
+    {
+      "title": "Interchange #7",
+      "type": "Interchange",
+      "gameSeconds": 4178,
+      "playerId": 505555,
+      "teamId": 500014,
+      "offPlayerId": 501461
+    },
+    {
+      "title": "Try",
+      "type": "Try",
+      "gameSeconds": 4219,
+      "playerId": 501271,
+      "teamId": 500014,
+      "homeScore": 28,
+      "awayScore": 10,
+      "content": {
+        "contentId": 1726737,
+        "imageUrl": "/remote.axd?https://imageproxy-prod.nrl.digital/api/assets/76261329/keyframes/511001/image?center=0.5%2C0.5",
+        "topic": "Instant Highlights",
+        "label": "None",
+        "name": "Luke Garner 2nd Try",
+        "published": "2024-09-13T11:44:26Z",
+        "url": "https://www.nrl.com/news/2024/09/13/luke-garner-try2/",
+        "type": "Video",
+        "summary": "Luke Garner 2nd Try",
+        "lastModified": "2024-09-13T11:53:51Z",
+        "subType": "Instant Replay",
+        "showAdverts": true,
+        "tags": {
+          "competition": {
+            "id": "111",
+            "name": "Telstra Premiership"
+          },
+          "season": {
+            "id": "2024",
+            "name": "2024"
+          },
+          "round": {
+            "id": "28",
+            "name": "Finals Week 1"
+          },
+          "match": {
+            "id": "20241112810",
+            "name": "Panthers v Roosters"
+          },
+          "teams": [
+            {
+              "id": "500014",
+              "name": "Penrith Panthers"
+            }
+          ]
+        },
+        "assetId": "76261329",
+        "autoplay": false,
+        "code": "e51911d4-9a9e-4b59-9f1a-84623300a838",
+        "duration": 13,
+        "isUpcomingLiveStream": false,
+        "tracks": {
+          "thumbnails": "https://scdn-prod.nrl.com/spritestore/76261329-13/thumbs.vtt"
+        }
+      }
+    },
+    {
+      "title": "Conversion-Made",
+      "type": "Goal",
+      "gameSeconds": 4309,
+      "playerId": 504120,
+      "teamId": 500014,
+      "homeScore": 30,
+      "awayScore": 10
+    },
+    {
+      "title": "Interchange #7",
+      "type": "Interchange",
+      "gameSeconds": 4312,
+      "playerId": 505560,
+      "teamId": 500001,
+      "offPlayerId": 503639
+    },
+    {
+      "title": "Kick Bomb",
+      "type": "KickBomb",
+      "gameSeconds": 4412,
+      "playerId": 509579,
+      "teamId": 500001
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 4468,
+      "playerId": 505555,
+      "teamId": 500014
+    },
+    {
+      "title": "Interchange #8",
+      "type": "Interchange",
+      "gameSeconds": 4485,
+      "playerId": 100006390,
+      "teamId": 500001,
+      "offPlayerId": 501781
+    },
+    {
+      "title": "Ruck Infringement",
+      "type": "RuckInfringement",
+      "gameSeconds": 4524,
+      "playerId": 100004042,
+      "teamId": 500014
+    },
+    {
+      "title": "Set Restart",
+      "type": "SetRestart",
+      "gameSeconds": 4526,
+      "teamId": 500001
+    },
+    {
+      "title": "Penalty - Holding Back",
+      "type": "Penalty",
+      "gameSeconds": 4588,
+      "playerId": 100008071,
+      "teamId": 500001
+    },
+    {
+      "title": "Interchange #8",
+      "type": "Interchange",
+      "gameSeconds": 4594,
+      "playerId": 100002660,
+      "teamId": 500014,
+      "offPlayerId": 504120
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 4617,
+      "playerId": 100004042,
+      "teamId": 500014
+    },
+    {
+      "title": "Video Referee - Captain's Challenge",
+      "type": "CaptainsChallenge",
+      "gameSeconds": 4625,
+      "teamId": 500014,
+      "description": "Unsuccessful"
+    },
+    {
+      "title": "Error",
+      "type": "Error",
+      "gameSeconds": 4671,
+      "playerId": 505361,
+      "teamId": 500001
+    },
+    {
+      "title": "FULL TIME",
+      "type": "GameTime",
+      "gameSeconds": 4800,
+      "teamId": 0
+    }
+  ]
+}

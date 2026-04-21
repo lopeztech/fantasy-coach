@@ -74,7 +74,7 @@ def train_logistic(
         pipeline=pipeline,
         feature_names=frame.feature_names,
         train_accuracy=float(pipeline.score(X_train, y_train)),
-        test_accuracy=float(pipeline.score(X_test, y_test)),
+        test_accuracy=(float(pipeline.score(X_test, y_test)) if len(X_test) else float("nan")),
         n_train=int(len(X_train)),
         n_test=int(len(X_test)),
     )

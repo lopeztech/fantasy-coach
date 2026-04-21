@@ -1,0 +1,497 @@
+{
+  "match_id": 20241110110,
+  "season": 2024,
+  "round": 1,
+  "start_time": "2024-03-03T02:30:00Z",
+  "match_state": "FullTime",
+  "venue": "Allegiant Stadium",
+  "venue_city": "Las Vegas",
+  "weather": null,
+  "home": {
+    "team_id": 500002,
+    "name": "Manly-Warringah Sea Eagles",
+    "nick_name": "Sea Eagles",
+    "score": 36,
+    "players": [
+      {
+        "player_id": 501505,
+        "jersey_number": 1,
+        "position": "Fullback",
+        "first_name": "Tom",
+        "last_name": "Trbojevic"
+      },
+      {
+        "player_id": 507670,
+        "jersey_number": 2,
+        "position": "Winger",
+        "first_name": "Jason",
+        "last_name": "Saab"
+      },
+      {
+        "player_id": 509634,
+        "jersey_number": 3,
+        "position": "Centre",
+        "first_name": "Tolutau",
+        "last_name": "Koula"
+      },
+      {
+        "player_id": 503443,
+        "jersey_number": 4,
+        "position": "Centre",
+        "first_name": "Reuben",
+        "last_name": "Garrick"
+      },
+      {
+        "player_id": 506255,
+        "jersey_number": 5,
+        "position": "Winger",
+        "first_name": "Jaxson",
+        "last_name": "Paulo"
+      },
+      {
+        "player_id": 500646,
+        "jersey_number": 6,
+        "position": "Five-Eighth",
+        "first_name": "Luke",
+        "last_name": "Brooks"
+      },
+      {
+        "player_id": 500024,
+        "jersey_number": 7,
+        "position": "Halfback",
+        "first_name": "Daly",
+        "last_name": "Cherry-Evans"
+      },
+      {
+        "player_id": 504251,
+        "jersey_number": 8,
+        "position": "Prop",
+        "first_name": "Taniela",
+        "last_name": "Paseka"
+      },
+      {
+        "player_id": 502063,
+        "jersey_number": 9,
+        "position": "Hooker",
+        "first_name": "Lachlan",
+        "last_name": "Croker"
+      },
+      {
+        "player_id": 500882,
+        "jersey_number": 10,
+        "position": "Prop",
+        "first_name": "Josh",
+        "last_name": "Aloiai"
+      },
+      {
+        "player_id": 508033,
+        "jersey_number": 11,
+        "position": "2nd Row",
+        "first_name": "Haumole",
+        "last_name": "Olakau'atu"
+      },
+      {
+        "player_id": 507850,
+        "jersey_number": 12,
+        "position": "2nd Row",
+        "first_name": "Ben",
+        "last_name": "Trbojevic"
+      },
+      {
+        "player_id": 500751,
+        "jersey_number": 13,
+        "position": "Lock",
+        "first_name": "Jake",
+        "last_name": "Trbojevic"
+      },
+      {
+        "player_id": 502409,
+        "jersey_number": 14,
+        "position": "Interchange",
+        "first_name": "Karl",
+        "last_name": "Lawton"
+      },
+      {
+        "player_id": 503341,
+        "jersey_number": 15,
+        "position": "Interchange",
+        "first_name": "Corey",
+        "last_name": "Waddell"
+      },
+      {
+        "player_id": 506153,
+        "jersey_number": 16,
+        "position": "Interchange",
+        "first_name": "Ethan",
+        "last_name": "Bullemor"
+      },
+      {
+        "player_id": 500647,
+        "jersey_number": 17,
+        "position": "Interchange",
+        "first_name": "Nathan",
+        "last_name": "Brown"
+      },
+      {
+        "player_id": 509765,
+        "jersey_number": 18,
+        "position": "Replacement",
+        "first_name": "Jake",
+        "last_name": "Arthur"
+      }
+    ]
+  },
+  "away": {
+    "team_id": 500005,
+    "name": "South Sydney Rabbitohs",
+    "nick_name": "Rabbitohs",
+    "score": 24,
+    "players": [
+      {
+        "player_id": 502502,
+        "jersey_number": 1,
+        "position": "Fullback",
+        "first_name": "Latrell",
+        "last_name": "Mitchell"
+      },
+      {
+        "player_id": 500108,
+        "jersey_number": 2,
+        "position": "Winger",
+        "first_name": "Alex",
+        "last_name": "Johnston"
+      },
+      {
+        "player_id": 506548,
+        "jersey_number": 3,
+        "position": "Centre",
+        "first_name": "Isaiah",
+        "last_name": "Tass"
+      },
+      {
+        "player_id": 500599,
+        "jersey_number": 4,
+        "position": "Centre",
+        "first_name": "Richard",
+        "last_name": "Kennar"
+      },
+      {
+        "player_id": 501245,
+        "jersey_number": 5,
+        "position": "Winger",
+        "first_name": "Jacob",
+        "last_name": "Gagai"
+      },
+      {
+        "player_id": 500611,
+        "jersey_number": 6,
+        "position": "Five-Eighth",
+        "first_name": "Cody",
+        "last_name": "Walker"
+      },
+      {
+        "player_id": 505564,
+        "jersey_number": 7,
+        "position": "Halfback",
+        "first_name": "Lachlan",
+        "last_name": "Ilias"
+      },
+      {
+        "player_id": 503450,
+        "jersey_number": 8,
+        "position": "Prop",
+        "first_name": "Tevita",
+        "last_name": "Tatola"
+      },
+      {
+        "player_id": 501600,
+        "jersey_number": 9,
+        "position": "Hooker",
+        "first_name": "Damien",
+        "last_name": "Cook"
+      },
+      {
+        "player_id": 504265,
+        "jersey_number": 10,
+        "position": "Prop",
+        "first_name": "Sean",
+        "last_name": "Keppie"
+      },
+      {
+        "player_id": 504174,
+        "jersey_number": 11,
+        "position": "2nd Row",
+        "first_name": "Keaon",
+        "last_name": "Koloamatangi"
+      },
+      {
+        "player_id": 500149,
+        "jersey_number": 12,
+        "position": "2nd Row",
+        "first_name": "Jai",
+        "last_name": "Arrow"
+      },
+      {
+        "player_id": 504176,
+        "jersey_number": 13,
+        "position": "Lock",
+        "first_name": "Cameron",
+        "last_name": "Murray"
+      },
+      {
+        "player_id": 501394,
+        "jersey_number": 14,
+        "position": "Interchange",
+        "first_name": "Siliva",
+        "last_name": "Havili"
+      },
+      {
+        "player_id": 500453,
+        "jersey_number": 15,
+        "position": "Interchange",
+        "first_name": "Jacob",
+        "last_name": "Host"
+      },
+      {
+        "player_id": 509444,
+        "jersey_number": 16,
+        "position": "Interchange",
+        "first_name": "Davvy",
+        "last_name": "Moale"
+      },
+      {
+        "player_id": 500087,
+        "jersey_number": 17,
+        "position": "Interchange",
+        "first_name": "Thomas",
+        "last_name": "Burgess"
+      },
+      {
+        "player_id": 504669,
+        "jersey_number": 24,
+        "position": "Replacement",
+        "first_name": "Dean",
+        "last_name": "Hawkins"
+      }
+    ]
+  },
+  "team_stats": [
+    {
+      "title": "Possession %",
+      "type": "PercentageCombined",
+      "units": null,
+      "home_value": 51.0,
+      "away_value": 49.0
+    },
+    {
+      "title": "Time In Possession",
+      "type": "Number",
+      "units": "Minutes",
+      "home_value": 1577.0,
+      "away_value": 1545.0
+    },
+    {
+      "title": "Completion Rate",
+      "type": "PercentageAndFraction",
+      "units": null,
+      "home_value": 78.0,
+      "away_value": 80.0
+    },
+    {
+      "title": "All Runs",
+      "type": "Number",
+      "units": null,
+      "home_value": 208.0,
+      "away_value": 206.0
+    },
+    {
+      "title": "All Run Metres",
+      "type": "Number",
+      "units": null,
+      "home_value": 1870.0,
+      "away_value": 1645.0
+    },
+    {
+      "title": "Post Contact Metres",
+      "type": "Number",
+      "units": null,
+      "home_value": 485.0,
+      "away_value": 483.0
+    },
+    {
+      "title": "Line Breaks",
+      "type": "Number",
+      "units": null,
+      "home_value": 7.0,
+      "away_value": 5.0
+    },
+    {
+      "title": "Tackle Breaks",
+      "type": "Number",
+      "units": null,
+      "home_value": 31.0,
+      "away_value": 38.0
+    },
+    {
+      "title": "Average Set Distance",
+      "type": "Number",
+      "units": null,
+      "home_value": 44.55,
+      "away_value": 41.13
+    },
+    {
+      "title": "Kick Return Metres",
+      "type": "Number",
+      "units": null,
+      "home_value": 209.0,
+      "away_value": 147.0
+    },
+    {
+      "title": "Average Play The Ball Speed",
+      "type": "Range",
+      "units": "Seconds",
+      "home_value": 3.64,
+      "away_value": 3.49
+    },
+    {
+      "title": "Offloads",
+      "type": "Number",
+      "units": null,
+      "home_value": 8.0,
+      "away_value": 4.0
+    },
+    {
+      "title": "Receipts",
+      "type": "Number",
+      "units": null,
+      "home_value": 423.0,
+      "away_value": 410.0
+    },
+    {
+      "title": "Total Passes",
+      "type": "Number",
+      "units": null,
+      "home_value": 237.0,
+      "away_value": 218.0
+    },
+    {
+      "title": "Dummy Passes",
+      "type": "Number",
+      "units": null,
+      "home_value": 7.0,
+      "away_value": 15.0
+    },
+    {
+      "title": "Kicks",
+      "type": "Number",
+      "units": null,
+      "home_value": 21.0,
+      "away_value": 21.0
+    },
+    {
+      "title": "Kicking Metres",
+      "type": "Number",
+      "units": null,
+      "home_value": 555.0,
+      "away_value": 769.0
+    },
+    {
+      "title": "Forced Drop Outs",
+      "type": "Number",
+      "units": null,
+      "home_value": 1.0,
+      "away_value": 0.0
+    },
+    {
+      "title": "Kick Defusal %",
+      "type": "Percentage",
+      "units": null,
+      "home_value": 100.0,
+      "away_value": 50.0
+    },
+    {
+      "title": "Bombs",
+      "type": "Number",
+      "units": null,
+      "home_value": 6.0,
+      "away_value": 8.0
+    },
+    {
+      "title": "Grubbers",
+      "type": "Number",
+      "units": null,
+      "home_value": 6.0,
+      "away_value": 0.0
+    },
+    {
+      "title": "Effective Tackle %",
+      "type": "Percentage",
+      "units": null,
+      "home_value": 87.07,
+      "away_value": 88.0
+    },
+    {
+      "title": "Tackles Made",
+      "type": "Number",
+      "units": null,
+      "home_value": 330.0,
+      "away_value": 308.0
+    },
+    {
+      "title": "Missed Tackles",
+      "type": "Number",
+      "units": null,
+      "home_value": 38.0,
+      "away_value": 31.0
+    },
+    {
+      "title": "Intercepts",
+      "type": "Number",
+      "units": null,
+      "home_value": 3.0,
+      "away_value": 0.0
+    },
+    {
+      "title": "Ineffective Tackles",
+      "type": "Number",
+      "units": null,
+      "home_value": 11.0,
+      "away_value": 11.0
+    },
+    {
+      "title": "Errors",
+      "type": "Number",
+      "units": null,
+      "home_value": 14.0,
+      "away_value": 11.0
+    },
+    {
+      "title": "Penalties Conceded",
+      "type": "Number",
+      "units": null,
+      "home_value": 1.0,
+      "away_value": 5.0
+    },
+    {
+      "title": "Ruck Infringements",
+      "type": "Number",
+      "units": null,
+      "home_value": 2.0,
+      "away_value": 1.0
+    },
+    {
+      "title": "Inside 10 Metres",
+      "type": "Number",
+      "units": null,
+      "home_value": 1.0,
+      "away_value": 0.0
+    },
+    {
+      "title": "Used",
+      "type": "Number",
+      "units": null,
+      "home_value": 8.0,
+      "away_value": 8.0
+    }
+  ]
+}
