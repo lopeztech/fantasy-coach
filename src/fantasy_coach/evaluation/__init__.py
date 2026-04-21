@@ -10,6 +10,7 @@ from fantasy_coach.evaluation.predictors import (
     HomePickPredictor,
     LogisticPredictor,
     Predictor,
+    XGBoostPredictor,
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "LogisticPredictor",
     "Prediction",
     "Predictor",
+    "XGBoostPredictor",
     "accuracy",
     "brier_score",
     "ece",
