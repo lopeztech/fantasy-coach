@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from fantasy_coach.travel import (
@@ -14,7 +12,6 @@ from fantasy_coach.travel import (
     lookup_venue,
     travel_features,
 )
-
 
 # ---------------------------------------------------------------------------
 # Haversine
@@ -158,9 +155,9 @@ def test_travel_features_all_zero_when_no_venues() -> None:
 def test_travel_features_home_minus_away_sign() -> None:
     # Home team has travelled further (Auckland → Brisbane) than away (Sydney → Brisbane).
     km, _, _ = travel_features(
-        "Go Media Stadium",   # Auckland (home came from)
-        "Allianz Stadium",    # Sydney   (away came from)
-        "Suncorp Stadium",    # Brisbane (current match)
+        "Go Media Stadium",  # Auckland (home came from)
+        "Allianz Stadium",  # Sydney   (away came from)
+        "Suncorp Stadium",  # Brisbane (current match)
         7.0,
         7.0,
     )
@@ -183,8 +180,8 @@ def test_travel_features_equal_travel_is_zero() -> None:
 def test_travel_features_bb_flag_asymmetric() -> None:
     # Home team: short rest + long travel → brutal; Away: fine.
     _, _, bb = travel_features(
-        "Go Media Stadium",   # Auckland → Brisbane (> 1 000 km)
-        "Suncorp Stadium",    # Brisbane → Brisbane (0 km)
+        "Go Media Stadium",  # Auckland → Brisbane (> 1 000 km)
+        "Suncorp Stadium",  # Brisbane → Brisbane (0 km)
         "Suncorp Stadium",
         4.0,  # home: short rest
         7.0,  # away: long rest
