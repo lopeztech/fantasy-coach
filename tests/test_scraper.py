@@ -146,3 +146,43 @@ def test_fetch_match_uses_provided_client() -> None:
     finally:
         client.close()
     assert result == {"ok": True}
+
+
+@respx.mock
+def test_fetch_round_returns_payload() -> None:
+    payload = {"fixtures": [{"matchCentreUrl": "/draw/x/"}], "byes": []}
+    respx.get(
+        "https://www.nrl.com/draw/data",
+        params={"competition": "111", "round": "8", "season": "2026"},
+    ).mock(return_value=httpx.Response(200, json=payload))
+
+    result = scraper.fetch_round(2026, 8)
+
+    assert result == payload
+
+
+@respx.mock
+def test_fetch_round_returns_none_on_404() -> None:
+    respx.get("https://www.nrl.com/draw/data").mock(return_value=httpx.Response(404))
+
+    assert scraper.fetch_round(2026, 99) is None
+
+
+@respx.mock
+def test_fetch_match_from_url_appends_data_segment() -> None:
+    finals_url = "/draw/nrl-premiership/2024/finals-week-1/game-1/"
+    respx.get(f"https://www.nrl.com{finals_url}data").mock(
+        return_value=httpx.Response(200, json={"matchId": 1})
+    )
+
+    result = scraper.fetch_match_from_url(finals_url)
+
+    assert result == {"matchId": 1}
+
+
+@respx.mock
+def test_fetch_match_from_url_accepts_full_url() -> None:
+    full = "https://www.nrl.com/draw/nrl-premiership/2024/round-1/sea-eagles-v-rabbitohs/"
+    respx.get(full + "data").mock(return_value=httpx.Response(200, json={"ok": True}))
+
+    assert scraper.fetch_match_from_url(full) == {"ok": True}

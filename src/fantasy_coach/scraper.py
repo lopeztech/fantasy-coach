@@ -1,9 +1,9 @@
-"""NRL match /data scraper.
+"""NRL endpoint scrapers.
 
-Thin wrapper around the per-match endpoint documented in `docs/nrl-endpoints.md`.
-Throttled to be polite and retrying on transient failures; 404s return None
-because a wrong slug order (away-v-home vs home-v-away) is a common caller bug,
-not a server error worth crashing on.
+Thin wrappers around the two `nrl.com` JSON endpoints documented in
+`docs/nrl-endpoints.md`. Throttled to be polite and retrying on transient
+failures; 404s return None because a wrong slug order (away-v-home vs
+home-v-away) is a common caller bug, not a server error worth crashing on.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import random
 import threading
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -73,16 +74,72 @@ def fetch_match(
     client: httpx.Client | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any] | None:
-    """Fetch a single match's per-match JSON.
+    """Fetch a single regular-season match's per-match JSON.
 
-    Returns the parsed JSON body on 200, or None on 404. Raises `httpx.HTTPError`
-    after exhausting retries on 5xx / network errors.
+    For finals matches use `fetch_match_from_url(matchCentreUrl)` — finals
+    slugs (`finals-week-{n}/game-{m}`) don't fit this signature.
 
-    Slug order must be `home-v-away` (source from the fixtures endpoint —
-    wrong order returns 404 and is treated as a missing match, not an error).
+    Returns the parsed JSON body on 200, or None on 404. Raises
+    `httpx.HTTPError` after exhausting retries on 5xx / network errors.
     """
 
     path = _match_path(year, round_, home_slug, away_slug)
+    return _fetch_json(path, client=client, max_retries=max_retries)
+
+
+def fetch_match_from_url(
+    match_centre_url: str,
+    *,
+    client: httpx.Client | None = None,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> dict[str, Any] | None:
+    """Fetch a per-match payload using a `matchCentreUrl` from the fixtures list.
+
+    Accepts either a relative path (`/draw/.../`) or a full URL. Appends `data`
+    to the trailing slash. Use this for finals weeks where slugs are
+    `finals-week-{n}/game-{m}` rather than home-v-away.
+    """
+
+    path = _normalize_match_path(match_centre_url)
+    return _fetch_json(path, client=client, max_retries=max_retries)
+
+
+def fetch_round(
+    year: int,
+    round_: int,
+    *,
+    competition: int = 111,
+    client: httpx.Client | None = None,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> dict[str, Any] | None:
+    """Fetch the fixtures-list payload for a given round.
+
+    Returns the parsed JSON (with `fixtures`, `byes`, filter metadata) on 200,
+    or None on 404 (e.g. a round that doesn't exist for that season).
+    """
+
+    path = "/draw/data"
+    params = {"competition": competition, "round": round_, "season": year}
+    return _fetch_json(path, params=params, client=client, max_retries=max_retries)
+
+
+def _normalize_match_path(match_centre_url: str) -> str:
+    parsed = urlparse(match_centre_url)
+    path = parsed.path or match_centre_url
+    if not path.startswith("/"):
+        path = "/" + path
+    if not path.endswith("/"):
+        path += "/"
+    return path + "data"
+
+
+def _fetch_json(
+    path: str,
+    *,
+    params: dict[str, Any] | None = None,
+    client: httpx.Client | None = None,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> dict[str, Any] | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     interval = _min_interval_seconds()
 
@@ -92,7 +149,7 @@ def fetch_match(
         for attempt in range(1, max_retries + 1):
             _throttle.wait(interval)
             try:
-                response = http.get(path, headers=headers)
+                response = http.get(path, params=params, headers=headers)
             except httpx.HTTPError as exc:
                 if attempt == max_retries:
                     logger.error(
@@ -115,10 +172,7 @@ def fetch_match(
                 continue
 
             if response.status_code == 404:
-                logger.warning(
-                    "404 for %s — check slug order (expected home-v-away)",
-                    path,
-                )
+                logger.warning("404 for %s", path)
                 return None
             if 500 <= response.status_code < 600:
                 if attempt == max_retries:
@@ -138,9 +192,7 @@ def fetch_match(
             response.raise_for_status()
             return response.json()
 
-        # Loop fell through without returning — should be unreachable because
-        # the last attempt either returns, raises, or is a 404 short-circuit.
-        raise RuntimeError("fetch_match retry loop exited without resolution")
+        raise RuntimeError(f"fetch retry loop exited without resolution for {path}")
     finally:
         if owns_client:
             http.close()
