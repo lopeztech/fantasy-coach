@@ -20,6 +20,7 @@ from fantasy_coach.features import MatchRow
 from fantasy_coach.models.calibration import CalibrationMethod, CalibrationWrapper
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.logistic import TrainResult, train_logistic
+from fantasy_coach.models.xgboost_model import train_xgboost
 
 
 class Predictor(Protocol):
@@ -204,4 +205,33 @@ class LogisticPredictor:
         # at inference time; the harness re-fits between rounds anyway.
         x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
         proba = self._train_result.pipeline.predict_proba(x)[0, 1]
+        return float(proba)
+
+
+class XGBoostPredictor:
+    name = "xgboost"
+
+    def __init__(self) -> None:
+        self._train_result = None
+        self._inference_builder = FeatureBuilder()
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        frame = build_training_frame(history)
+        if frame.X.shape[0] < 10:
+            self._train_result = None
+        else:
+            self._train_result = train_xgboost(frame, test_fraction=0.0)
+
+        self._inference_builder = FeatureBuilder()
+        for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
+            if match.home.score is None or match.away.score is None:
+                continue
+            self._inference_builder.advance_season_if_needed(match)
+            self._inference_builder.record(match)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        if self._train_result is None:
+            return 0.55
+        x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
+        proba = self._train_result.estimator.predict_proba(x)[0, 1]
         return float(proba)

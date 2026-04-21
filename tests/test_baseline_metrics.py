@@ -23,6 +23,7 @@ from fantasy_coach.evaluation import (
     HomePickPredictor,
     LogisticPredictor,
     Predictor,
+    XGBoostPredictor,
 )
 from fantasy_coach.evaluation.harness import walk_forward_from_repo
 from fantasy_coach.storage import SQLiteRepository
@@ -36,16 +37,21 @@ SEASONS = (2024, 2025)
 # features increase variance at this sample size; expected to help tree models with
 # more data. Referee features show negligible signal on the 2024-2025 baseline (all
 # referee_id values NULL after v1→v2 migration) — see docs/model.md for ablation notes.
+#
+# XGBoost (#25): log_loss 0.7599 vs logistic 0.7640 (Δ=+0.41pp) — below the 1-point
+# threshold; logistic remains the default model. See docs/model.md for comparison.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "logistic": {"n": 424, "accuracy": 0.5660, "log_loss": 0.7640, "brier": 0.2654},
+    "xgboost": {"n": 424, "accuracy": 0.5448, "log_loss": 0.7599, "brier": 0.2721},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
     "home": HomePickPredictor,
     "elo": EloPredictor,
     "logistic": LogisticPredictor,
+    "xgboost": XGBoostPredictor,
 }
 
 

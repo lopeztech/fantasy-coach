@@ -67,6 +67,32 @@ feature vector; revisit with at least one full season of referee-annotated match
 - **Player-level stats** — kept out of the baseline. Will come in once
   XGBoost (#25) makes nonlinear interactions worth modelling.
 
+## XGBoost model (#25)
+
+An XGBClassifier is available at `fantasy_coach.models.xgboost_model` as an alternative
+to logistic regression. It uses the same 18-feature input and is trained with
+time-series-aware hyperparameter search (`GridSearchCV` + `TimeSeriesSplit(n_splits=3)`)
+over `max_depth ∈ {3, 4, 5}`, `n_estimators ∈ {100, 200}`, `learning_rate ∈ {0.05, 0.1}`.
+
+### Comparison (2024–2025 walk-forward baseline, 424 predictions)
+
+| Model    | Accuracy | Log-loss | Brier  |
+|----------|----------|----------|--------|
+| Elo      | 0.5943   | 0.6570   | 0.2325 |
+| Logistic | 0.5660   | 0.7640   | 0.2654 |
+| XGBoost  | 0.5448   | 0.7599   | 0.2721 |
+
+**Decision: keep logistic as default.** XGBoost's log-loss improvement is 0.41pp,
+below the 1-point threshold stated in the issue AC. On this 2-season baseline, XGBoost
+is worse on accuracy and brier. Both models suffer from limited referee data (see
+referee ablation above). Recommendation: re-evaluate once 3+ seasons of data — including
+referee and injury features — are backfilled; gradient boosting typically needs ≥ 5k rows
+to clearly outperform a linear baseline.
+
+The XGBoost model is serialised with the same joblib interface as logistic
+(`save_model` / `load_model`), keyed by `"model_type": "xgboost"`. The prediction
+API can be switched by swapping the artefact path in config.
+
 ## Train / test split
 
 Time-ordered, never random. The most recent 20 % of completed matches form
