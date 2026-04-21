@@ -45,8 +45,11 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 # sklearn convention: capital X for the feature matrix, capital C for regularisation.
 "src/fantasy_coach/models/logistic.py" = ["N803", "N806"]
+"src/fantasy_coach/models/calibration.py" = ["N803", "N806"]
+"src/fantasy_coach/evaluation/predictors.py" = ["N806"]
 "src/fantasy_coach/feature_engineering.py" = ["N806"]
 "tests/test_logistic.py" = ["N806"]
+"tests/test_calibration.py" = ["N806"]
 # JSON API spec requires camelCase field names in the response schema.
 "src/fantasy_coach/predictions.py" = ["N815"]
 
