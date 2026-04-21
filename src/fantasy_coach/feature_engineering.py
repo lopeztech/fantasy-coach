@@ -19,6 +19,9 @@ Features (all home-minus-away unless noted):
 - `travel_km_diff`: great-circle km travelled from prev venue to this venue, home − away.
 - `timezone_delta_diff`: absolute timezone-shift hours, home − away.
 - `back_to_back_short_week_diff`: +1/−1/0 flag for (days_rest < 6 AND travel > 1 000 km).
+- `is_wet`, `wind_kph`, `temperature_c`, `missing_weather`: parsed from the weather block.
+- `venue_avg_total_points`: rolling-10 average total points at this venue (history-only).
+- `venue_home_win_rate`: rolling-20 home win rate at this venue (history-only).
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ import numpy as np
 from fantasy_coach.features import MatchRow
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.travel import travel_features
+from fantasy_coach.weather import parse_weather
 
 FEATURE_NAMES = (
     "elo_diff",
@@ -44,7 +48,16 @@ FEATURE_NAMES = (
     "travel_km_diff",
     "timezone_delta_diff",
     "back_to_back_short_week_diff",
+    "is_wet",
+    "wind_kph",
+    "temperature_c",
+    "missing_weather",
+    "venue_avg_total_points",
+    "venue_home_win_rate",
 )
+
+VENUE_TOTAL_WINDOW = 10
+VENUE_WIN_WINDOW = 20
 
 ROLLING_WINDOW = 5
 H2H_WINDOW = 3
@@ -80,6 +93,13 @@ class FeatureBuilder:
         )
         self._h2h: dict[tuple[int, int], deque[int]] = defaultdict(lambda: deque(maxlen=H2H_WINDOW))
         self._current_season: int | None = None
+        # Venue-level rolling stats (keyed by lower-cased venue name).
+        self._venue_total: dict[str, deque[int]] = defaultdict(
+            lambda: deque(maxlen=VENUE_TOTAL_WINDOW)
+        )
+        self._venue_home_wins: dict[str, deque[int]] = defaultdict(
+            lambda: deque(maxlen=VENUE_WIN_WINDOW)
+        )
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -99,6 +119,13 @@ class FeatureBuilder:
             rest_h,
             rest_a,
         )
+        wx = parse_weather(match.weather)
+        vkey = (match.venue or "").lower()
+        venue_avg_tp = _avg(self._venue_total[vkey]) if vkey else 0.0
+        # Neutral prior (0.5) when no history available for this venue.
+        venue_hwr = (
+            _avg(self._venue_home_wins[vkey]) if (vkey and self._venue_home_wins[vkey]) else 0.5
+        )
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -109,6 +136,12 @@ class FeatureBuilder:
             tkm,
             ttz,
             tbb,
+            wx.is_wet,
+            wx.wind_kph,
+            wx.temperature_c,
+            wx.missing,
+            venue_avg_tp,
+            venue_hwr,
         ]
 
     def advance_season_if_needed(self, match: MatchRow) -> None:
@@ -136,6 +169,11 @@ class FeatureBuilder:
         self._last_venue[h_id] = match.venue
         self._last_venue[a_id] = match.venue
         self.elo.update(h_id, a_id, h_score, a_score)
+        # Update venue rolling stats after the match result is known.
+        vkey = (match.venue or "").lower()
+        if vkey:
+            self._venue_total[vkey].append(h_score + a_score)
+            self._venue_home_wins[vkey].append(1 if h_score > a_score else 0)
 
 
 def build_training_frame(
