@@ -12,11 +12,11 @@ from fantasy_coach.backfill import (
     RetryLog,
     backfill_season,
 )
+from fantasy_coach.bookmaker import BookmakerPredictor, load_closing_lines
 from fantasy_coach.evaluation import (
     EloPredictor,
     HomePickPredictor,
     LogisticPredictor,
-    Predictor,
 )
 from fantasy_coach.evaluation.harness import walk_forward_from_repo
 from fantasy_coach.evaluation.report import write_markdown
@@ -24,11 +24,14 @@ from fantasy_coach.feature_engineering import build_training_frame
 from fantasy_coach.models.logistic import save_model, train_logistic
 from fantasy_coach.storage import SQLiteRepository
 
-_PREDICTOR_FACTORIES: dict[str, type[Predictor]] = {
+_BUILTIN_PREDICTORS = {
     "home": HomePickPredictor,
     "elo": EloPredictor,
     "logistic": LogisticPredictor,
 }
+# `bookmaker` is appended at parse time so users see it in --help even
+# though it requires a separate --closing-lines argument.
+_PREDICTOR_CHOICES = sorted([*_BUILTIN_PREDICTORS, "bookmaker"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -77,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument(
         "--model",
         action="append",
-        choices=sorted(_PREDICTOR_FACTORIES),
+        choices=_PREDICTOR_CHOICES,
         required=True,
         help="May be specified multiple times to compare models.",
     )
@@ -91,6 +94,12 @@ def main(argv: list[str] | None = None) -> int:
         "--report",
         type=Path,
         default=Path("reports/evaluation.md"),
+    )
+    ev.add_argument(
+        "--closing-lines",
+        type=Path,
+        default=None,
+        help="Path to the aussportsbetting NRL xlsx. Required when --model bookmaker is used.",
     )
     ev.add_argument(
         "--log-level",
@@ -164,12 +173,26 @@ def _run_train_logistic(args: argparse.Namespace) -> int:
 
 def _run_evaluate(args: argparse.Namespace) -> int:
     seasons = [int(s) for s in args.seasons.split(",") if s.strip()]
+
+    factories = {}
+    for name in args.model:
+        if name == "bookmaker":
+            if args.closing_lines is None:
+                print(
+                    "error: --model bookmaker requires --closing-lines PATH",
+                    file=sys.stderr,
+                )
+                return 2
+            lines = load_closing_lines(args.closing_lines)
+            factories[name] = lambda lines=lines: BookmakerPredictor(lines)
+        else:
+            factories[name] = _BUILTIN_PREDICTORS[name]
+
     repo = SQLiteRepository(args.db)
     try:
         results = []
         for model_name in args.model:
-            factory = _PREDICTOR_FACTORIES[model_name]
-            results.append(walk_forward_from_repo(repo, seasons, factory))
+            results.append(walk_forward_from_repo(repo, seasons, factories[model_name]))
     finally:
         repo.close()
 
