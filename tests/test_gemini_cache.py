@@ -37,7 +37,9 @@ def _make_client(call_count_ref: list[int] | None = None) -> GeminiClient:
 
     _calls = call_count_ref if call_count_ref is not None else []
 
-    def fake_generate(prompt: str, *, system: str = "", max_output_tokens: int = 512) -> GeminiResponse:
+    def fake_generate(
+        prompt: str, *, system: str = "", max_output_tokens: int = 512
+    ) -> GeminiResponse:
         _calls.append(1)
         return FAKE_RESPONSE
 
@@ -104,7 +106,7 @@ def test_cache_hit_rate_is_zero_with_no_calls() -> None:
 def test_cache_hit_rate_after_mixed_calls() -> None:
     cache = ResponseCache()
     cache.set("p", MODEL, FAKE_RESPONSE)
-    cache.get("p", MODEL)   # hit
+    cache.get("p", MODEL)  # hit
     cache.get("nope", MODEL)  # miss
     assert cache.hit_rate == pytest.approx(0.5)
 

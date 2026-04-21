@@ -11,17 +11,14 @@ outcome into the rolling state. `build_training_frame` is the
 fit-time wrapper that drives the builder over a list of completed matches.
 
 Features (all home-minus-away unless noted):
-- `elo_diff`: home Elo + home_advantage − away Elo, computed against the rolling
-  Elo book that is updated *after* each match is emitted.
-- `form_diff_pf`, `form_diff_pa`: rolling-5 points-for and points-against
-  averages, home minus away. Empty deques (no prior matches) read as 0
-  — equivalent to "no prior info, no edge".
-- `days_rest_diff`: home days since last match minus away days since last
-  match. First-match-of-season teams are clamped to 14 days (≈ pre-season).
-- `h2h_recent_diff`: average home-perspective score margin in the last 3
-  meetings (so a team that's beaten its opponent badly recently scores high).
-- `is_home_field`: always 1 (home perspective). Constant; included so the
-  intercept absorbs it cleanly when fitting.
+- `elo_diff`: home Elo + home_advantage − away Elo.
+- `form_diff_pf`, `form_diff_pa`: rolling-5 points-for and points-against averages.
+- `days_rest_diff`: home days since last match minus away days since last match.
+- `h2h_recent_diff`: average home-perspective score margin in the last 3 meetings.
+- `is_home_field`: always 1 (home perspective).
+- `travel_km_diff`: great-circle km travelled from prev venue to this venue, home − away.
+- `timezone_delta_diff`: absolute timezone-shift hours, home − away.
+- `back_to_back_short_week_diff`: +1/−1/0 flag for (days_rest < 6 AND travel > 1 000 km).
 """
 
 from __future__ import annotations
@@ -35,6 +32,7 @@ import numpy as np
 
 from fantasy_coach.features import MatchRow
 from fantasy_coach.models.elo import Elo
+from fantasy_coach.travel import travel_features
 
 FEATURE_NAMES = (
     "elo_diff",
@@ -43,6 +41,9 @@ FEATURE_NAMES = (
     "days_rest_diff",
     "h2h_recent_diff",
     "is_home_field",
+    "travel_km_diff",
+    "timezone_delta_diff",
+    "back_to_back_short_week_diff",
 )
 
 ROLLING_WINDOW = 5
@@ -72,6 +73,7 @@ class FeatureBuilder:
     def __init__(self, elo: Elo | None = None) -> None:
         self.elo = elo or Elo()
         self._last_played: dict[int, datetime] = {}
+        self._last_venue: dict[int, str | None] = {}
         self._points_for: dict[int, deque[int]] = defaultdict(lambda: deque(maxlen=ROLLING_WINDOW))
         self._points_against: dict[int, deque[int]] = defaultdict(
             lambda: deque(maxlen=ROLLING_WINDOW)
@@ -90,6 +92,13 @@ class FeatureBuilder:
         rest_a = _days_since(self._last_played.get(a_id), match.start_time)
         h2h_avg = _avg(self._h2h[_h2h_key(h_id, a_id)])
         h2h_recent = h2h_avg if h_id <= a_id else -h2h_avg
+        tkm, ttz, tbb = travel_features(
+            self._last_venue.get(h_id),
+            self._last_venue.get(a_id),
+            match.venue,
+            rest_h,
+            rest_a,
+        )
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -97,6 +106,9 @@ class FeatureBuilder:
             rest_h - rest_a,
             h2h_recent,
             1.0,
+            tkm,
+            ttz,
+            tbb,
         ]
 
     def advance_season_if_needed(self, match: MatchRow) -> None:
@@ -121,6 +133,8 @@ class FeatureBuilder:
         self._h2h[_h2h_key(h_id, a_id)].append(_signed_h2h(h_id, a_id, h_score, a_score))
         self._last_played[h_id] = match.start_time
         self._last_played[a_id] = match.start_time
+        self._last_venue[h_id] = match.venue
+        self._last_venue[a_id] = match.venue
         self.elo.update(h_id, a_id, h_score, a_score)
 
 

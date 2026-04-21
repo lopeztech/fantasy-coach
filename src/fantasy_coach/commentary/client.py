@@ -132,7 +132,9 @@ class GeminiClient:
                         request=resp.request,
                         response=resp,
                     )
-                    logger.warning("gemini_retry attempt=%d status=%d", attempt + 1, resp.status_code)
+                    logger.warning(
+                        "gemini_retry attempt=%d status=%d", attempt + 1, resp.status_code
+                    )
                     continue
                 resp.raise_for_status()
                 return self._parse(resp.json())
