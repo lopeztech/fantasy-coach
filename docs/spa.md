@@ -67,6 +67,34 @@ deploy service account exported from platform-infra.
 
 ## Configuration
 
-The SPA needs the Firebase web-app config (API key, auth domain, project ID)
-to initialise the client SDK. These land in #20 via `VITE_FIREBASE_*` env
-vars; for now the scaffold builds without them.
+The SPA needs the Firebase web-app config (API key, auth domain, project ID,
+app ID) to initialise the client SDK, plus the Cloud Run API base URL.
+See [`web/.env.example`](../web/.env.example) for the full list; copy it to
+`web/.env.local` and fill in the values.
+
+| Variable                       | Source                                                      |
+|--------------------------------|-------------------------------------------------------------|
+| `VITE_FIREBASE_API_KEY`        | Firebase console → Project settings → Your apps → Web       |
+| `VITE_FIREBASE_AUTH_DOMAIN`    | `<project-id>.firebaseapp.com`                              |
+| `VITE_FIREBASE_PROJECT_ID`     | GCP project ID (e.g. `fantasy-coach-lcd`)                   |
+| `VITE_FIREBASE_APP_ID`         | Firebase console → Project settings → Your apps → Web       |
+| `VITE_API_BASE_URL`            | Cloud Run service URL, no trailing slash                    |
+
+The Firebase web config values are safe to ship in the client bundle — they
+identify *which* project the SDK talks to, not *whether* a caller is
+allowed to act. Authorisation is enforced server-side via the Firebase ID
+token (see `src/fantasy_coach/auth.py`).
+
+## Auth flow
+
+1. User clicks **Sign in with Google** (`AuthButton`).
+2. Firebase Auth handles the popup + token issuance.
+3. `auth.tsx` stores the `User` in React context via `onAuthStateChanged`.
+4. `api.ts`'s `apiFetch` calls `user.getIdToken()` before every request and
+   attaches `Authorization: Bearer <token>`. The Firebase SDK refreshes the
+   token silently when it expires — we never touch refresh logic by hand.
+5. Unauthenticated users see a `<SignInRequired>` CTA on protected routes;
+   there is no code path that issues an unauthenticated fetch, so we don't
+   race the auth state on first load.
+6. Sign-out calls `firebase/auth.signOut()`; `onAuthStateChanged` then
+   clears `user` in context, which flips the UI back to the signed-out state.
