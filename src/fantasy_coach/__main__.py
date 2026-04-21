@@ -12,9 +12,23 @@ from fantasy_coach.backfill import (
     RetryLog,
     backfill_season,
 )
+from fantasy_coach.evaluation import (
+    EloPredictor,
+    HomePickPredictor,
+    LogisticPredictor,
+    Predictor,
+)
+from fantasy_coach.evaluation.harness import walk_forward_from_repo
+from fantasy_coach.evaluation.report import write_markdown
 from fantasy_coach.feature_engineering import build_training_frame
 from fantasy_coach.models.logistic import save_model, train_logistic
 from fantasy_coach.storage import SQLiteRepository
+
+_PREDICTOR_FACTORIES: dict[str, type[Predictor]] = {
+    "home": HomePickPredictor,
+    "elo": EloPredictor,
+    "logistic": LogisticPredictor,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +70,34 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    ev = sub.add_parser(
+        "evaluate",
+        help="Walk-forward evaluation across one or more models.",
+    )
+    ev.add_argument(
+        "--model",
+        action="append",
+        choices=sorted(_PREDICTOR_FACTORIES),
+        required=True,
+        help="May be specified multiple times to compare models.",
+    )
+    ev.add_argument(
+        "--seasons",
+        required=True,
+        help="Comma-separated season list, e.g. 2024,2025",
+    )
+    ev.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    ev.add_argument(
+        "--report",
+        type=Path,
+        default=Path("reports/evaluation.md"),
+    )
+    ev.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -66,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_backfill(args)
     if args.command == "train-logistic":
         return _run_train_logistic(args)
+    if args.command == "evaluate":
+        return _run_evaluate(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -115,6 +159,28 @@ def _run_train_logistic(args: argparse.Namespace) -> int:
         f"test acc={result.test_accuracy:.3f}. "
         f"Saved to {args.out}"
     )
+    return 0
+
+
+def _run_evaluate(args: argparse.Namespace) -> int:
+    seasons = [int(s) for s in args.seasons.split(",") if s.strip()]
+    repo = SQLiteRepository(args.db)
+    try:
+        results = []
+        for model_name in args.model:
+            factory = _PREDICTOR_FACTORIES[model_name]
+            results.append(walk_forward_from_repo(repo, seasons, factory))
+    finally:
+        repo.close()
+
+    write_markdown(args.report, results, seasons=seasons)
+    for r in results:
+        m = r.metrics()
+        print(
+            f"{r.predictor_name}: n={r.n} "
+            f"acc={m['accuracy']:.3f} log_loss={m['log_loss']:.3f} brier={m['brier']:.3f}"
+        )
+    print(f"Report written to {args.report}")
     return 0
 
 
