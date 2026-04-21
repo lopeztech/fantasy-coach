@@ -1,6 +1,6 @@
 # Fantasy Coach
 
-NRL match predictions: scraper → feature extraction → baseline model → web API.
+NRL match predictions: scraper → feature extraction → baseline model → web API → SPA.
 
 Backlog: <https://github.com/users/lopeztech/projects/10>
 
@@ -8,7 +8,8 @@ Backlog: <https://github.com/users/lopeztech/projects/10>
 
 - **Language**: Python 3.12+
 - **Dependency manager**: [uv](https://docs.astral.sh/uv/)
-- **Web**: FastAPI + uvicorn (prediction API)
+- **API**: FastAPI + uvicorn (prediction API)
+- **SPA**: Vite + React + TypeScript (in [`web/`](web/), deploys to Firebase Hosting)
 - **Storage**: SQLite locally, Firestore in production
 - **Deployment**: Cloud Run (GCP). Terraform lives in [`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra).
 
@@ -39,8 +40,9 @@ First `make install` will produce a `uv.lock`; commit it so subsequent installs 
 ## Layout
 
 ```
-src/fantasy_coach/   application code
+src/fantasy_coach/   Python application code (API, model, scraper)
 tests/               pytest tests
+web/                 SPA (Vite + React + TypeScript)
 Dockerfile           Cloud Run image
 ```
 
@@ -48,4 +50,4 @@ Dockerfile           Cloud Run image
 
 All GCP infrastructure (Cloud Run service, Firestore, Secret Manager, Firebase, Vertex AI, IAM) is provisioned via Terraform in [`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra) — not in this repo.
 
-See [`docs/deploy.md`](docs/deploy.md) for the Cloud Run deploy command and the GitHub Actions workflow that ships every push to `main`.
+See [`docs/deploy.md`](docs/deploy.md) for the Cloud Run deploy command and the GitHub Actions workflow that ships every push to `main`, and [`docs/spa.md`](docs/spa.md) for the SPA dev/build/deploy flow.
