@@ -12,6 +12,8 @@ from fantasy_coach.backfill import (
     RetryLog,
     backfill_season,
 )
+from fantasy_coach.feature_engineering import build_training_frame
+from fantasy_coach.models.logistic import save_model, train_logistic
 from fantasy_coach.storage import SQLiteRepository
 
 
@@ -40,6 +42,20 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    tl = sub.add_parser(
+        "train-logistic",
+        help="Train the logistic-regression baseline against backfilled matches.",
+    )
+    tl.add_argument("--season", type=int, action="append", required=True)
+    tl.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    tl.add_argument("--out", type=Path, default=Path("artifacts/logistic.joblib"))
+    tl.add_argument("--test-fraction", type=float, default=0.2)
+    tl.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -48,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backfill":
         return _run_backfill(args)
+    if args.command == "train-logistic":
+        return _run_train_logistic(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -76,6 +94,28 @@ def _run_backfill(args: argparse.Namespace) -> int:
         f"fetched={totals['fetched']} skipped={totals['skipped']} failed={totals['failed']}"
     )
     return 0 if totals["failed"] == 0 else 1
+
+
+def _run_train_logistic(args: argparse.Namespace) -> int:
+    repo = SQLiteRepository(args.db)
+    try:
+        matches = []
+        for season in args.season:
+            matches.extend(repo.list_matches(season))
+    finally:
+        repo.close()
+
+    frame = build_training_frame(matches)
+    result = train_logistic(frame, test_fraction=args.test_fraction)
+    save_model(result, args.out)
+
+    print(
+        f"Trained on {result.n_train} matches, tested on {result.n_test}. "
+        f"Train acc={result.train_accuracy:.3f} "
+        f"test acc={result.test_accuracy:.3f}. "
+        f"Saved to {args.out}"
+    )
+    return 0
 
 
 if __name__ == "__main__":

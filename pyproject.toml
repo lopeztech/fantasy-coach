@@ -11,6 +11,9 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "httpx>=0.27",
     "pydantic>=2.9",
+    "numpy>=2.0",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
 ]
 
 [build-system]
@@ -35,6 +38,12 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# sklearn convention: capital X for the feature matrix, capital C for regularisation.
+"src/fantasy_coach/models/logistic.py" = ["N803", "N806"]
+"src/fantasy_coach/feature_engineering.py" = ["N806"]
+"tests/test_logistic.py" = ["N806"]
 
 [tool.pytest.ini_options]
 addopts = "-ra -q --strict-markers"
