@@ -47,3 +47,5 @@ Dockerfile           Cloud Run image
 ## Infrastructure
 
 All GCP infrastructure (Cloud Run service, Firestore, Secret Manager, Firebase, Vertex AI, IAM) is provisioned via Terraform in [`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra) — not in this repo.
+
+See [`docs/deploy.md`](docs/deploy.md) for the Cloud Run deploy command and the GitHub Actions workflow that ships every push to `main`.
