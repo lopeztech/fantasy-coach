@@ -1,30 +1,33 @@
--- Schema version 1.
+-- Schema version 2.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
 -- existing match rows and re-inserting, so children stay consistent.
+-- v2 adds referee_id and video_referee_id columns to matches (NRL officials block).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
 );
 
 CREATE TABLE IF NOT EXISTS matches (
-    match_id      INTEGER PRIMARY KEY,
-    season        INTEGER NOT NULL,
-    round         INTEGER NOT NULL,
-    start_time    TEXT    NOT NULL,  -- ISO 8601 UTC
-    match_state   TEXT    NOT NULL,
-    venue         TEXT,
-    venue_city    TEXT,
-    weather       TEXT,
-    home_team_id  INTEGER NOT NULL,
-    home_name     TEXT    NOT NULL,
-    home_nick     TEXT    NOT NULL,
-    home_score    INTEGER,
-    away_team_id  INTEGER NOT NULL,
-    away_name     TEXT    NOT NULL,
-    away_nick     TEXT    NOT NULL,
-    away_score    INTEGER
+    match_id         INTEGER PRIMARY KEY,
+    season           INTEGER NOT NULL,
+    round            INTEGER NOT NULL,
+    start_time       TEXT    NOT NULL,  -- ISO 8601 UTC
+    match_state      TEXT    NOT NULL,
+    venue            TEXT,
+    venue_city       TEXT,
+    weather          TEXT,
+    home_team_id     INTEGER NOT NULL,
+    home_name        TEXT    NOT NULL,
+    home_nick        TEXT    NOT NULL,
+    home_score       INTEGER,
+    away_team_id     INTEGER NOT NULL,
+    away_name        TEXT    NOT NULL,
+    away_nick        TEXT    NOT NULL,
+    away_score       INTEGER,
+    referee_id       INTEGER,   -- NRL profileId for position="Referee"
+    video_referee_id INTEGER    -- NRL profileId for position="Senior Review Official"
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_season_round

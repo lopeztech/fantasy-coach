@@ -92,5 +92,7 @@
       "home_value": 39.0,
       "away_value": 48.0
     }
-  ]
+  ],
+  "referee_id": null,
+  "video_referee_id": null
 }

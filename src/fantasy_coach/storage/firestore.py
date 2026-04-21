@@ -82,6 +82,8 @@ def _to_doc(row: MatchRow) -> dict[str, Any]:
         "home": _team_to_doc(row.home),
         "away": _team_to_doc(row.away),
         "team_stats": [_stat_to_doc(s) for s in row.team_stats],
+        "referee_id": row.referee_id,
+        "video_referee_id": row.video_referee_id,
     }
 
 
@@ -128,6 +130,8 @@ def _from_doc(d: dict[str, Any]) -> MatchRow:
         home=_team_from_doc(d["home"]),
         away=_team_from_doc(d["away"]),
         team_stats=[_stat_from_doc(s) for s in d.get("team_stats", [])],
+        referee_id=d.get("referee_id"),
+        video_referee_id=d.get("video_referee_id"),
     )
 
 

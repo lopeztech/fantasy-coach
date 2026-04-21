@@ -7,6 +7,7 @@ stay consistent when a match transitions Upcoming → Live → FullTime.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from datetime import datetime
 from importlib import resources
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SQLiteRepository:
@@ -43,8 +44,9 @@ class SQLiteRepository:
                     match_id, season, round, start_time, match_state,
                     venue, venue_city, weather,
                     home_team_id, home_name, home_nick, home_score,
-                    away_team_id, away_name, away_nick, away_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    away_team_id, away_name, away_nick, away_score,
+                    referee_id, video_referee_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.match_id,
@@ -63,6 +65,8 @@ class SQLiteRepository:
                     row.away.name,
                     row.away.nick_name,
                     row.away.score,
+                    row.referee_id,
+                    row.video_referee_id,
                 ),
             )
             self._insert_players(row.match_id, "home", row.home.players)
@@ -110,11 +114,22 @@ class SQLiteRepository:
                     "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
-        elif current["version"] != SCHEMA_VERSION:
+        elif current["version"] < SCHEMA_VERSION:
+            self._apply_migrations(current["version"])
+        elif current["version"] > SCHEMA_VERSION:
             raise RuntimeError(
                 f"SQLite DB at {self._path} is schema v{current['version']}, "
-                f"code expects v{SCHEMA_VERSION}. No migration path yet."
+                f"code expects v{SCHEMA_VERSION}. Downgrade not supported."
             )
+
+    def _apply_migrations(self, from_version: int) -> None:
+        if from_version < 2:
+            with self._conn:
+                # v1 → v2: add referee columns (ALTER TABLE is idempotent-ish via try/except)
+                for col in ("referee_id INTEGER", "video_referee_id INTEGER"):
+                    with contextlib.suppress(Exception):
+                        self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
+                self._conn.execute("UPDATE schema_version SET version = 2")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
@@ -220,6 +235,8 @@ class SQLiteRepository:
                 )
                 for s in stats
             ],
+            referee_id=match["referee_id"],
+            video_referee_id=match["video_referee_id"],
         )
 
     @staticmethod
