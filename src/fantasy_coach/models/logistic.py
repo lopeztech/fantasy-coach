@@ -18,6 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
+from fantasy_coach.models.calibration import CalibrationWrapper
 
 
 @dataclass(frozen=True)
@@ -80,20 +81,29 @@ def train_logistic(
     )
 
 
-def save_model(result: TrainResult, path: Path | str) -> None:
-    """Persist the trained pipeline + feature-name ordering to disk."""
+def save_model(
+    result: TrainResult,
+    path: Path | str,
+    calibration_wrapper: CalibrationWrapper | None = None,
+) -> None:
+    """Persist the trained pipeline + feature-name ordering to disk.
+
+    If ``calibration_wrapper`` is provided it is saved alongside the pipeline
+    so that ``load_model`` can return calibrated probabilities automatically.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {"pipeline": result.pipeline, "feature_names": result.feature_names},
-        path,
-    )
+    blob: dict = {"pipeline": result.pipeline, "feature_names": result.feature_names}
+    if calibration_wrapper is not None:
+        blob["calibration_wrapper"] = calibration_wrapper
+    joblib.dump(blob, path)
 
 
 @dataclass(frozen=True)
 class LoadedModel:
     pipeline: Pipeline
     feature_names: tuple[str, ...]
+    calibration_wrapper: CalibrationWrapper | None = None
 
     def predict_home_win_prob(self, X: np.ndarray) -> np.ndarray:
         if X.shape[1] != len(self.feature_names):
@@ -101,6 +111,8 @@ class LoadedModel:
                 f"Expected {len(self.feature_names)} features "
                 f"({self.feature_names}), got {X.shape[1]}"
             )
+        if self.calibration_wrapper is not None and self.calibration_wrapper.is_fitted:
+            return self.calibration_wrapper.predict_home_win_prob(X)
         # Class labels in y are {0, 1}; column 1 is "home win".
         return self.pipeline.predict_proba(X)[:, 1]
 
@@ -115,4 +127,5 @@ def load_model(path: Path | str) -> LoadedModel:
     return LoadedModel(
         pipeline=blob["pipeline"],
         feature_names=tuple(blob["feature_names"]),
+        calibration_wrapper=blob.get("calibration_wrapper"),
     )

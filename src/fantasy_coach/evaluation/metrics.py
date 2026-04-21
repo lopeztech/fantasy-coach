@@ -29,3 +29,10 @@ def brier_score(probs: Sequence[float], outcomes: Sequence[int]) -> float:
     if not probs:
         return float("nan")
     return sum((p - y) ** 2 for p, y in zip(probs, outcomes, strict=True)) / len(probs)
+
+
+def ece(probs: Sequence[float], outcomes: Sequence[int], n_bins: int = 10) -> float:
+    """Expected Calibration Error — delegates to the calibration module."""
+    from fantasy_coach.models.calibration import ece as _ece
+
+    return _ece(probs, outcomes, n_bins=n_bins)

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fantasy_coach.evaluation.harness import EvaluationResult
+from fantasy_coach.models.calibration import reliability_bins
 
 
 def render_markdown(
@@ -26,16 +27,42 @@ def render_markdown(
         "predict that round, score against actuals. Draws are dropped from "
         "scoring (binary metrics).",
         "",
-        "| Model | n predictions | Accuracy | Log loss | Brier |",
-        "|-------|---------------|----------|----------|-------|",
+        "| Model | n predictions | Accuracy | Log loss | Brier | ECE |",
+        "|-------|---------------|----------|----------|-------|-----|",
     ]
     for result in results:
         m = result.metrics()
+        ece_val = m.get("ece", float("nan"))
+        ece_str = f"{ece_val:.3f}" if ece_val == ece_val else "n/a"  # NaN check
         lines.append(
             f"| {result.predictor_name} | {result.n} | "
-            f"{m['accuracy']:.3f} | {m['log_loss']:.3f} | {m['brier']:.3f} |"
+            f"{m['accuracy']:.3f} | {m['log_loss']:.3f} | {m['brier']:.3f} | {ece_str} |"
         )
     lines.append("")
+
+    # Reliability diagrams — one section per model.
+    lines.append("## Reliability diagrams")
+    lines.append("")
+    lines.append(
+        "Each row is a probability bin. A well-calibrated model has "
+        "`mean_confidence ≈ mean_accuracy` in every bin."
+    )
+    lines.append("")
+
+    for result in results:
+        if not result.predictions:
+            continue
+        bins = reliability_bins(result.probs, result.actuals)
+        lines.append(f"### {result.predictor_name}")
+        lines.append("")
+        lines.append("| Bin | Mean confidence | Mean accuracy | n |")
+        lines.append("|-----|----------------|---------------|---|")
+        for b in bins:
+            conf = f"{b['mean_confidence']:.3f}" if b["mean_confidence"] is not None else "—"
+            acc = f"{b['mean_accuracy']:.3f}" if b["mean_accuracy"] is not None else "—"
+            lines.append(f"| {b['lo']:.1f}–{b['hi']:.1f} | {conf} | {acc} | {b['n']} |")
+        lines.append("")
+
     return "\n".join(lines)
 
 

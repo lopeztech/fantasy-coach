@@ -16,7 +16,7 @@ import logging
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from fantasy_coach.evaluation.metrics import accuracy, brier_score, log_loss
+from fantasy_coach.evaluation.metrics import accuracy, brier_score, ece, log_loss
 from fantasy_coach.evaluation.predictors import Predictor
 from fantasy_coach.features import MatchRow
 from fantasy_coach.storage.repository import Repository
@@ -57,6 +57,7 @@ class EvaluationResult:
             "accuracy": accuracy(self.probs, self.actuals),
             "log_loss": log_loss(self.probs, self.actuals),
             "brier": brier_score(self.probs, self.actuals),
+            "ece": ece(self.probs, self.actuals),
         }
 
 

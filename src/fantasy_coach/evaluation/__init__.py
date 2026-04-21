@@ -3,8 +3,9 @@ from fantasy_coach.evaluation.harness import (
     Prediction,
     walk_forward,
 )
-from fantasy_coach.evaluation.metrics import accuracy, brier_score, log_loss
+from fantasy_coach.evaluation.metrics import accuracy, brier_score, ece, log_loss
 from fantasy_coach.evaluation.predictors import (
+    CalibratedLogisticPredictor,
     EloPredictor,
     HomePickPredictor,
     LogisticPredictor,
@@ -12,6 +13,7 @@ from fantasy_coach.evaluation.predictors import (
 )
 
 __all__ = [
+    "CalibratedLogisticPredictor",
     "EloPredictor",
     "EvaluationResult",
     "HomePickPredictor",
@@ -20,6 +22,7 @@ __all__ = [
     "Predictor",
     "accuracy",
     "brier_score",
+    "ece",
     "log_loss",
     "walk_forward",
 ]

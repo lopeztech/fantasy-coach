@@ -17,8 +17,9 @@ from fantasy_coach.feature_engineering import (
     build_training_frame,
 )
 from fantasy_coach.features import MatchRow
+from fantasy_coach.models.calibration import CalibrationMethod, CalibrationWrapper
 from fantasy_coach.models.elo import Elo
-from fantasy_coach.models.logistic import train_logistic
+from fantasy_coach.models.logistic import TrainResult, train_logistic
 
 
 class Predictor(Protocol):
@@ -96,6 +97,74 @@ class EloPredictor:
     @property
     def elo(self) -> Elo:
         return self._elo
+
+
+class CalibratedLogisticPredictor:
+    """LogReg predictor with Platt-scaling calibration on a held-out fold.
+
+    Splits each round's available history into:
+    - first 80% (chronological) → base model training
+    - last 20% → calibration fitting
+
+    Falls back to the uncalibrated prediction when there are fewer than 20
+    rows of history (not enough for a meaningful calibration split).
+    """
+
+    name = "logistic+cal"
+
+    def __init__(self, method: CalibrationMethod = "platt") -> None:
+        self._method = method
+        self._train_result: TrainResult | None = None
+        self._calibration_wrapper: CalibrationWrapper | None = None
+        self._inference_builder = FeatureBuilder()
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        frame = build_training_frame(history)
+        if frame.X.shape[0] < 20:
+            self._train_result = None
+            self._calibration_wrapper = None
+        else:
+            n = frame.X.shape[0]
+            order = np.argsort(frame.start_times)
+            X = frame.X[order]
+            y = frame.y[order]
+
+            split = int(n * 0.8)
+            X_train, y_train = X[:split], y[:split]
+            X_cal, y_cal = X[split:], y[split:]
+
+            # Train base model on the 80% training partition.
+            self._train_result = train_logistic(
+                frame.__class__(
+                    X=X_train,
+                    y=y_train,
+                    match_ids=frame.match_ids[order][:split],
+                    start_times=frame.start_times[order][:split],
+                    feature_names=frame.feature_names,
+                ),
+                test_fraction=0.0,
+            )
+
+            # Fit calibrator on the held-out 20%.
+            self._calibration_wrapper = CalibrationWrapper(
+                self._train_result.pipeline, method=self._method
+            )
+            self._calibration_wrapper.fit(X_cal, y_cal)
+
+        self._inference_builder = FeatureBuilder()
+        for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
+            if match.home.score is None or match.away.score is None:
+                continue
+            self._inference_builder.advance_season_if_needed(match)
+            self._inference_builder.record(match)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        if self._train_result is None:
+            return 0.55
+        x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
+        if self._calibration_wrapper is not None and self._calibration_wrapper.is_fitted:
+            return float(self._calibration_wrapper.predict_home_win_prob(x)[0])
+        return float(self._train_result.pipeline.predict_proba(x)[0, 1])
 
 
 class LogisticPredictor:
