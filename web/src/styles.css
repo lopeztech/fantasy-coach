@@ -20,6 +20,10 @@ body {
 }
 
 .app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.5rem 0 1.5rem;
   border-bottom: 1px solid #e5e5e5;
   margin-bottom: 1.5rem;
@@ -33,5 +37,42 @@ body {
 }
 
 .app-main h1 {
+  margin-top: 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #1a1a1a;
+  background: #1a1a1a;
+  color: #fafafa;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #333;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.muted {
+  color: #666;
+}
+
+.sign-in-required {
+  padding: 1.5rem;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+}
+
+.sign-in-required p {
   margin-top: 0;
 }
