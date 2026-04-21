@@ -1,0 +1,90 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+# Only one deploy at a time — Cloud Run rejects concurrent revision rolls anyway,
+# and serialising prevents two CI runs racing each other to the same SHA.
+concurrency:
+  group: cloud-run-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required for keyless WIF auth to GCP
+
+env:
+  REGION: australia-southeast1
+  SERVICE: fantasy-coach-api
+  REPO: fantasy-coach
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.FANTASY_COACH_WIF_PROVIDER }}
+          service_account: ${{ secrets.FANTASY_COACH_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/api:${GITHUB_SHA::7}"
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+          docker buildx build --platform linux/amd64 -t "$IMAGE" --push .
+
+      - name: Deploy revision
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+        run: |
+          gcloud run deploy "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 2 \
+            --cpu 1 \
+            --memory 512Mi \
+            --cpu-throttling \
+            --port 8080 \
+            --execution-environment gen2 \
+            --service-account "fantasy-coach-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --quiet
+
+      - name: Smoke-test /healthz
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+        run: |
+          URL=$(gcloud run services describe "${SERVICE}" \
+                  --project "${PROJECT_ID}" --region "${REGION}" \
+                  --format 'value(status.url)')
+          TOKEN=$(gcloud auth print-identity-token)
+          STATUS=$(curl -s -o /tmp/healthz -w "%{http_code}" \
+                     -H "Authorization: Bearer ${TOKEN}" "${URL}/healthz")
+          cat /tmp/healthz
+          if [ "${STATUS}" != "200" ]; then
+            echo "::error::healthz returned ${STATUS}"
+            exit 1
+          fi
