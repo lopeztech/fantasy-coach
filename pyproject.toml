@@ -15,6 +15,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "joblib>=1.4",
     "openpyxl>=3.1.5",
+    "google-cloud-firestore>=2.19",
 ]
 
 [build-system]
