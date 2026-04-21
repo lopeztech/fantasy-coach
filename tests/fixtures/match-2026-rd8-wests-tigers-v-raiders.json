@@ -1,0 +1,409 @@
+{
+  "matchId": "20261110810",
+  "matchMode": "Pre",
+  "matchState": "Upcoming",
+  "updated": "2026-04-20T23:46:11Z",
+  "gameSeconds": 0,
+  "roundNumber": 8,
+  "roundTitle": "Round 8",
+  "startTime": "2026-04-23T09:50:00Z",
+  "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-8/wests-tigers-v-raiders/",
+  "homeTeam": {
+    "teamId": 500023,
+    "nickName": "Wests Tigers",
+    "name": "Wests Tigers",
+    "odds": "1.56",
+    "teamPosition": "3rd",
+    "theme": {
+      "key": "wests-tigers",
+      "logos": {
+        "badge-basic24-mono.svg": "202603300722",
+        "badge-basic24.svg": "202603300722",
+        "badge-light.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722",
+        "header-background.png": "202603300722",
+        "header-background.svg": "202603300722",
+        "silhouette.png": "202603300722",
+        "silhouette.svg": "202603300722",
+        "text.svg": "202603300722"
+      }
+    },
+    "recentForm": [
+      {
+        "result": "Lost",
+        "summary": "vs Broncos",
+        "score": "20-21",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-7/wests-tigers-v-broncos/"
+      },
+      {
+        "result": "Won",
+        "summary": "vs Knights",
+        "score": "42-22",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-6/wests-tigers-v-knights/"
+      },
+      {
+        "result": "Won",
+        "summary": "vs Eels",
+        "score": "22-20",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-5/eels-v-wests-tigers/"
+      },
+      {
+        "result": "Won",
+        "summary": "vs Warriors",
+        "score": "32-14",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-4/warriors-v-wests-tigers/"
+      },
+      {
+        "result": "Lost",
+        "summary": "vs Rabbitohs",
+        "score": "16-20",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-3/rabbitohs-v-wests-tigers/"
+      }
+    ],
+    "nextOpponent": {
+      "teamId": 500028,
+      "nickName": "Sharks",
+      "name": "Cronulla-Sutherland Sharks",
+      "theme": {
+        "key": "sharks",
+        "logos": {
+          "badge-basic24-light.svg": "202603300722",
+          "badge-basic24-mono.svg": "202603300722",
+          "badge-basic24.svg": "202603300722",
+          "badge-light.png": "202603300722",
+          "badge-light.svg": "202603300722",
+          "badge.png": "202603300722",
+          "badge.svg": "202603300722",
+          "header-background.png": "202603300722",
+          "header-background.svg": "202603300722",
+          "silhouette.png": "202603300722",
+          "silhouette.svg": "202603300722",
+          "text.svg": "202603300722"
+        }
+      }
+    },
+    "url": "https://www.weststigers.com.au/teams/nrl-premiership/wests-tigers/"
+  },
+  "awayTeam": {
+    "teamId": 500013,
+    "nickName": "Raiders",
+    "name": "Canberra Raiders",
+    "odds": "2.42",
+    "teamPosition": "13th",
+    "theme": {
+      "key": "raiders",
+      "logos": {
+        "badge-basic24-mono.svg": "202603300722",
+        "badge-basic24.svg": "202603300722",
+        "badge-light.png": "202603300722",
+        "badge-light.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722",
+        "header-background.png": "202603300722",
+        "header-background.svg": "202603300722",
+        "silhouette.png": "202603300722",
+        "silhouette.svg": "202603300722",
+        "text.svg": "202603300722"
+      }
+    },
+    "recentForm": [
+      {
+        "result": "Won",
+        "summary": "vs Storm",
+        "score": "26-22",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-7/raiders-v-storm/"
+      },
+      {
+        "result": "Won",
+        "summary": "vs Rabbitohs",
+        "score": "36-34",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-6/rabbitohs-v-raiders/"
+      },
+      {
+        "result": "Lost",
+        "summary": "vs Knights",
+        "score": "12-32",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-5/knights-v-raiders/"
+      },
+      {
+        "result": "Lost",
+        "summary": "vs Sharks",
+        "score": "22-34",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-4/raiders-v-sharks/"
+      },
+      {
+        "result": "Lost",
+        "summary": "vs Bulldogs",
+        "score": "10-14",
+        "url": "https://www.nrl.com/draw/nrl-premiership/2026/round-3/raiders-v-bulldogs/"
+      }
+    ],
+    "nextOpponent": {
+      "teamId": 500004,
+      "nickName": "Titans",
+      "name": "Gold Coast Titans",
+      "theme": {
+        "key": "titans",
+        "logos": {
+          "badge-basic24-mono.svg": "202603300722",
+          "badge-basic24.svg": "202603300722",
+          "badge.png": "202603300722",
+          "badge.svg": "202603300722",
+          "header-background.png": "202603300722",
+          "header-background.svg": "202603300722",
+          "silhouette.png": "202603300722",
+          "silhouette.svg": "202603300722",
+          "text.svg": "202603300722"
+        }
+      }
+    },
+    "url": "https://www.raiders.com.au/teams/nrl-premiership/canberra-raiders/"
+  },
+  "venue": "Leichhardt Oval",
+  "venueCity": "Sydney",
+  "broadcastChannels": [
+    "Nine Network",
+    "Nine Now",
+    "Kayo",
+    "Foxtel"
+  ],
+  "animateMatchClock": true,
+  "competition": {
+    "competitionId": 111,
+    "name": "Telstra Premiership",
+    "theme": {
+      "key": "nrl-premiership",
+      "logos": {
+        "badge-light.png": "202603300722",
+        "badge-light.svg": "202603300722",
+        "badge.png": "202603300722",
+        "badge.svg": "202603300722"
+      }
+    }
+  },
+  "groundConditions": "Good",
+  "hasExtraTime": true,
+  "hasOnFieldTracking": true,
+  "segmentCount": 2,
+  "segmentDuration": 2400,
+  "showTeamPositions": true,
+  "showPlayerPositions": true,
+  "stats": {
+    "groups": [
+      {
+        "title": "Current Season",
+        "stats": [
+          {
+            "title": "Wins this season",
+            "type": "PercentageAndFraction",
+            "homeValue": {
+              "value": 67.0,
+              "numerator": 4,
+              "denominator": 6,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 43.0,
+              "numerator": 3,
+              "denominator": 7,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Points Scored",
+            "type": "Number",
+            "homeValue": {
+              "value": 176.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 141.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Points Conceded",
+            "type": "Number",
+            "homeValue": {
+              "value": 113.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 204.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Completion Rate",
+            "type": "Percentage",
+            "homeValue": {
+              "value": 78.0,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 78.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Tackle Efficiency",
+            "type": "Percentage",
+            "homeValue": {
+              "value": 88.8,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 88.3,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Average Points Scored",
+            "type": "Number",
+            "homeValue": {
+              "value": 29.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 20.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Average Points Conceded",
+            "type": "Number",
+            "homeValue": {
+              "value": 18.0,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 29.0,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Average Play The Ball",
+            "type": "Range",
+            "units": "Seconds",
+            "homeValue": {
+              "value": 3.59,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 3.5,
+              "isLeader": true
+            },
+            "maxValue": 5.0
+          }
+        ]
+      },
+      {
+        "title": "Key Stats",
+        "stats": [
+          {
+            "title": "Wins at this venue",
+            "type": "PercentageAndFraction",
+            "homeValue": {
+              "value": 56.0,
+              "numerator": 57,
+              "denominator": 102,
+              "isLeader": true
+            },
+            "awayValue": {
+              "value": 67.0,
+              "numerator": 4,
+              "denominator": 6,
+              "isLeader": false
+            }
+          },
+          {
+            "title": "Wins overall",
+            "type": "PercentageAndFraction",
+            "homeValue": {
+              "value": 39.0,
+              "numerator": 257,
+              "denominator": 660,
+              "isLeader": false
+            },
+            "awayValue": {
+              "value": 48.0,
+              "numerator": 350,
+              "denominator": 730,
+              "isLeader": true
+            }
+          }
+        ]
+      }
+    ],
+    "history": {
+      "played": 46,
+      "draws": 0,
+      "homeWins": 20,
+      "awayWins": 26,
+      "recentMatches": [
+        {
+          "matchId": "20251112640",
+          "roundNumber": 26,
+          "roundName": "Round 26",
+          "startTime": "2025-08-30T05:00:00Z",
+          "homeTeam": {
+            "teamId": 500013,
+            "nickName": "Raiders",
+            "score": 24
+          },
+          "awayTeam": {
+            "teamId": 500023,
+            "nickName": "Wests Tigers",
+            "score": 10
+          },
+          "url": "https://www.nrl.com/draw/nrl-premiership/2025/round-26/raiders-v-wests-tigers/"
+        },
+        {
+          "matchId": "20251111610",
+          "roundNumber": 16,
+          "roundName": "Round 16",
+          "startTime": "2025-06-20T10:00:00Z",
+          "homeTeam": {
+            "teamId": 500023,
+            "nickName": "Wests Tigers",
+            "score": 12
+          },
+          "awayTeam": {
+            "teamId": 500013,
+            "nickName": "Raiders",
+            "score": 16
+          },
+          "url": "https://www.nrl.com/draw/nrl-premiership/2025/round-16/wests-tigers-v-raiders/"
+        }
+      ]
+    }
+  },
+  "videoProviders": [
+    {
+      "id": "NINE",
+      "name": "Nine Network",
+      "url": "https://www.9now.com.au/",
+      "logoSmallUrl": "https://www.nrl.com/globalassets/media-stream-providers/video-providers/nine-small.svg"
+    },
+    {
+      "id": "9NOW",
+      "name": "Nine Now",
+      "url": "https://www.9now.com.au/",
+      "logoSmallUrl": "https://www.nrl.com/globalassets/media-stream-providers/video-providers/nine-now.svg"
+    },
+    {
+      "id": "KAYO",
+      "name": "Kayo",
+      "url": "https://kayosports.app.link/xtDzpvGKaHb",
+      "logoSmallUrl": "https://www.nrl.com/globalassets/media-stream-providers/video-providers/kayo.svg"
+    },
+    {
+      "id": "FOX",
+      "name": "Foxtel",
+      "url": "https://www.foxtel.com.au/foxtel-go.html",
+      "logoSmallUrl": "https://www.nrl.com/globalassets/media-stream-providers/video-providers/foxtel.svg"
+    }
+  ],
+  "weather": "Fine"
+}
