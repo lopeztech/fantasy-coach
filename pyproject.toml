@@ -24,6 +24,7 @@ packages = ["src/fantasy_coach"]
 dev = [
     "pytest>=8.3",
     "pytest-cov>=5.0",
+    "respx>=0.21",
     "ruff>=0.7",
     "pre-commit>=4.0",
 ]
