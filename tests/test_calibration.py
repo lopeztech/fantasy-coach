@@ -198,20 +198,18 @@ def test_reliability_bins_values():
 
 
 def test_save_load_with_calibrator(tmp_path):
-    from fantasy_coach.feature_engineering import TrainingFrame
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
     from fantasy_coach.models.logistic import LoadedModel, load_model, save_model, train_logistic
 
     rng = np.random.default_rng(0)
     n = 60
-    X = rng.standard_normal((n, 6))
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
     y = (X[:, 0] > 0).astype(int)
     base = np.datetime64("2024-01-01", "s")
     start_times = np.array(
         [base + np.timedelta64(i * 7, "D") for i in range(n)], dtype="datetime64[s]"
     )
     match_ids = np.arange(n)
-
-    from fantasy_coach.feature_engineering import FEATURE_NAMES
 
     frame = TrainingFrame(
         X=X, y=y, match_ids=match_ids, start_times=start_times, feature_names=FEATURE_NAMES
@@ -242,7 +240,7 @@ def test_save_load_without_calibrator(tmp_path):
 
     rng = np.random.default_rng(1)
     n = 30
-    X = rng.standard_normal((n, 6))
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
     y = (X[:, 0] > 0).astype(int)
     base = np.datetime64("2024-01-01", "s")
     start_times = np.array(
