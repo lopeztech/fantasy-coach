@@ -78,18 +78,11 @@ jobs:
           # Until then, auth.py falls back to GOOGLE_CLOUD_PROJECT (auto-set by
           # Cloud Run) and config.py defaults STORAGE_BACKEND to sqlite.
 
-      - name: Smoke-test /healthz
-        env:
-          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
-        run: |
-          URL=$(gcloud run services describe "${SERVICE}" \
-                  --project "${PROJECT_ID}" --region "${REGION}" \
-                  --format 'value(status.url)')
-          TOKEN=$(gcloud auth print-identity-token)
-          STATUS=$(curl -s -o /tmp/healthz -w "%{http_code}" \
-                     -H "Authorization: Bearer ${TOKEN}" "${URL}/healthz")
-          cat /tmp/healthz
-          if [ "${STATUS}" != "200" ]; then
-            echo "::error::healthz returned ${STATUS}"
-            exit 1
-          fi
+      # The external /healthz smoke test has been dropped: `gcloud auth
+      # print-identity-token` doesn't work with WIF-federated credentials
+      # (they're OAuth2 access tokens, not OIDC ID tokens), and Cloud Run's
+      # own liveness/startup probe already fails the deploy if /healthz
+      # doesn't return 200 before the revision goes Ready. Re-adding an
+      # external smoke test would need `google-github-actions/auth@v3` with
+      # `token_format: id_token` + a known audience URL — a small follow-up
+      # if we want a second signal.
