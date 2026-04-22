@@ -14,14 +14,19 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from fantasy_coach.app import app
 from fantasy_coach.features import extract_match_features
 from fantasy_coach.predictions import (
+    FeatureContribution,
     FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
     TeamInfo,
+    _compute_contributions,
     _ensure_model,
     _feature_hash,
     compute_predictions,
@@ -323,6 +328,110 @@ def test_compute_dispatches_ensemble_artifact_end_to_end(
     pb = base_b.pipeline.predict_proba(feature_row)[0, 1]
     expected = round(float(weights[0] * pa + weights[1] * pb), 4)
     assert pred.homeWinProbability == expected
+
+
+# ---------------------------------------------------------------------------
+# _compute_contributions — feature-contribution extraction
+# ---------------------------------------------------------------------------
+
+
+def _make_logistic_loaded(n_features: int = 3):
+    """Return a LoadedModel-shaped object with a fitted logistic pipeline."""
+    from fantasy_coach.models.logistic import LoadedModel
+
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((80, n_features))
+    # Make feature 0 dominate so we can assert it sorts to the top.
+    y = (X[:, 0] > 0).astype(int)
+
+    pipeline = Pipeline(
+        steps=[("scale", StandardScaler()), ("lr", LogisticRegression(max_iter=1000))]
+    )
+    pipeline.fit(X, y)
+    return LoadedModel(
+        pipeline=pipeline,
+        feature_names=tuple(f"feat_{i}" for i in range(n_features)),
+    )
+
+
+def test_compute_contributions_picks_top_k_by_abs_value() -> None:
+    loaded = _make_logistic_loaded(n_features=4)
+    x = np.array([[2.5, 0.1, -0.2, 0.05]])  # feat_0 is dominant
+    contribs = _compute_contributions(loaded, x, top_k=2)
+
+    assert contribs is not None
+    assert len(contribs) == 2
+    # Sorted by |contribution| descending; feat_0 must win.
+    assert contribs[0].feature == "feat_0"
+    assert abs(contribs[0].contribution) >= abs(contribs[1].contribution)
+    # Raw (unscaled) value passed through faithfully.
+    assert contribs[0].value == pytest.approx(2.5)
+
+
+def test_compute_contributions_sum_equals_logit_up_to_intercept() -> None:
+    loaded = _make_logistic_loaded(n_features=3)
+    rng = np.random.default_rng(11)
+    x = rng.standard_normal((1, 3))
+    # top_k covers all features so the sum should equal the full log-odds.
+    contribs = _compute_contributions(loaded, x, top_k=3)
+
+    assert contribs is not None
+    intercept = float(loaded.pipeline.named_steps["lr"].intercept_[0])
+    total = sum(c.contribution for c in contribs) + intercept
+
+    raw_prob = float(loaded.pipeline.predict_proba(x)[0, 1])
+    expected_logit = float(np.log(raw_prob / (1.0 - raw_prob)))
+    # Rounded at 4dp, so allow a little slack.
+    assert total == pytest.approx(expected_logit, abs=1e-3)
+
+
+def test_compute_contributions_returns_none_for_non_logistic() -> None:
+    """Mock a model with no ``.pipeline`` attribute — the happy path out."""
+    mock = MagicMock(spec=["feature_names"])
+    contribs = _compute_contributions(mock, np.zeros((1, 3)))
+    assert contribs is None
+
+
+def test_store_roundtrips_contributions(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=42,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.6,
+        modelVersion="mv",
+        featureHash="fh",
+        contributions=[
+            FeatureContribution(feature="elo_diff", value=42.3, contribution=0.31),
+            FeatureContribution(feature="days_rest_diff", value=3.0, contribution=0.08),
+        ],
+    )
+    store.put(2026, 8, [pred])
+
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 1
+    assert loaded[0].contributions is not None
+    assert len(loaded[0].contributions) == 2
+    assert loaded[0].contributions[0].feature == "elo_diff"
+    assert loaded[0].contributions[0].contribution == pytest.approx(0.31)
+
+
+def test_store_roundtrips_missing_contributions_as_none(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=43,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.6,
+        modelVersion="mv",
+        featureHash="fh",
+        # contributions omitted
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    assert loaded[0].contributions is None
 
 
 def test_compute_returns_empty_when_no_fixtures(

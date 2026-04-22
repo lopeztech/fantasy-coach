@@ -12,7 +12,9 @@ for true cross-restart persistence.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
 import logging
 import os
 import sqlite3
@@ -51,6 +53,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     model_version    TEXT    NOT NULL,
     feature_hash     TEXT    NOT NULL,
     created_at       TEXT    NOT NULL,
+    contributions    TEXT,
     PRIMARY KEY (season, round, match_id)
 );
 """
@@ -66,6 +69,21 @@ class TeamInfo(BaseModel):
     name: str
 
 
+class FeatureContribution(BaseModel):
+    """One feature's signed push on the model's log-odds for a match.
+
+    ``contribution`` is in log-odds units: positive ⇒ pushes home-win
+    probability up. The UI picks top-K by ``abs(contribution)`` and renders
+    plain-English labels per ``feature``. Only emitted for logistic models
+    today (see ``_compute_contributions``); other model types get
+    ``contributions`` omitted so the UI degrades gracefully.
+    """
+
+    feature: str  # matches a FEATURE_NAMES entry
+    value: float  # raw (pre-scaling) feature value
+    contribution: float  # signed log-odds contribution
+
+
 class PredictionOut(BaseModel):
     matchId: int
     home: TeamInfo
@@ -75,6 +93,8 @@ class PredictionOut(BaseModel):
     homeWinProbability: float
     modelVersion: str  # first 12 hex chars of SHA-256 of the model file
     featureHash: str  # first 12 hex chars of SHA-256 of feature names
+    # Optional so predictions written before #58 shipped still deserialise.
+    contributions: list[FeatureContribution] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +116,11 @@ class PredictionStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_CREATE_TABLE)
+        # Forward-compat for DB files created before #58 shipped — adds the
+        # new column in place; no-op on a fresh DB since CREATE TABLE above
+        # already includes it.
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE predictions ADD COLUMN contributions TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -111,14 +136,20 @@ class PredictionStore:
         now = datetime.now(UTC).isoformat()
         with self._conn:
             for p in predictions:
+                contribs_json = (
+                    json.dumps([c.model_dump() for c in p.contributions])
+                    if p.contributions is not None
+                    else None
+                )
                 self._conn.execute(
                     """
                     INSERT OR REPLACE INTO predictions
                         (season, round, match_id,
                          home_id, home_name, away_id, away_name,
                          kickoff, predicted_winner, home_win_prob,
-                         model_version, feature_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         model_version, feature_hash, created_at,
+                         contributions)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         season,
@@ -134,11 +165,17 @@ class PredictionStore:
                         p.modelVersion,
                         p.featureHash,
                         now,
+                        contribs_json,
                     ),
                 )
 
 
 def _row_to_out(r: sqlite3.Row) -> PredictionOut:
+    # sqlite3.Row exposes column names via .keys(); plain `in r` iterates values.
+    contribs_raw = r["contributions"] if "contributions" in tuple(r.keys()) else None
+    contribs = (
+        [FeatureContribution(**c) for c in json.loads(contribs_raw)] if contribs_raw else None
+    )
     return PredictionOut(
         matchId=r["match_id"],
         home=TeamInfo(id=r["home_id"], name=r["home_name"]),
@@ -148,6 +185,7 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
         homeWinProbability=r["home_win_prob"],
         modelVersion=r["model_version"],
         featureHash=r["feature_hash"],
+        contributions=contribs,
     )
 
 
@@ -269,6 +307,58 @@ def _feature_hash() -> str:
     return hashlib.sha256(",".join(sorted(FEATURE_NAMES)).encode()).hexdigest()[:12]
 
 
+def _compute_contributions(
+    loaded: Any, x: np.ndarray, *, top_k: int = 5
+) -> list[FeatureContribution] | None:
+    """Return top-K signed log-odds contributions for a logistic pipeline.
+
+    Contribution_i = coef_i × (x_i − mean_i) / scale_i, i.e. the per-feature
+    push on the log-odds produced by the ``lr`` step of the pipeline. Sum of
+    contributions + intercept = z = logit(home_win_prob) for an uncalibrated
+    logistic model. Calibrated probabilities apply a monotone transform on
+    top, so the ordering of contributions stays meaningful as "which features
+    pushed hardest" even though the absolute sum no longer equals logit(p).
+
+    Returns ``None`` for non-logistic artefacts (ensemble/xgboost). Callers
+    should ``p.contributions = result`` either way — the UI hides its reasons
+    panel gracefully when the field is absent.
+    """
+    pipeline = getattr(loaded, "pipeline", None)
+    if pipeline is None:
+        return None
+    try:
+        scaler = pipeline.named_steps["scale"]
+        lr = pipeline.named_steps["lr"]
+    except (KeyError, AttributeError):
+        return None
+
+    feature_names = getattr(loaded, "feature_names", None)
+    if not feature_names:
+        return None
+
+    raw = np.asarray(x, dtype=float).reshape(-1)
+    mean = np.asarray(getattr(scaler, "mean_", None))
+    scale = np.asarray(getattr(scaler, "scale_", None))
+    coef = np.asarray(getattr(lr, "coef_", None)).reshape(-1)
+    if mean.shape != raw.shape or scale.shape != raw.shape or coef.shape != raw.shape:
+        return None
+
+    # Guard against a zero-variance column that would have shipped as
+    # scale_=0. sklearn normally replaces those with 1.0 but be defensive.
+    safe_scale = np.where(scale == 0.0, 1.0, scale)
+    contributions = coef * (raw - mean) / safe_scale
+
+    top_idx = np.argsort(-np.abs(contributions))[:top_k]
+    return [
+        FeatureContribution(
+            feature=feature_names[i],
+            value=round(float(raw[i]), 6),
+            contribution=round(float(contributions[i]), 4),
+        )
+        for i in top_idx
+    ]
+
+
 def _build_inference_state(history: list[MatchRow]) -> FeatureBuilder:
     builder = FeatureBuilder()
     for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
@@ -378,6 +468,7 @@ def compute_predictions(
                 homeWinProbability=prob,
                 modelVersion=mv,
                 featureHash=fh,
+                contributions=_compute_contributions(loaded, x),
             )
         )
 
