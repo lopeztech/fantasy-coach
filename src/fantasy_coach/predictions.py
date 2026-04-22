@@ -386,47 +386,42 @@ def _compute_contributions(
     builder: Any = None,
     match: Any = None,
 ) -> list[FeatureContribution] | None:
-    """Return top-K signed log-odds contributions for a logistic pipeline.
+    """Return top-K signed log-odds contributions for the loaded model.
 
-    Contribution_i = coef_i × (x_i − mean_i) / scale_i, i.e. the per-feature
-    push on the log-odds produced by the ``lr`` step of the pipeline. Sum of
-    contributions + intercept = z = logit(home_win_prob) for an uncalibrated
-    logistic model. Calibrated probabilities apply a monotone transform on
-    top, so the ordering of contributions stays meaningful as "which features
-    pushed hardest" even though the absolute sum no longer equals logit(p).
+    Both logistic and XGBoost produce per-feature contributions in log-odds
+    units — the dispatcher picks whichever path the artefact supports:
 
-    Returns ``None`` for non-logistic artefacts (ensemble/xgboost). Callers
-    should ``p.contributions = result`` either way — the UI hides its reasons
-    panel gracefully when the field is absent.
+    - **Logistic** (``loaded.pipeline`` is a sklearn ``Pipeline`` with
+      ``scale`` + ``lr`` steps): ``contribution_i = coef_i × (x_i − mean_i)
+      / scale_i``. Sum of contributions + intercept = logit(home_win_prob)
+      for the uncalibrated pipeline.
+
+    - **XGBoost** (``loaded.estimator`` is an ``XGBClassifier``): uses the
+      booster's built-in ``pred_contribs=True`` mode, which returns per-
+      feature contributions to the raw margin (log-odds-equivalent for
+      binary classification). Drops the bias column.
+
+    Ensemble artefacts currently return ``None`` — attributing a weighted
+    average of two correlated bases back to features doesn't have a clean
+    interpretation and nothing in the UI consumes it yet.
 
     ``builder`` + ``match`` are optional; when both are supplied we enrich
     specific rows with structured ``detail`` (today: the missing-regulars
     list behind ``key_absence_diff``).
     """
-    pipeline = getattr(loaded, "pipeline", None)
-    if pipeline is None:
-        return None
-    try:
-        scaler = pipeline.named_steps["scale"]
-        lr = pipeline.named_steps["lr"]
-    except (KeyError, AttributeError):
-        return None
-
     feature_names = getattr(loaded, "feature_names", None)
     if not feature_names:
         return None
 
     raw = np.asarray(x, dtype=float).reshape(-1)
-    mean = np.asarray(getattr(scaler, "mean_", None))
-    scale = np.asarray(getattr(scaler, "scale_", None))
-    coef = np.asarray(getattr(lr, "coef_", None)).reshape(-1)
-    if mean.shape != raw.shape or scale.shape != raw.shape or coef.shape != raw.shape:
+    if len(raw) != len(feature_names):
         return None
 
-    # Guard against a zero-variance column that would have shipped as
-    # scale_=0. sklearn normally replaces those with 1.0 but be defensive.
-    safe_scale = np.where(scale == 0.0, 1.0, scale)
-    contributions = coef * (raw - mean) / safe_scale
+    contributions = _logistic_raw_contribs(loaded, raw)
+    if contributions is None:
+        contributions = _xgboost_raw_contribs(loaded, x)
+    if contributions is None:
+        return None
 
     # Rank all features by |contribution|, then filter out sentinel/flag
     # rows before slicing to top_k. Filtering *after* the rank keeps us
@@ -450,6 +445,76 @@ def _compute_contributions(
         if len(picked) >= top_k:
             break
     return picked
+
+
+def _logistic_raw_contribs(loaded: Any, raw: np.ndarray) -> np.ndarray | None:
+    """Compute per-feature log-odds contributions for a logistic pipeline.
+
+    Returns ``None`` when ``loaded`` isn't a logistic pipeline — caller
+    dispatches to the XGBoost path in that case.
+    """
+    pipeline = getattr(loaded, "pipeline", None)
+    if pipeline is None:
+        return None
+    try:
+        scaler = pipeline.named_steps["scale"]
+        lr = pipeline.named_steps["lr"]
+    except (KeyError, AttributeError):
+        return None
+
+    mean = np.asarray(getattr(scaler, "mean_", None))
+    scale = np.asarray(getattr(scaler, "scale_", None))
+    coef = np.asarray(getattr(lr, "coef_", None)).reshape(-1)
+    if mean.shape != raw.shape or scale.shape != raw.shape or coef.shape != raw.shape:
+        return None
+
+    # Guard against a zero-variance column that would have shipped as
+    # scale_=0. sklearn normally replaces those with 1.0 but be defensive.
+    safe_scale = np.where(scale == 0.0, 1.0, scale)
+    return coef * (raw - mean) / safe_scale
+
+
+def _xgboost_raw_contribs(loaded: Any, x: np.ndarray) -> np.ndarray | None:
+    """Compute per-feature margin contributions for an XGBoost estimator.
+
+    Uses the booster's ``pred_contribs=True`` mode, which returns per-
+    sample, per-feature contributions in raw-margin (log-odds for binary
+    classification). The final column is the bias and is dropped. Returns
+    ``None`` if the artefact isn't an XGBoost model or xgboost isn't
+    importable in this environment (macOS without libomp).
+    """
+    estimator = getattr(loaded, "estimator", None)
+    if estimator is None:
+        return None
+    get_booster = getattr(estimator, "get_booster", None)
+    if not callable(get_booster):
+        return None
+
+    try:
+        import xgboost as xgb  # noqa: PLC0415
+    except Exception:  # pragma: no cover — libomp-missing safety net
+        return None
+
+    try:
+        booster = get_booster()
+    except Exception:
+        return None
+
+    feature_names = getattr(loaded, "feature_names", None)
+    try:
+        dmatrix = xgb.DMatrix(
+            np.asarray(x, dtype=float),
+            feature_names=list(feature_names) if feature_names else None,
+        )
+        contribs = booster.predict(dmatrix, pred_contribs=True)
+    except Exception:
+        return None
+
+    arr = np.asarray(contribs)
+    if arr.ndim != 2 or arr.shape[0] < 1:
+        return None
+    # Last column is the bias term; drop it to align with feature_names.
+    return arr[0, :-1]
 
 
 def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:

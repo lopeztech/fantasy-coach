@@ -281,6 +281,35 @@ to logistic regression. It uses the same feature set (see the table above) and i
 time-series-aware hyperparameter search (`GridSearchCV` + `TimeSeriesSplit(n_splits=3)`)
 over `max_depth ∈ {3, 4, 5}`, `n_estimators ∈ {100, 200}`, `learning_rate ∈ {0.05, 0.1}`.
 
+### Production model: XGBoost (switched 2026-04-22, #136)
+
+The comparison table below is from the pre-#136 state. After the bookmaker-
+odds feature (#26) landed, XGBoost's edge over logistic compounded enough
+— and logistic's multicollinearity-driven wrong-sign coefficient on
+``player_strength_diff`` (#109) became misleading enough on per-feature
+attribution — that we flipped the production artefact.
+
+**What changed:** ``artifacts/xgboost.joblib`` is now uploaded to
+``gs://fantasy-coach-lcd-models/logistic/latest.joblib`` (the path keeps
+the old name for now — renaming is a tiny follow-up but needs a paired
+deploy-workflow edit). ``models.loader.load_model`` dispatches by
+``model_type`` embedded in the joblib blob, so the same path serves either
+model without code changes.
+
+**What stayed:** logistic training still works (``python -m fantasy_coach
+train-logistic``); the comparison baseline below is still the source of
+truth for ablation reporting; the EXPECTED dict in ``test_baseline_metrics``
+pins walk-forward numbers for *both* models so regressions on either side
+are caught.
+
+**Contribution attribution:** ``_compute_contributions`` in
+``predictions.py`` now dispatches by model type:
+- logistic: ``coef × (x − mean) / scale`` (unchanged).
+- XGBoost: booster ``predict(pred_contribs=True)`` — returns per-feature
+  margin contributions (log-odds for binary classification), drops the
+  bias column. Output shape matches logistic so the sentinel filter +
+  detail enrichment + UI rendering all work without branching.
+
 ### Comparison (2024–2025 walk-forward baseline, 424 predictions)
 
 | Model    | Accuracy | Log-loss | Brier  |
