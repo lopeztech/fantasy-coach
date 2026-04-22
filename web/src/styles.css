@@ -206,3 +206,129 @@ button:hover {
   font-size: 0.9rem;
   line-height: 1.4;
 }
+
+/* ── Match card link wrapper ───────────────────────────────────────────── */
+
+.match-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.match-card-link:hover .match-card,
+.match-card-link:focus-visible .match-card {
+  border-color: #1a1a1a;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.match-card-link:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+/* ── Match detail page ─────────────────────────────────────────────────── */
+
+.back-link {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.back-link a {
+  color: #1a1a1a;
+  text-decoration: none;
+}
+
+.back-link a:hover {
+  text-decoration: underline;
+}
+
+.match-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.match-detail-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.prob-dial {
+  padding: 1rem 1.25rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.prob-dial-bar {
+  height: 0.9rem;
+  background: #e0e0e0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.prob-dial-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.contributions h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.contribution-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.contribution {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #e5e5e5;
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.contribution.favours-home {
+  border-left-color: #1a1a1a;
+}
+
+.contribution.favours-away {
+  border-left-color: #c0392b;
+}
+
+.contribution.favours-neutral {
+  border-left-color: #ccc;
+}
+
+.contribution-text {
+  font-size: 0.95rem;
+}
+
+.contribution-magnitude {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.fine-print {
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0;
+}
