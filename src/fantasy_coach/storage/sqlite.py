@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SQLiteRepository:
@@ -130,6 +130,14 @@ class SQLiteRepository:
                     with contextlib.suppress(Exception):
                         self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
                 self._conn.execute("UPDATE schema_version SET version = 2")
+        if from_version < 3:
+            with self._conn:
+                # v2 → v3: add is_on_field to match_players. The
+                # team_list_snapshots table is created by executescript(schema)
+                # above via CREATE TABLE IF NOT EXISTS, so no work needed here.
+                with contextlib.suppress(Exception):
+                    self._conn.execute("ALTER TABLE match_players ADD COLUMN is_on_field INTEGER")
+                self._conn.execute("UPDATE schema_version SET version = 3")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
@@ -138,8 +146,8 @@ class SQLiteRepository:
             """
             INSERT INTO match_players
                 (match_id, side, player_id, jersey_number, position,
-                 first_name, last_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 first_name, last_name, is_on_field)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -150,6 +158,7 @@ class SQLiteRepository:
                     p.position,
                     p.first_name,
                     p.last_name,
+                    None if p.is_on_field is None else int(p.is_on_field),
                 )
                 for p in players
             ],
@@ -182,7 +191,7 @@ class SQLiteRepository:
         match_id = match["match_id"]
         players = self._conn.execute(
             """
-            SELECT side, player_id, jersey_number, position, first_name, last_name
+            SELECT side, player_id, jersey_number, position, first_name, last_name, is_on_field
             FROM match_players
             WHERE match_id = ?
             ORDER BY side, jersey_number, player_id
@@ -241,10 +250,12 @@ class SQLiteRepository:
 
     @staticmethod
     def _row_to_player(p: sqlite3.Row) -> PlayerRow:
+        raw_on_field = p["is_on_field"]
         return PlayerRow(
             player_id=p["player_id"],
             jersey_number=p["jersey_number"],
             position=p["position"],
             first_name=p["first_name"],
             last_name=p["last_name"],
+            is_on_field=None if raw_on_field is None else bool(raw_on_field),
         )

@@ -307,6 +307,43 @@ def _feature_hash() -> str:
     return hashlib.sha256(",".join(sorted(FEATURE_NAMES)).encode()).hexdigest()[:12]
 
 
+def _record_team_list_snapshots(team_list_repo: Any, row: MatchRow) -> None:
+    """Persist one snapshot per team for this match, if team lists are present.
+
+    Skips teams whose players array is empty or missing the ``isOnField``
+    flag entirely — those scrapes pre-date the team-list drop and carry no
+    signal about the starting XIII. Failures are logged and swallowed so
+    the precompute loop keeps processing other matches.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from fantasy_coach.team_lists import TeamListSnapshot  # noqa: PLC0415
+
+    now = datetime.now(UTC)
+    for side in (row.home, row.away):
+        players = side.players
+        if not players:
+            continue
+        if not any(p.is_on_field is not None for p in players):
+            continue
+        snapshot = TeamListSnapshot(
+            season=row.season,
+            round=row.round,
+            match_id=row.match_id,
+            team_id=side.team_id,
+            scraped_at=now,
+            players=tuple(players),
+        )
+        try:
+            team_list_repo.record_snapshot(snapshot)
+        except Exception:
+            logger.exception(
+                "Failed to record team-list snapshot for match %s team %s",
+                row.match_id,
+                side.team_id,
+            )
+
+
 def _compute_contributions(
     loaded: Any, x: np.ndarray, *, top_k: int = 5
 ) -> list[FeatureContribution] | None:
@@ -384,12 +421,19 @@ def compute_predictions(
     fetch_round_fn: Any = fetch_round,
     fetch_match_fn: Any = fetch_match_from_url,
     force: bool = False,
+    team_list_repo: Any = None,
 ) -> list[PredictionOut]:
     """Return predictions for season/round; compute and cache them on miss.
 
     ``force=True`` bypasses the cache-hit short-circuit so the precompute
     Job can refresh stored predictions when team lists change between
     scheduled runs. On cache miss ``force`` is a no-op.
+
+    ``team_list_repo`` is optional. When provided (production path via
+    ``_run_precompute``), each scraped match with populated team-list data
+    appends a snapshot per side so downstream model features (#27) can
+    diff named-squad vs kickoff lineup across scrapes. Silently skipped
+    when ``None`` — tests that don't exercise the snapshot path pass None.
 
     Raises ``FileNotFoundError`` if the model artefact does not exist (caller
     should surface this as HTTP 503).
@@ -435,6 +479,8 @@ def compute_predictions(
             row = extract_match_features(raw)
             repo.upsert_match(row)
             round_matches.append(row)
+            if team_list_repo is not None:
+                _record_team_list_snapshots(team_list_repo, row)
         except Exception:
             logger.exception("Failed to extract/store match from %s", url)
 

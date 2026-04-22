@@ -18,126 +18,144 @@
         "jersey_number": 1,
         "position": "Fullback",
         "first_name": "Dylan",
-        "last_name": "Edwards"
+        "last_name": "Edwards",
+        "is_on_field": true
       },
       {
         "player_id": 509455,
         "jersey_number": 2,
         "position": "Winger",
         "first_name": "Sunia",
-        "last_name": "Turuva"
+        "last_name": "Turuva",
+        "is_on_field": true
       },
       {
         "player_id": 509467,
         "jersey_number": 3,
         "position": "Centre",
         "first_name": "Izack",
-        "last_name": "Tago"
+        "last_name": "Tago",
+        "is_on_field": true
       },
       {
         "player_id": 100004042,
         "jersey_number": 4,
         "position": "Centre",
         "first_name": "Paul",
-        "last_name": "Alamoti"
+        "last_name": "Alamoti",
+        "is_on_field": true
       },
       {
         "player_id": 505410,
         "jersey_number": 5,
         "position": "Winger",
         "first_name": "Brian",
-        "last_name": "To'o"
+        "last_name": "To'o",
+        "is_on_field": true
       },
       {
         "player_id": 504121,
         "jersey_number": 6,
         "position": "Five-Eighth",
         "first_name": "Jarome",
-        "last_name": "Luai"
+        "last_name": "Luai",
+        "is_on_field": true
       },
       {
         "player_id": 504120,
         "jersey_number": 7,
         "position": "Halfback",
         "first_name": "Nathan",
-        "last_name": "Cleary"
+        "last_name": "Cleary",
+        "is_on_field": false
       },
       {
         "player_id": 501461,
         "jersey_number": 8,
         "position": "Prop",
         "first_name": "Moses",
-        "last_name": "Leota"
+        "last_name": "Leota",
+        "is_on_field": false
       },
       {
         "player_id": 505414,
         "jersey_number": 9,
         "position": "Hooker",
         "first_name": "Mitch",
-        "last_name": "Kenny"
+        "last_name": "Kenny",
+        "is_on_field": true
       },
       {
         "player_id": 502580,
         "jersey_number": 10,
         "position": "Prop",
         "first_name": "James",
-        "last_name": "Fisher-Harris"
+        "last_name": "Fisher-Harris",
+        "is_on_field": true
       },
       {
         "player_id": 504125,
         "jersey_number": 12,
         "position": "2nd Row",
         "first_name": "Liam",
-        "last_name": "Martin"
+        "last_name": "Martin",
+        "is_on_field": true
       },
       {
         "player_id": 500534,
         "jersey_number": 13,
         "position": "Lock",
         "first_name": "Isaah",
-        "last_name": "Yeo"
+        "last_name": "Yeo",
+        "is_on_field": true
       },
       {
         "player_id": 505555,
         "jersey_number": 15,
         "position": "Interchange",
         "first_name": "Lindsay",
-        "last_name": "Smith"
+        "last_name": "Smith",
+        "is_on_field": true
       },
       {
         "player_id": 100007929,
         "jersey_number": 16,
         "position": "Interchange",
         "first_name": "Liam",
-        "last_name": "Henry"
+        "last_name": "Henry",
+        "is_on_field": false
       },
       {
         "player_id": 501271,
         "jersey_number": 17,
         "position": "2nd Row",
         "first_name": "Luke",
-        "last_name": "Garner"
+        "last_name": "Garner",
+        "is_on_field": true
       },
       {
         "player_id": 503322,
         "jersey_number": 18,
         "position": "Interchange",
         "first_name": "Matthew",
-        "last_name": "Eisenhuth"
+        "last_name": "Eisenhuth",
+        "is_on_field": false
       },
       {
         "player_id": 100002660,
         "jersey_number": 19,
         "position": "Interchange",
         "first_name": "Bradley",
-        "last_name": "Schneider"
+        "last_name": "Schneider",
+        "is_on_field": true
       },
       {
         "player_id": 100011678,
         "jersey_number": 20,
         "position": "Replacement",
         "first_name": "Casey",
-        "last_name": "McLean"
+        "last_name": "McLean",
+        "is_on_field": false
       }
     ]
   },
@@ -152,126 +170,144 @@
         "jersey_number": 1,
         "position": "Fullback",
         "first_name": "James",
-        "last_name": "Tedesco"
+        "last_name": "Tedesco",
+        "is_on_field": true
       },
       {
         "player_id": 500002,
         "jersey_number": 2,
         "position": "Winger",
         "first_name": "Daniel",
-        "last_name": "Tupou"
+        "last_name": "Tupou",
+        "is_on_field": true
       },
       {
         "player_id": 509438,
         "jersey_number": 3,
         "position": "Centre",
         "first_name": "Joseph-Aukuso",
-        "last_name": "Sua'ali'i"
+        "last_name": "Sua'ali'i",
+        "is_on_field": true
       },
       {
         "player_id": 502571,
         "jersey_number": 4,
         "position": "Centre",
         "first_name": "Joseph",
-        "last_name": "Manu"
+        "last_name": "Manu",
+        "is_on_field": true
       },
       {
         "player_id": 100008071,
         "jersey_number": 5,
         "position": "Winger",
         "first_name": "Dominic",
-        "last_name": "Young"
+        "last_name": "Young",
+        "is_on_field": true
       },
       {
         "player_id": 500093,
         "jersey_number": 6,
         "position": "Five-Eighth",
         "first_name": "Luke",
-        "last_name": "Keary"
+        "last_name": "Keary",
+        "is_on_field": true
       },
       {
         "player_id": 509579,
         "jersey_number": 7,
         "position": "Halfback",
         "first_name": "Sandon",
-        "last_name": "Smith"
+        "last_name": "Smith",
+        "is_on_field": true
       },
       {
         "player_id": 505560,
         "jersey_number": 8,
         "position": "Interchange",
         "first_name": "Spencer",
-        "last_name": "Leniu"
+        "last_name": "Leniu",
+        "is_on_field": true
       },
       {
         "player_id": 503327,
         "jersey_number": 9,
         "position": "Hooker",
         "first_name": "Connor",
-        "last_name": "Watson"
+        "last_name": "Watson",
+        "is_on_field": true
       },
       {
         "player_id": 501781,
         "jersey_number": 10,
         "position": "Prop",
         "first_name": "Lindsay",
-        "last_name": "Collins"
+        "last_name": "Collins",
+        "is_on_field": false
       },
       {
         "player_id": 503240,
         "jersey_number": 11,
         "position": "2nd Row",
         "first_name": "Angus",
-        "last_name": "Crichton"
+        "last_name": "Crichton",
+        "is_on_field": true
       },
       {
         "player_id": 505361,
         "jersey_number": 12,
         "position": "2nd Row",
         "first_name": "Sitili",
-        "last_name": "Tupouniua"
+        "last_name": "Tupouniua",
+        "is_on_field": true
       },
       {
         "player_id": 503639,
         "jersey_number": 13,
         "position": "Prop",
         "first_name": "Nat",
-        "last_name": "Butcher"
+        "last_name": "Butcher",
+        "is_on_field": false
       },
       {
         "player_id": 500889,
         "jersey_number": 14,
         "position": "Interchange",
         "first_name": "Zach",
-        "last_name": "Dockar-Clay"
+        "last_name": "Dockar-Clay",
+        "is_on_field": false
       },
       {
         "player_id": 100006390,
         "jersey_number": 15,
         "position": "Interchange",
         "first_name": "Naufahu",
-        "last_name": "Whyte"
+        "last_name": "Whyte",
+        "is_on_field": true
       },
       {
         "player_id": 100004373,
         "jersey_number": 16,
         "position": "Interchange",
         "first_name": "Siua",
-        "last_name": "Wong"
+        "last_name": "Wong",
+        "is_on_field": false
       },
       {
         "player_id": 508065,
         "jersey_number": 17,
         "position": "Lock",
         "first_name": "Terrell",
-        "last_name": "May"
+        "last_name": "May",
+        "is_on_field": true
       },
       {
         "player_id": 500003,
         "jersey_number": 18,
         "position": "Replacement",
         "first_name": "Michael",
-        "last_name": "Jennings"
+        "last_name": "Jennings",
+        "is_on_field": false
       }
     ]
   },
