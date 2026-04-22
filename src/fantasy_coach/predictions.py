@@ -95,6 +95,8 @@ class PredictionOut(BaseModel):
     featureHash: str  # first 12 hex chars of SHA-256 of feature names
     # Optional so predictions written before #58 shipped still deserialise.
     contributions: list[FeatureContribution] | None = None
+    # Populated at serve-time when match_state == "FullTime" (not cached).
+    actualWinner: str | None = None  # "home" | "away"
 
 
 # ---------------------------------------------------------------------------

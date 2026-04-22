@@ -16,6 +16,9 @@ export default function App() {
             Fantasy Coach
           </Link>
           <div className="header-controls">
+            <Link to="/scoreboard" className="nav-link">
+              Scoreboard
+            </Link>
             <ThemeToggle />
             <AuthButton />
           </div>

@@ -22,4 +22,5 @@ export type Prediction = {
   modelVersion: string;
   featureHash: string;
   contributions?: FeatureContribution[] | null;
+  actualWinner?: "home" | "away" | null;
 };

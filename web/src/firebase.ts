@@ -1,5 +1,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 type FirebaseConfig = {
   apiKey: string;
@@ -23,14 +24,30 @@ function readConfig(): FirebaseConfig | null {
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let firestore: Firestore | null = null;
 
-export function getFirebaseAuth(): Auth | null {
-  if (auth) return auth;
+function _ensureApp(): FirebaseApp | null {
+  if (app) return app;
   const cfg = readConfig();
   if (!cfg) return null;
   app = initializeApp(cfg);
-  auth = getAuth(app);
+  return app;
+}
+
+export function getFirebaseAuth(): Auth | null {
+  if (auth) return auth;
+  const a = _ensureApp();
+  if (!a) return null;
+  auth = getAuth(a);
   return auth;
+}
+
+export function getFirebaseFirestore(): Firestore | null {
+  if (firestore) return firestore;
+  const a = _ensureApp();
+  if (!a) return null;
+  firestore = getFirestore(a);
+  return firestore;
 }
 
 export function isFirebaseConfigured(): boolean {

@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { TipEntry } from "./TipEntry";
+import type { TipChoice } from "../tips";
 import type { Prediction } from "../types";
 
 function formatKickoff(iso: string): string {
@@ -19,17 +21,24 @@ export function MatchCard({
   season,
   round,
   preview,
+  tip,
+  savingTip,
+  onTip,
 }: {
   prediction: Prediction;
   season: number;
   round: number;
   preview?: string;
+  tip?: TipChoice | null;
+  savingTip?: boolean;
+  onTip?: (choice: TipChoice) => void;
 }) {
   const p = prediction;
   const homePct = Math.round(p.homeWinProbability * 100);
   const awayPct = 100 - homePct;
   const winnerName = p.predictedWinner === "home" ? p.home.name : p.away.name;
   const winnerPct = p.predictedWinner === "home" ? homePct : awayPct;
+  const isKickedOff = new Date(p.kickoff) <= new Date();
 
   return (
     <Link
@@ -70,6 +79,23 @@ export function MatchCard({
         </p>
 
         {preview ? <p className="preview">{preview}</p> : null}
+
+        {onTip != null && (
+          <div
+            onClick={(e) => e.preventDefault()}
+            onKeyDown={(e) => e.preventDefault()}
+            role="none"
+          >
+            <TipEntry
+              homeTeam={p.home.name}
+              awayTeam={p.away.name}
+              value={tip ?? null}
+              locked={isKickedOff}
+              saving={savingTip ?? false}
+              onTip={onTip}
+            />
+          </div>
+        )}
       </article>
     </Link>
   );
