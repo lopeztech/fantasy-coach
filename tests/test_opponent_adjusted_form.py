@@ -21,7 +21,7 @@ from fantasy_coach.feature_engineering import (
     FeatureBuilder,
     build_training_frame,
 )
-from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
+from fantasy_coach.features import MatchRow, TeamRow
 
 _PF_ADJ_IDX = FEATURE_NAMES.index("form_diff_pf_adjusted")
 _PA_ADJ_IDX = FEATURE_NAMES.index("form_diff_pa_adjusted")
@@ -96,14 +96,21 @@ def test_no_leakage_feature_row_uses_pre_match_opponent_baseline() -> None:
 
     # Build team-2 history (10 matches as home: score 30, concede 10)
     for i in range(ADJ_OPP_WINDOW):
-        m = _match(i + 1, home_id=2, away_id=9, home_score=30, away_score=10,
-                   when=base + timedelta(days=i))
+        m = _match(
+            i + 1, home_id=2, away_id=9, home_score=30, away_score=10, when=base + timedelta(days=i)
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
     # Team 1 vs team 2: team 1 scores 20, concedes 15
-    m1 = _match(100, home_id=1, away_id=2, home_score=20, away_score=15,
-                when=base + timedelta(days=ADJ_OPP_WINDOW + 1))
+    m1 = _match(
+        100,
+        home_id=1,
+        away_id=2,
+        home_score=20,
+        away_score=15,
+        when=base + timedelta(days=ADJ_OPP_WINDOW + 1),
+    )
     builder.advance_season_if_needed(m1)
     builder.record(m1)
 
@@ -121,23 +128,27 @@ def test_no_leakage_current_match_not_in_baseline() -> None:
 
     # Fill team-1 and team-2 adjusted form windows via 5 historical matches
     for i in range(5):
-        m = _match(i + 1, home_id=1, away_id=2, home_score=20, away_score=10,
-                   when=base + timedelta(days=i))
+        m = _match(
+            i + 1, home_id=1, away_id=2, home_score=20, away_score=10, when=base + timedelta(days=i)
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
     row_before = builder.feature_row(
-        _match(99, home_id=1, away_id=2, home_score=40, away_score=0,
-               when=base + timedelta(days=10))
+        _match(
+            99, home_id=1, away_id=2, home_score=40, away_score=0, when=base + timedelta(days=10)
+        )
     )
     # record the match (big win), then feature_row should have changed
-    big_win = _match(99, home_id=1, away_id=2, home_score=40, away_score=0,
-                     when=base + timedelta(days=10))
+    big_win = _match(
+        99, home_id=1, away_id=2, home_score=40, away_score=0, when=base + timedelta(days=10)
+    )
     builder.record(big_win)
 
     row_after = builder.feature_row(
-        _match(100, home_id=1, away_id=2, home_score=20, away_score=10,
-               when=base + timedelta(days=11))
+        _match(
+            100, home_id=1, away_id=2, home_score=20, away_score=10, when=base + timedelta(days=11)
+        )
     )
     # The big-win's adjusted score (40 - opp_baseline) must appear in row_after
     # but NOT in row_before (leakage check).
@@ -156,14 +167,21 @@ def test_adjusted_pf_arithmetic() -> None:
 
     # Team 2 concedes exactly 12 in all their matches → rolling-10 PA baseline = 12
     for i in range(ADJ_OPP_WINDOW):
-        m = _match(i + 1, home_id=2, away_id=9, home_score=24, away_score=12,
-                   when=base + timedelta(days=i))
+        m = _match(
+            i + 1, home_id=2, away_id=9, home_score=24, away_score=12, when=base + timedelta(days=i)
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
     # Team 1 scores 20 vs team 2
-    m1 = _match(100, home_id=1, away_id=2, home_score=20, away_score=18,
-                when=base + timedelta(days=ADJ_OPP_WINDOW + 1))
+    m1 = _match(
+        100,
+        home_id=1,
+        away_id=2,
+        home_score=20,
+        away_score=18,
+        when=base + timedelta(days=ADJ_OPP_WINDOW + 1),
+    )
     builder.advance_season_if_needed(m1)
     builder.record(m1)
 
@@ -178,14 +196,21 @@ def test_adjusted_pa_arithmetic() -> None:
 
     # Team 2 scores exactly 24 in all their matches → rolling-10 PF baseline = 24
     for i in range(ADJ_OPP_WINDOW):
-        m = _match(i + 1, home_id=2, away_id=9, home_score=24, away_score=8,
-                   when=base + timedelta(days=i))
+        m = _match(
+            i + 1, home_id=2, away_id=9, home_score=24, away_score=8, when=base + timedelta(days=i)
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
     # Team 1 concedes 18 vs team 2
-    m1 = _match(100, home_id=1, away_id=2, home_score=20, away_score=18,
-                when=base + timedelta(days=ADJ_OPP_WINDOW + 1))
+    m1 = _match(
+        100,
+        home_id=1,
+        away_id=2,
+        home_score=20,
+        away_score=18,
+        when=base + timedelta(days=ADJ_OPP_WINDOW + 1),
+    )
     builder.advance_season_if_needed(m1)
     builder.record(m1)
 
@@ -221,8 +246,14 @@ def test_build_training_frame_includes_adjusted_columns() -> None:
     """Training frame X has columns for all FEATURE_NAMES."""
     base = datetime(2024, 3, 1, tzinfo=UTC)
     matches = [
-        _match(i + 1, home_id=1, away_id=2, home_score=24, away_score=12,
-               when=base + timedelta(days=i * 7))
+        _match(
+            i + 1,
+            home_id=1,
+            away_id=2,
+            home_score=24,
+            away_score=12,
+            when=base + timedelta(days=i * 7),
+        )
         for i in range(10)
     ]
     frame = build_training_frame(matches, drop_draws=False)
@@ -242,20 +273,34 @@ def test_adjusted_differs_from_raw_with_quality_variation() -> None:
 
     # Team 2 has a strong conceding record (high PA baseline = 8)
     for i in range(ADJ_OPP_WINDOW):
-        m = _match(i + 1, home_id=2, away_id=9, home_score=30, away_score=8,
-                   when=base + timedelta(days=i))
+        m = _match(
+            i + 1, home_id=2, away_id=9, home_score=30, away_score=8, when=base + timedelta(days=i)
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
     # Team 1 scores 20 vs team 2 repeatedly (5 matches)
     for i in range(5):
-        m = _match(20 + i, home_id=1, away_id=2, home_score=20, away_score=12,
-                   when=base + timedelta(days=10 + i))
+        m = _match(
+            20 + i,
+            home_id=1,
+            away_id=2,
+            home_score=20,
+            away_score=12,
+            when=base + timedelta(days=10 + i),
+        )
         builder.advance_season_if_needed(m)
         builder.record(m)
 
-    upcoming = _match(99, home_id=1, away_id=3, home_score=0, away_score=0,
-                      when=base + timedelta(days=20), round_=3)
+    upcoming = _match(
+        99,
+        home_id=1,
+        away_id=3,
+        home_score=0,
+        away_score=0,
+        when=base + timedelta(days=20),
+        round_=3,
+    )
     row = builder.feature_row(upcoming)
 
     raw_pf = row[FEATURE_NAMES.index("form_diff_pf")]
