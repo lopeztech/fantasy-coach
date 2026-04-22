@@ -1,0 +1,27 @@
+name: Add issues to project
+
+# Adds newly opened / reopened / transferred issues to the
+# "Fantasy Coach — Backlog" ProjectV2 board (user project #10).
+# The built-in GITHUB_TOKEN cannot write to user-scoped projects,
+# so this workflow needs a personal access token (fine-grained or
+# classic) with the `project` scope, stored as PROJECTS_TOKEN.
+
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+      - transferred
+
+permissions:
+  issues: read
+
+jobs:
+  add-to-project:
+    name: Add to Fantasy Coach — Backlog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v1
+        with:
+          project-url: https://github.com/users/lopeztech/projects/10
+          github-token: ${{ secrets.PROJECTS_TOKEN }}
