@@ -16,6 +16,7 @@ dependencies = [
     "joblib>=1.4",
     "openpyxl>=3.1.5",
     "google-cloud-firestore>=2.19",
+    "google-cloud-storage>=2.18",
     "firebase-admin>=6.5",
     "google-auth>=2.30",
     "xgboost>=3.2.0",

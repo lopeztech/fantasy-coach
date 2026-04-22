@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 PREDICTIONS_DB_ENV = "FANTASY_COACH_PREDICTIONS_DB_PATH"
 MODEL_PATH_ENV = "FANTASY_COACH_MODEL_PATH"
+MODEL_GCS_URI_ENV = "FANTASY_COACH_MODEL_GCS_URI"
 DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
 
@@ -227,6 +228,39 @@ def get_prediction_store() -> PredictionStore | FirestorePredictionStore:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_model(path: Path) -> None:
+    """Ensure a model artefact exists at ``path``, downloading from GCS if not.
+
+    The container image ships without a ``.joblib`` (training requires
+    historical data the image doesn't carry). In production, the precompute
+    Job sets ``FANTASY_COACH_MODEL_GCS_URI=gs://.../latest.joblib`` and this
+    function streams the blob to ``path`` on first miss. Subsequent calls
+    inside the same container short-circuit on the local file.
+
+    Raises ``FileNotFoundError`` if the file is missing and no GCS URI is
+    configured — the pre-#93 behaviour local dev relies on.
+    """
+    if path.exists():
+        return
+
+    gcs_uri = os.getenv(MODEL_GCS_URI_ENV)
+    if not gcs_uri:
+        raise FileNotFoundError(path)
+
+    if not gcs_uri.startswith("gs://"):
+        raise ValueError(f"{MODEL_GCS_URI_ENV} must start with gs:// (got {gcs_uri!r})")
+    bucket_name, _, blob_name = gcs_uri.removeprefix("gs://").partition("/")
+    if not bucket_name or not blob_name:
+        raise ValueError(f"{MODEL_GCS_URI_ENV} must be gs://<bucket>/<object> (got {gcs_uri!r})")
+
+    from google.cloud import storage  # noqa: PLC0415
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Downloading model from %s to %s", gcs_uri, path)
+    client = storage.Client()
+    client.bucket(bucket_name).blob(blob_name).download_to_filename(str(path))
+
+
 def _model_version(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
@@ -281,10 +315,10 @@ def compute_predictions(
             )
             return cached
 
-    # Resolve and load the model
+    # Resolve and load the model — fetching from GCS on first miss if
+    # FANTASY_COACH_MODEL_GCS_URI is set (production path).
     path = model_path or Path(os.getenv(MODEL_PATH_ENV, DEFAULT_MODEL_PATH))
-    if not path.exists():
-        raise FileNotFoundError(path)
+    _ensure_model(path)
 
     loaded = load_model(path)
     mv = _model_version(path)
