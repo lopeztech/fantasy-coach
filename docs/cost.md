@@ -78,17 +78,18 @@ cuts. Nothing was cut below observed p99 + meaningful headroom.
 
 | Flag | Before (gcloud defaults / original deploy) | After (pinned in `deploy.yml` + TF) | Why |
 |------|---------------------------------------------|--------------------------------------|-----|
-| `--memory` | `512Mi` | `256Mi` | p99 container RSS < 20% of 512Mi across 20 revisions. 256Mi is still > 2.5× the working set. |
+| `--memory` | `512Mi` | `512Mi` unchanged | p99 container RSS < 20% of 512Mi across 20 revisions — 256Mi would fit, but **gen2 execution environment has a 512Mi minimum enforced by `gcloud run deploy`**. We'd need to drop to gen1 to cut further, and the scrape-heavy workload values gen2's networking + startup CPU boost more than the pennies/month of memory savings. |
 | `--concurrency` | Cloud Run default 80 (not pinned) | `80` pinned | Explicit so TF and deploy stay aligned; no behavioural change. |
 | `--timeout` | Cloud Run default `300s` (not pinned) | `120s` pinned | Cold-round scrape does ~8 HTTPS round-trips to nrl.com, so 60s is unsafe until #65 moves scrape off-path. 120s is still a 60% reduction from the default. |
 | `--cpu` | `1` | `1` unchanged | Predict is µs-scale; scraping is I/O-bound. |
 | `--min-instances` | `0` | `0` unchanged | Scale-to-zero stays. |
 | `--max-instances` | `2` | `2` unchanged | Blast-radius cap. |
 
-**Expected impact:** Cloud Run bills per GiB-second while an instance is
-running. Halving memory halves that component's cost for every billable
-second. With scale-to-zero and low traffic the absolute saving is small
-today, but the ratio persists as traffic grows.
+**Expected impact:** Memory is unchanged; the concurrency + timeout
+pins prevent the flags from silently drifting apart between the deploy
+workflow and Terraform, and the 300s → 120s timeout cut reduces the
+maximum billable CPU time per stuck request by 60 %. Real dollars
+today are pennies — this is drift insurance, not a major cost cut.
 
 The measurements above came from a ~13-hour window dominated by CI
 churn, not real user traffic. Revisit concurrency and memory once we
