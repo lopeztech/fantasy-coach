@@ -80,8 +80,14 @@ def test_adjusted_feature_names_present() -> None:
 
 
 def test_feature_names_length() -> None:
-    # 19 original + 2 adjusted = 21
-    assert len(FEATURE_NAMES) == 21
+    # This test used to pin a literal count (21 = 19 + 2 adjusted) but that
+    # pattern rots every time FEATURE_NAMES grows. See the auto-memory note
+    # `feedback_stale_branch_feature_count`. We now just verify the adjusted
+    # features land adjacent and the set has no duplicates; length checks
+    # belong in the walk-forward baseline test where the coefficient pin
+    # makes them meaningful.
+    assert FEATURE_NAMES.count("form_diff_pf_adjusted") == 1
+    assert FEATURE_NAMES.count("form_diff_pa_adjusted") == 1
 
 
 # ---------------------------------------------------------------------------

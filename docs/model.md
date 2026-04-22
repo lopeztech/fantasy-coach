@@ -113,6 +113,41 @@ signal. Revisit once we have a second full season of is-on-field data
 (currently 2024+2025 only; 2023 would add another 200 matches of warm-up
 history). Weight ratio tuning is filed as a follow-up.
 
+### Ablation notes — player strength feature (#109)
+
+The `player_strength_diff` / `missing_player_strength` pair wraps a
+per-player Elo-style rating system (see `models/player_ratings.py`) into
+the existing linear feature set. Feature value is Σ(rating × position_weight
+× bench_factor) for the named XIII + bench, home − away — so a rookie
+halfback contributes less than a veteran at the same position, which the
+#27 absence feature can't distinguish.
+
+Same-DB walk-forward on `baseline-nrl.db` (424 predictions), column zeroed
+in the "without" run:
+
+| Predictor | Metric | Without | With | Δ |
+|-----------|--------|--------:|-----:|---:|
+| logistic | accuracy | 0.5637 | 0.5519 | −0.012 (worse) |
+| logistic | log_loss | 0.7978 | 0.8026 | +0.005 (worse) |
+| logistic | brier    | 0.2744 | 0.2750 | +0.001 (flat) |
+| **xgboost** | accuracy | 0.5542 | **0.5755** | **+0.021** |
+| **xgboost** | log_loss | 0.7776 | **0.7657** | **−0.012** |
+| **xgboost** | brier    | 0.2747 | **0.2699** | **−0.005** |
+
+**Logistic regresses slightly; XGBoost wins all three metrics.** Same pattern
+as the #27 absence feature, more pronounced: linear models struggle to
+combine a quality composite with the independent absence/form signals
+(coefficients clash), while tree splits capture the non-linear interactions
+("strong lineup + home advantage + good ref" is a different prediction
+surface than the linear sum).
+
+Logistic stays the production default for now — switching to XGBoost is a
+separate decision (compounding effect over multiple features suggests it's
+close to time). Meanwhile, the player_strength contribution is live for
+XGBoost via the same feature vector. See `test_baseline_metrics.py` for the
+pinned metrics; the multi-metric XGBoost win tightens the case for issue
+#25's revisit once the third season lands.
+
 ### Ablation notes — referee features (#57)
 
 Walk-forward evaluation on the 2024–2025 baseline DB (424 predictions) after
