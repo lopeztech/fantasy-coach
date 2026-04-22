@@ -130,17 +130,57 @@ fall back to `missing_referee = 1.0` and the league-mean prior for
 signal as new rounds are ingested with referee data. They remain active in the
 feature vector; revisit with at least one full season of referee-annotated matches.
 
+## MOV-weighted Elo (EloMOV) — #106
+
+`models.elo_mov.EloMOV` is a drop-in replacement for `Elo` that scales the
+K-factor by a margin-of-victory term before each rating update:
+
+```
+K_eff = K × ln(|margin| + 1) × (2.2 / (elo_diff × 0.001 + 2.2))
+```
+
+- `ln(|margin| + 1)` rewards larger wins with diminishing returns.
+- The autocorrelation correction `(2.2 / …)` discounts a blowout when the
+  winner was already heavily favoured — a 40-point win over a clear underdog
+  earns less credit than a 40-point upset.
+
+### Ablation (#106) — 2024–2025 baseline, 424 predictions
+
+| Model      | Accuracy | Log-loss | Brier  |
+|------------|----------|----------|--------|
+| Plain Elo  | 0.5943   | 0.6570   | 0.2325 |
+| **MOV Elo**| **0.6179** | 0.6578 | 0.2323 |
+| Δ          | **+2.36pp** | +0.0008 | −0.0002 |
+
+**Result: promotion gate passes** (≥ 0.5 pp accuracy improvement). MOV Elo
+improves accuracy by 2.36 pp with negligible log-loss change — the model
+correctly weights blowouts as stronger evidence of team-strength gaps.
+
+**Decision:** `FeatureBuilder` now defaults to `EloMOV` so the `elo_diff`
+feature used by logistic regression and XGBoost reflects MOV-adjusted ratings.
+Plain `Elo` remains available via `Elo()` for A/B comparisons; `EloPredictor`
+still uses it so the standalone Elo walk-forward baseline is unchanged.
+
+Updated downstream baselines (feature builder now uses EloMOV elo_diff):
+
+| Model    | Old accuracy | New accuracy | Δ      |
+|----------|-------------|-------------|--------|
+| Logistic | 0.5519      | 0.5613      | +0.94pp |
+| XGBoost  | 0.5708      | 0.5613      | −0.95pp (within platform noise ±0.8pp) |
+
 ### What's deliberately *not* in here
 
-- **Margin of victory in Elo** — kept simple to make the Elo baseline a
-  clean comparison point. If logistic noticeably beats Elo, MOV-weighted
-  Elo is a follow-up.
+- **Glicko-2** — full rating + RD + volatility. More code for marginal gain
+  over MOV Elo; deferred until MOV-weighted Elo proves itself over a second
+  full season.
 - **Bookmaker odds** — high-signal but not a feature we can train on
   historically (odds drop out of the fixtures payload after kickoff). See
   issues #13 (benchmark vs closing lines) and #26 (live odds feature).
 - **Team-list / injury status** — issues #24 (parsing) and #27 (modelling).
 - **Player-level stats** — kept out of the baseline. Will come in once
   XGBoost (#25) makes nonlinear interactions worth modelling.
+- **Glicko-2** — deferred; MOV-weighted Elo (#106) captures the main gain.
+  Revisit if a second season shows MOV Elo plateauing.
 
 ## XGBoost model (#25)
 

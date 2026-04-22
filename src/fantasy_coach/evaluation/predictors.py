@@ -19,6 +19,7 @@ from fantasy_coach.feature_engineering import (
 from fantasy_coach.features import MatchRow
 from fantasy_coach.models.calibration import CalibrationMethod, CalibrationWrapper
 from fantasy_coach.models.elo import Elo
+from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.ensemble import EnsembleMode, EnsembleModel, fit_ensemble
 from fantasy_coach.models.logistic import TrainResult, train_logistic
 
@@ -102,6 +103,60 @@ class EloPredictor:
 
     @property
     def elo(self) -> Elo:
+        return self._elo
+
+
+class EloMOVPredictor:
+    """Walk-forward adapter for the MOV-weighted Elo rater.
+
+    Drop-in replacement for ``EloPredictor`` — identical constructor kwargs
+    and ``fit``/``predict_home_win_prob`` interface; uses ``EloMOV`` instead
+    of plain ``Elo`` so the walk-forward harness can A/B the two directly.
+    """
+
+    name = "elo_mov"
+
+    def __init__(
+        self,
+        *,
+        k: float | None = None,
+        home_advantage: float | None = None,
+        season_regression: float | None = None,
+    ) -> None:
+        kwargs: dict[str, float] = {}
+        if k is not None:
+            kwargs["k"] = k
+        if home_advantage is not None:
+            kwargs["home_advantage"] = home_advantage
+        if season_regression is not None:
+            kwargs["season_regression"] = season_regression
+        self._kwargs = kwargs
+        self._elo = EloMOV(**kwargs)
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        self._elo = EloMOV(**self._kwargs)
+        seasons = sorted({m.season for m in history})
+        history_by_season = {s: [m for m in history if m.season == s] for s in seasons}
+        for index, season in enumerate(seasons):
+            if index > 0:
+                self._elo.regress_to_mean()
+            for match in sorted(
+                history_by_season[season], key=lambda m: (m.start_time, m.match_id)
+            ):
+                if match.home.score is None or match.away.score is None:
+                    continue
+                self._elo.update(
+                    match.home.team_id,
+                    match.away.team_id,
+                    int(match.home.score),
+                    int(match.away.score),
+                )
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        return self._elo.predict(match.home.team_id, match.away.team_id)
+
+    @property
+    def elo(self) -> EloMOV:
         return self._elo
 
 

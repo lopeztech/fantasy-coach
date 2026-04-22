@@ -35,6 +35,7 @@ import numpy as np
 
 from fantasy_coach.features import MatchRow, PlayerRow
 from fantasy_coach.models.elo import Elo
+from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.travel import travel_features
 from fantasy_coach.weather import parse_weather
 
@@ -122,7 +123,9 @@ class FeatureBuilder:
     """
 
     def __init__(self, elo: Elo | None = None) -> None:
-        self.elo = elo or Elo()
+        # EloMOV promoted over plain Elo in #106: +2.36pp accuracy on the
+        # 2024–2025 walk-forward baseline (plain Elo still available via Elo()).
+        self.elo = elo or EloMOV()
         self._last_played: dict[int, datetime] = {}
         self._last_venue: dict[int, str | None] = {}
         self._points_for: dict[int, deque[int]] = defaultdict(lambda: deque(maxlen=ROLLING_WINDOW))
