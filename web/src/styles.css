@@ -186,6 +186,18 @@ a:focus-visible {
   color: var(--color-text-muted);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Sign-in prompt ────────────────────────────────────────────────────── */
 
 .sign-in-required {
@@ -255,6 +267,100 @@ a:focus-visible {
   color: var(--color-error-text);
 }
 
+/* ── Filter bar ────────────────────────────────────────────────────────── */
+
+.filter-bar {
+  margin-bottom: 1.25rem;
+}
+
+.filter-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.filter-search {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  min-width: 10rem;
+  flex: 1 1 10rem;
+  max-width: 20rem;
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.filter-sort select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.prefs-btn {
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.prefs-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.prefs-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.prefs-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.prefs-team-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
 /* ── Match grid ────────────────────────────────────────────────────────── */
 
 .match-grid {
@@ -273,6 +379,26 @@ a:focus-visible {
   .match-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* ── Match card skeleton ───────────────────────────────────────────────── */
+
+.match-card-skeleton {
+  height: 9rem;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    90deg,
+    var(--color-border) 25%,
+    var(--color-border-subtle) 50%,
+    var(--color-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ── Match card ────────────────────────────────────────────────────────── */
