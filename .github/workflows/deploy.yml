@@ -92,13 +92,21 @@ jobs:
           PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
           JOB: fantasy-coach-precompute
         # The Job is created + fixed-configured by Terraform in platform-infra;
-        # only the image rotates per deploy. ``|| true`` tolerates first
+        # the image rotates per deploy and env vars are owned by this workflow
+        # (see platform-infra/projects/fantasy-coach/scheduler.tf, which
+        # ignore_changes-es containers[0].env). ``|| true`` tolerates first
         # deployments to projects where platform-infra hasn't applied yet.
+        #
+        # FANTASY_COACH_MODEL_GCS_URI points at the artefact bucket created
+        # by platform-infra fantasy-coach#93. _ensure_model downloads to
+        # FANTASY_COACH_MODEL_PATH on cache miss; /tmp is the only writable
+        # location on Cloud Run's read-only root fs.
         run: |
           gcloud run jobs update "${JOB}" \
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --image "${IMAGE}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore,FANTASY_COACH_MODEL_PATH=/tmp/model.joblib,FANTASY_COACH_MODEL_GCS_URI=gs://${PROJECT_ID}-models/logistic/latest.joblib" \
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra#65 not applied yet)."
 

@@ -22,6 +22,7 @@ from fantasy_coach.predictions import (
     PredictionOut,
     PredictionStore,
     TeamInfo,
+    _ensure_model,
     _feature_hash,
     compute_predictions,
     get_prediction_store,
@@ -148,6 +149,67 @@ def test_compute_raises_file_not_found_when_no_model(
             fetch_round_fn=mock_round,
             fetch_match_fn=mock_match,
         )
+
+
+# ---------------------------------------------------------------------------
+# _ensure_model — GCS bootstrap for the precompute Job
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_model_noop_when_file_exists(tmp_path: Path) -> None:
+    path = tmp_path / "already-here.joblib"
+    path.write_bytes(b"x")
+    # Should not touch GCS at all (no env var set, no client imported).
+    _ensure_model(path)
+    assert path.read_bytes() == b"x"
+
+
+def test_ensure_model_raises_when_missing_and_no_gcs_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("FANTASY_COACH_MODEL_GCS_URI", raising=False)
+    with pytest.raises(FileNotFoundError):
+        _ensure_model(tmp_path / "missing.joblib")
+
+
+def test_ensure_model_downloads_from_gcs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "subdir" / "logistic.joblib"
+    monkeypatch.setenv(
+        "FANTASY_COACH_MODEL_GCS_URI",
+        "gs://fc-models/logistic/latest.joblib",
+    )
+
+    fake_blob = MagicMock()
+
+    def _fake_download(dest: str) -> None:
+        Path(dest).write_bytes(b"downloaded-bytes")
+
+    fake_blob.download_to_filename.side_effect = _fake_download
+    fake_bucket = MagicMock()
+    fake_bucket.blob.return_value = fake_blob
+    fake_client = MagicMock()
+    fake_client.bucket.return_value = fake_bucket
+
+    with patch("google.cloud.storage.Client", return_value=fake_client) as client_cls:
+        _ensure_model(target)
+
+    client_cls.assert_called_once_with()
+    fake_client.bucket.assert_called_once_with("fc-models")
+    fake_bucket.blob.assert_called_once_with("logistic/latest.joblib")
+    fake_blob.download_to_filename.assert_called_once_with(str(target))
+    assert target.read_bytes() == b"downloaded-bytes"
+
+
+@pytest.mark.parametrize(
+    "bad_uri",
+    ["s3://nope/path", "gs://just-bucket", "gs:///no-bucket/path"],
+)
+def test_ensure_model_rejects_malformed_gcs_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_uri: str
+) -> None:
+    monkeypatch.setenv("FANTASY_COACH_MODEL_GCS_URI", bad_uri)
+    with pytest.raises(ValueError):
+        _ensure_model(tmp_path / "target.joblib")
 
 
 def test_compute_cache_miss_scrapes_and_stores(
