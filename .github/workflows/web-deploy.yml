@@ -1,0 +1,93 @@
+name: Deploy SPA to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/web-deploy.yml"
+  workflow_dispatch:
+
+# Firebase Hosting serialises releases by site already, but let the workflow
+# enforce it too so two CI runs on overlapping SHAs don't stomp each other.
+concurrency:
+  group: firebase-hosting-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required for keyless WIF auth to GCP
+
+env:
+  NODE_VERSION: "20"
+  # Cloud Run service URL for the prediction API — stable per service,
+  # not per revision. Not a secret (public endpoint).
+  VITE_API_BASE_URL: https://fantasy-coach-api-pvie5ubapa-ts.a.run.app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - id: auth
+        name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.FANTASY_COACH_WIF_PROVIDER }}
+          service_account: ${{ secrets.FANTASY_COACH_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fetch Firebase web-config from Secret Manager
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          fetch() {
+            gcloud secrets versions access latest --secret="$1" --project="${PROJECT_ID}"
+          }
+          api_key=$(fetch firebase-web-api-key)
+          auth_domain=$(fetch firebase-web-auth-domain)
+          project_id=$(fetch firebase-web-project-id)
+          app_id=$(fetch firebase-web-app-id)
+          # Mask before echoing anywhere else — the web-app API key is
+          # technically public-identifier but we still keep it out of logs.
+          echo "::add-mask::${api_key}"
+          echo "::add-mask::${auth_domain}"
+          echo "::add-mask::${app_id}"
+          {
+            echo "VITE_FIREBASE_API_KEY=${api_key}"
+            echo "VITE_FIREBASE_AUTH_DOMAIN=${auth_domain}"
+            echo "VITE_FIREBASE_PROJECT_ID=${project_id}"
+            echo "VITE_FIREBASE_APP_ID=${app_id}"
+          } >> "$GITHUB_ENV"
+
+      - name: Install SPA deps
+        working-directory: web
+        run: npm ci
+
+      - name: Build SPA
+        working-directory: web
+        run: npm run build
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@latest
+
+      - name: Deploy to Firebase Hosting
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+        # Firebase CLI picks up GOOGLE_APPLICATION_CREDENTIALS (set by the
+        # auth action above) when --non-interactive is passed — no legacy
+        # CI token needed. Rollback on failure stays manual:
+        # `firebase hosting:rollback`, which reverts to the previous release.
+        run: firebase deploy --only hosting --project "${PROJECT_ID}" --non-interactive
