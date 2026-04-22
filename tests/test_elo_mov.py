@@ -9,7 +9,6 @@ import pytest
 from fantasy_coach.models.elo import DEFAULT_HOME_ADVANTAGE, DEFAULT_INITIAL_RATING, DEFAULT_K
 from fantasy_coach.models.elo_mov import EloMOV
 
-
 # ---------------------------------------------------------------------------
 # Construction / interface
 # ---------------------------------------------------------------------------

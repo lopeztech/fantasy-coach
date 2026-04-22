@@ -18,13 +18,7 @@ from __future__ import annotations
 
 import math
 
-from fantasy_coach.models.elo import (
-    DEFAULT_HOME_ADVANTAGE,
-    DEFAULT_INITIAL_RATING,
-    DEFAULT_K,
-    DEFAULT_SEASON_REGRESSION,
-    Elo,
-)
+from fantasy_coach.models.elo import Elo
 
 
 class EloMOV(Elo):
