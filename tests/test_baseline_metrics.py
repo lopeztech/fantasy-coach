@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from fantasy_coach.evaluation import (
+    EloMOVPredictor,
     EloPredictor,
     HomePickPredictor,
     LogisticPredictor,
@@ -37,24 +38,24 @@ SEASONS = (2024, 2025)
 #
 # Logistic updated in #55 (travel), #54 (weather/venue), #57 (referee), and
 # #27 (key-absence). Referee features show negligible signal on this window
-# (all referee_id NULL after v1→v2 migration). The #27 absence feature trades
-# accuracy (+1.2pp) for a small log-loss regression (+0.013) — see
-# docs/model.md's "Ablation notes — key-absence feature" for the full table.
+# (all referee_id NULL after v1→v2 migration).
 #
-# XGBoost picks up the biggest absolute improvement from #27's new feature:
-# accuracy 0.5448 → 0.5708 (+2.6pp), log_loss 0.7599 → 0.7708 (+0.011).
-# Tree models can split on position-specific thresholds the logistic can't.
-# Elo stays the top model on log_loss; xgboost closes the accuracy gap.
+# #106 promoted EloMOV as the default rater used by FeatureBuilder for the
+# ``elo_diff`` feature (+2.36pp accuracy over plain Elo on this baseline).
+# Logistic and XGBoost numbers updated to reflect EloMOV elo_diff inputs.
+# Plain Elo (EloPredictor) uses its own rater and is unchanged.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
-    "logistic": {"n": 424, "accuracy": 0.5519, "log_loss": 0.7965, "brier": 0.2740},
-    "xgboost": {"n": 424, "accuracy": 0.5708, "log_loss": 0.7708, "brier": 0.2717},
+    "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
+    "logistic": {"n": 424, "accuracy": 0.5613, "log_loss": 0.7926, "brier": 0.2718},
+    "xgboost": {"n": 424, "accuracy": 0.5613, "log_loss": 0.7718, "brier": 0.2731},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
     "home": HomePickPredictor,
     "elo": EloPredictor,
+    "elo_mov": EloMOVPredictor,
     "logistic": LogisticPredictor,
     "xgboost": XGBoostPredictor,
 }
