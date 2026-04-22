@@ -36,6 +36,8 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `ref_home_penalty_diff` | Rolling-20 average (home − away) Penalties Conceded for this referee; `0.0` when unavailable. | Captures whether a referee tends to penalise the home or away team more often. |
 | `missing_referee` | `1.0` when referee ID is absent (upcoming fixtures or pre-2026 data).                                   | Explicit missing-data flag. |
 | `key_absence_diff` | Position-weighted count of this team's "regular" starters missing from the current XIII, home minus away. See "Position weighting" below. | A team missing its halfback or hooker measurably underperforms — a far bigger deal than missing a bench forward. |
+| `form_diff_pf_adjusted` | Rolling-5 average of (home PF − opponent's rolling-10 PA baseline) minus the same for away. Opponent baseline is pre-match state only. | Strips out opponent quality: "points scored above what this opponent usually concedes". Kept alongside raw `form_diff_pf`. |
+| `form_diff_pa_adjusted` | Rolling-5 average of (home PA − opponent's rolling-10 PF baseline) minus the same for away. | Strips out opponent quality: "points conceded relative to what this opponent usually scores". Kept alongside raw `form_diff_pa`. |
 
 ### Position weighting (#27)
 
@@ -161,12 +163,27 @@ feature used by logistic regression and XGBoost reflects MOV-adjusted ratings.
 Plain `Elo` remains available via `Elo()` for A/B comparisons; `EloPredictor`
 still uses it so the standalone Elo walk-forward baseline is unchanged.
 
-Updated downstream baselines (feature builder now uses EloMOV elo_diff):
+### Ablation notes — opponent-adjusted form features (#108)
 
-| Model    | Old accuracy | New accuracy | Δ      |
-|----------|-------------|-------------|--------|
-| Logistic | 0.5519      | 0.5613      | +0.94pp |
-| XGBoost  | 0.5708      | 0.5613      | −0.95pp (within platform noise ±0.8pp) |
+Walk-forward evaluation on the 2024–2025 baseline DB (424 predictions) adding
+`form_diff_pf_adjusted` and `form_diff_pa_adjusted` alongside the raw form
+features, with EloMOV as the default rater (combined with #106).
+
+| Metric   | Before #108 (EloMOV only) | After #108 | Δ          |
+|----------|--------------------------|------------|------------|
+| logistic accuracy | 0.5613          | 0.5637     | +0.24pp    |
+| logistic log_loss | 0.7926          | 0.7978     | +0.005 (worse) |
+| xgboost accuracy  | 0.5613          | 0.5637     | +0.24pp    |
+| xgboost log_loss  | 0.7718          | 0.7687     | −0.003 ✓   |
+
+**Result: small accuracy gain with logistic calibration regression.**
+XGBoost log-loss improved. The logistic log_loss regression is consistent
+with sparse opponent-history in early rounds — each team only plays 16 unique
+opponents over two seasons, so the rolling-10 opponent baseline is often thin.
+
+**Decision: keep both raw and adjusted features.** Signal is expected to
+improve as the DB accumulates more history. Raw `form_diff_pf`/`pa` are kept
+so the logistic can learn to down-weight the adjusted versions when they are noisy.
 
 ### What's deliberately *not* in here
 
