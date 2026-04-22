@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { apiFetch, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
+import { FilterBar, type SortKey } from "../components/FilterBar";
 import { MatchCard } from "../components/MatchCard";
 import { RoundSelector } from "../components/RoundSelector";
 import { SignInRequired } from "../components/SignInRequired";
+import { getFavouriteTeams, setFavouriteTeams } from "../prefs";
 import { getTipsByRound, saveTip, type TipChoice } from "../tips";
 import type { Prediction, TeamFormHistory } from "../types";
 
@@ -54,12 +56,21 @@ type Status =
   | { kind: "error"; message: string }
   | { kind: "ok"; predictions: Prediction[]; teamForm: Map<number, TeamFormHistory | null> };
 
+const SKELETON_COUNT = 8;
+
 export default function Round() {
   const { season: seasonParam, round: roundParam } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [tips, setTips] = useState<Map<number, TipChoice>>(new Map());
   const [savingTip, setSavingTip] = useState<number | null>(null);
+  const [favTeams, setFavTeams] = useState<Set<string>>(() => getFavouriteTeams());
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get("q") ?? "";
+  const tossup = searchParams.get("tossup") === "1";
+  const myTeams = searchParams.get("myteams") === "1";
+  const sort = (searchParams.get("sort") ?? "kickoff") as SortKey;
 
   const season = Number(seasonParam);
   const round = Number(roundParam);
@@ -128,8 +139,69 @@ export default function Round() {
     [user, season, round],
   );
 
+  function updateParam(key: string, value: string | null) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (!value) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  function handleToggleFav(name: string) {
+    setFavTeams((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      setFavouriteTeams(next);
+      return next;
+    });
+  }
+
+  const allTeams = useMemo(() => {
+    if (status.kind !== "ok") return [];
+    const names = new Set<string>();
+    for (const p of status.predictions) {
+      names.add(p.home.name);
+      names.add(p.away.name);
+    }
+    return [...names].sort();
+  }, [status]);
+
+  const visiblePredictions = useMemo(() => {
+    if (status.kind !== "ok") return [];
+    let result = status.predictions;
+    if (q) {
+      const ql = q.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.home.name.toLowerCase().includes(ql) || p.away.name.toLowerCase().includes(ql),
+      );
+    }
+    if (tossup) {
+      result = result.filter((p) => Math.abs(p.homeWinProbability - 0.5) < 0.1);
+    }
+    if (myTeams) {
+      result = result.filter((p) => favTeams.has(p.home.name) || favTeams.has(p.away.name));
+    }
+    if (sort === "confidence") {
+      result = [...result].sort(
+        (a, b) =>
+          Math.abs(b.homeWinProbability - 0.5) - Math.abs(a.homeWinProbability - 0.5),
+      );
+    } else if (sort === "alpha") {
+      result = [...result].sort((a, b) => a.home.name.localeCompare(b.home.name));
+    }
+    return result;
+  }, [status, q, tossup, myTeams, favTeams, sort]);
+
   if (authLoading) return <p>Loading…</p>;
   if (!user) return <SignInRequired message="Sign in to see predictions for this round." />;
+
+  const hasActiveFilter = q || tossup || myTeams || sort !== "kickoff";
 
   return (
     <section>
@@ -140,7 +212,27 @@ export default function Round() {
         <RoundSelector initialSeason={season} initialRound={round} />
       </header>
 
-      {status.kind === "loading" && <p role="status">Loading predictions…</p>}
+      <FilterBar
+        q={q}
+        onQ={(v) => updateParam("q", v)}
+        tossup={tossup}
+        onTossup={(v) => updateParam("tossup", v ? "1" : null)}
+        myTeams={myTeams}
+        onMyTeams={(v) => updateParam("myteams", v ? "1" : null)}
+        sort={sort}
+        onSort={(v) => updateParam("sort", v === "kickoff" ? null : v)}
+        allTeams={allTeams}
+        favTeams={favTeams}
+        onToggleFav={handleToggleFav}
+      />
+
+      {status.kind === "loading" && (
+        <div className="match-grid" aria-busy="true">
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <div key={i} className="match-card-skeleton" aria-hidden="true" />
+          ))}
+        </div>
+      )}
 
       {status.kind === "error" && (
         <div className="error-box" role="alert">
@@ -148,13 +240,17 @@ export default function Round() {
         </div>
       )}
 
-      {status.kind === "ok" && status.predictions.length === 0 && (
-        <p className="muted">No predictions for this round yet.</p>
+      {status.kind === "ok" && visiblePredictions.length === 0 && (
+        <p className="muted">
+          {hasActiveFilter
+            ? "No matches match your filter."
+            : "No predictions for this round yet."}
+        </p>
       )}
 
-      {status.kind === "ok" && status.predictions.length > 0 && (
+      {status.kind === "ok" && visiblePredictions.length > 0 && (
         <div className="match-grid">
-          {status.predictions.map((p) => (
+          {visiblePredictions.map((p) => (
             <MatchCard
               key={p.matchId}
               prediction={p}
