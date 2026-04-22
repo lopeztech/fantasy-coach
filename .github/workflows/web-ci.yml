@@ -39,3 +39,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Bundle-size budget (< 200 KB gzip)
+        run: npm run size
+
+      - name: Lighthouse CI (accessibility ≥ 95, perf / best-practices ≥ 90)
+        run: npm run lhci
