@@ -710,3 +710,120 @@ a:focus-visible {
 .tip-result--wrong {
   color: var(--color-error);
 }
+
+/* ── Accuracy dashboard ────────────────────────────────────────────────── */
+
+.accuracy-page h1 {
+  margin-top: 0;
+}
+
+.accuracy-section-title {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.accuracy-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1rem;
+}
+
+.accuracy-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.accuracy-stat-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.accuracy-stat-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.accuracy-badge {
+  display: inline-block;
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.accuracy-badge--ok {
+  background: rgba(39, 174, 96, 0.15);
+  color: #1a7a46;
+}
+
+[data-theme="dark"] .accuracy-badge--ok {
+  color: #5be09b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .accuracy-badge--ok {
+    color: #5be09b;
+  }
+}
+
+.accuracy-badge--warn {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--color-error);
+}
+
+.accuracy-alert {
+  padding: 0.75rem 1rem;
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error-text);
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.accuracy-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.accuracy-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  font-size: 0.9rem;
+}
+
+.accuracy-table th,
+.accuracy-table td {
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.accuracy-table th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+
+.accuracy-table tr:last-child td {
+  border-bottom: none;
+}
+
+.model-version {
+  font-size: 0.8rem;
+  background: var(--color-border);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}

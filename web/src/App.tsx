@@ -19,6 +19,9 @@ export default function App() {
             <Link to="/scoreboard" className="nav-link">
               Scoreboard
             </Link>
+            <Link to="/accuracy" className="nav-link">
+              Accuracy
+            </Link>
             <ThemeToggle />
             <AuthButton />
           </div>
