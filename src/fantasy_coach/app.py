@@ -5,8 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fantasy_coach import __version__
 from fantasy_coach.auth import FirebaseAuthMiddleware
-from fantasy_coach.config import get_repository
-from fantasy_coach.predictions import PredictionOut, PredictionStore, compute_predictions
+from fantasy_coach.predictions import (
+    FirestorePredictionStore,
+    PredictionOut,
+    PredictionStore,
+    get_prediction_store,
+)
 
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
@@ -46,13 +50,13 @@ app.add_middleware(
 )
 
 # Module-level prediction store — created lazily on first use.
-_store: PredictionStore | None = None
+_store: PredictionStore | FirestorePredictionStore | None = None
 
 
-def _get_store() -> PredictionStore:
+def _get_store() -> PredictionStore | FirestorePredictionStore:
     global _store
     if _store is None:
-        _store = PredictionStore()
+        _store = get_prediction_store()
     return _store
 
 
@@ -67,25 +71,24 @@ def healthz() -> dict[str, str]:
     summary="Get predictions for a season/round",
     description=(
         "Returns predicted winner and home-win probability for every match in "
-        "the requested round. Results are cached on first call; subsequent calls "
-        "return stored predictions without re-scraping."
+        "the requested round. Predictions are precomputed twice a week by a "
+        "Cloud Run Job (Tue 09:00 and Thu 06:00 AEST); this endpoint is a "
+        "cache read only. Returns 503 with a retry hint if the cache is empty."
     ),
 )
 def get_predictions(
     season: int = Query(..., description="NRL season year, e.g. 2026"),
     round: int = Query(..., description="Round number, e.g. 7", alias="round"),
 ) -> list[PredictionOut]:
-    repo = get_repository()
-    try:
-        return compute_predictions(season, round, repo, _get_store())
-    except FileNotFoundError as exc:
+    cached = _get_store().get(season, round)
+    if not cached:
         raise HTTPException(
             status_code=503,
             detail=(
-                f"Model not available ({exc}). "
-                "Train one with: python -m fantasy_coach train-logistic"
+                f"No cached predictions for season {season} round {round}. "
+                "The precompute job runs Tue 09:00 AEST and Thu 06:00 AEST. "
+                "Retry in a few minutes or trigger it manually with "
+                "`gcloud run jobs execute fantasy-coach-precompute`."
             ),
-        ) from exc
-    finally:
-        if hasattr(repo, "close"):
-            repo.close()
+        )
+    return cached

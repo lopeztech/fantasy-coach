@@ -18,11 +18,13 @@ from fastapi.testclient import TestClient
 from fantasy_coach.app import app
 from fantasy_coach.features import extract_match_features
 from fantasy_coach.predictions import (
+    FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
     TeamInfo,
     _feature_hash,
     compute_predictions,
+    get_prediction_store,
 )
 from fantasy_coach.storage.sqlite import SQLiteRepository
 
@@ -300,50 +302,207 @@ def _reset_app_store():
     app_module._store = None
 
 
-def _endpoint_patches(tmp_path: Path):
-    """Patch both IO sinks the endpoint touches so tests stay hermetic."""
-    return (
-        patch("fantasy_coach.app.get_repository", return_value=MagicMock()),
-        patch("fantasy_coach.app._get_store", return_value=PredictionStore(path=tmp_path / "p.db")),
+def test_compute_force_bypasses_cache_and_rescrapes(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    """``force=True`` makes the precompute Job re-scrape even when predictions
+    are already cached — so team-list changes between Tue/Thu runs land."""
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    # Pre-populate the cache with a stale prediction for the same round.
+    match = extract_match_features(raw_match)
+    stale = PredictionOut(
+        matchId=match.match_id,
+        home=TeamInfo(id=match.home.team_id, name=match.home.name),
+        away=TeamInfo(id=match.away.team_id, name=match.away.name),
+        kickoff=match.start_time.isoformat(),
+        predictedWinner="home",
+        homeWinProbability=0.99,  # clearly a stale / sentinel value
+        modelVersion="stale",
+        featureHash="stale",
     )
+    store.put(2026, 8, [stale])
+
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+    mock_model = _make_mock_model(0.42)
+    model_path = tmp_path / "model.joblib"
+    model_path.write_bytes(b"fake-model-bytes")
+
+    with patch("fantasy_coach.predictions.load_model", return_value=mock_model):
+        result = compute_predictions(
+            2026,
+            8,
+            sqlite_repo,
+            store,
+            model_path=model_path,
+            fetch_round_fn=mock_round,
+            fetch_match_fn=mock_match,
+            force=True,
+        )
+
+    mock_round.assert_called_once()  # force bypassed the cache and actually scraped
+    assert len(result) == 1
+    # Fresh computation wins over the stale cache entry.
+    assert result[0].homeWinProbability == 0.42
+    assert result[0].modelVersion != "stale"
 
 
-def test_endpoint_returns_503_when_no_model(client: TestClient, tmp_path: Path) -> None:
-    p1, p2 = _endpoint_patches(tmp_path)
-    with (
-        p1,
-        p2,
-        patch(
-            "fantasy_coach.app.compute_predictions",
-            side_effect=FileNotFoundError(tmp_path / "missing.joblib"),
-        ),
-    ):
+def test_endpoint_returns_503_when_cache_empty(client: TestClient, tmp_path: Path) -> None:
+    """The endpoint no longer scrapes; an empty cache is a 503 with retry hint."""
+    empty_store = PredictionStore(path=tmp_path / "p.db")
+    with patch("fantasy_coach.app._get_store", return_value=empty_store):
         response = client.get("/predictions?season=2026&round=8")
     assert response.status_code == 503
+    assert "precompute" in response.json()["detail"].lower()
 
 
-def test_endpoint_returns_predictions(client: TestClient, tmp_path: Path) -> None:
+# ---------------------------------------------------------------------------
+# FirestorePredictionStore — in-memory fake client round-trip
+# ---------------------------------------------------------------------------
+
+
+class _FakeDocRef:
+    def __init__(self, store: dict, key: tuple[str, str]) -> None:
+        self._store = store
+        self._key = key
+
+    def set(self, data: dict) -> None:
+        self._store[self._key] = dict(data)
+
+    def get(self):
+        class _Snap:
+            def __init__(self, data: dict | None) -> None:
+                self._data = data
+
+            @property
+            def exists(self) -> bool:
+                return self._data is not None
+
+            def to_dict(self) -> dict | None:
+                return self._data
+
+        return _Snap(self._store.get(self._key))
+
+
+class _FakeCollection:
+    def __init__(self, store: dict, name: str) -> None:
+        self._store = store
+        self._name = name
+
+    def document(self, doc_id: str) -> _FakeDocRef:
+        return _FakeDocRef(self._store, (self._name, doc_id))
+
+
+class _FakeFirestoreClient:
+    def __init__(self) -> None:
+        self._store: dict = {}
+
+    def collection(self, name: str) -> _FakeCollection:
+        return _FakeCollection(self._store, name)
+
+
+def test_firestore_prediction_store_round_trip() -> None:
+    store = FirestorePredictionStore(client=_FakeFirestoreClient())
+    preds = [
+        PredictionOut(
+            matchId=1,
+            home=TeamInfo(id=10, name="Home"),
+            away=TeamInfo(id=20, name="Away"),
+            kickoff="2026-05-01T08:00:00+00:00",
+            predictedWinner="home",
+            homeWinProbability=0.6,
+            modelVersion="v1",
+            featureHash="fh1",
+        ),
+        PredictionOut(
+            matchId=2,
+            home=TeamInfo(id=30, name="A"),
+            away=TeamInfo(id=40, name="B"),
+            kickoff="2026-05-02T08:00:00+00:00",
+            predictedWinner="away",
+            homeWinProbability=0.3,
+            modelVersion="v1",
+            featureHash="fh1",
+        ),
+    ]
+    store.put(2026, 8, preds)
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 2
+    assert loaded[0].matchId == 1
+    assert loaded[0].homeWinProbability == 0.6
+    assert loaded[1].matchId == 2
+
+
+def test_firestore_prediction_store_get_empty_returns_empty_list() -> None:
+    store = FirestorePredictionStore(client=_FakeFirestoreClient())
+    assert store.get(2026, 8) == []
+
+
+def test_firestore_prediction_store_put_overwrites() -> None:
+    """A second put for the same (season, round) replaces the prior entry
+    — load-bearing for ``--force`` semantics on the Job."""
+    store = FirestorePredictionStore(client=_FakeFirestoreClient())
+    p1 = PredictionOut(
+        matchId=1,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.9,
+        modelVersion="v1",
+        featureHash="fh1",
+    )
+    store.put(2026, 8, [p1])
+    # Second put with same key should replace, not append.
+    p2 = p1.model_copy(update={"homeWinProbability": 0.1, "predictedWinner": "away"})
+    store.put(2026, 8, [p2])
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 1
+    assert loaded[0].homeWinProbability == 0.1
+
+
+def test_get_prediction_store_factory_defaults_to_sqlite(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("STORAGE_BACKEND", raising=False)
+    monkeypatch.setenv("FANTASY_COACH_PREDICTIONS_DB_PATH", str(tmp_path / "p.db"))
+    store = get_prediction_store()
+    assert isinstance(store, PredictionStore)
+
+
+def test_get_prediction_store_factory_picks_firestore(monkeypatch) -> None:
+    """``STORAGE_BACKEND=firestore`` wires the factory to FirestorePredictionStore."""
+    monkeypatch.setenv("STORAGE_BACKEND", "firestore")
+    # Avoid actually constructing the real google.cloud.firestore client.
+    with patch(
+        "fantasy_coach.predictions.FirestorePredictionStore",
+        return_value=MagicMock(spec=FirestorePredictionStore),
+    ) as cls:
+        store = get_prediction_store()
+    cls.assert_called_once()
+    assert store is cls.return_value
+
+
+def test_endpoint_returns_cached_predictions(client: TestClient, tmp_path: Path) -> None:
+    """Cache is populated by the precompute Job; endpoint just reads it."""
     raw = _load_fixture(UPCOMING_FIXTURE)
     match = extract_match_features(raw)
-    expected = [
-        PredictionOut(
-            matchId=match.match_id,
-            home=TeamInfo(id=match.home.team_id, name=match.home.name),
-            away=TeamInfo(id=match.away.team_id, name=match.away.name),
-            kickoff=match.start_time.isoformat(),
-            predictedWinner="home",
-            homeWinProbability=0.65,
-            modelVersion="abc123",
-            featureHash=_feature_hash(),
-        )
-    ]
-    p1, p2 = _endpoint_patches(tmp_path)
-    with p1, p2, patch("fantasy_coach.app.compute_predictions", return_value=expected):
+    cached = PredictionOut(
+        matchId=match.match_id,
+        home=TeamInfo(id=match.home.team_id, name=match.home.name),
+        away=TeamInfo(id=match.away.team_id, name=match.away.name),
+        kickoff=match.start_time.isoformat(),
+        predictedWinner="home",
+        homeWinProbability=0.65,
+        modelVersion="abc123",
+        featureHash=_feature_hash(),
+    )
+    populated_store = PredictionStore(path=tmp_path / "p.db")
+    populated_store.put(2026, 8, [cached])
+
+    with patch("fantasy_coach.app._get_store", return_value=populated_store):
         response = client.get("/predictions?season=2026&round=8")
 
     assert response.status_code == 200
     body = response.json()
-    assert isinstance(body, list)
     assert len(body) == 1
     pred = body[0]
     assert pred["matchId"] == match.match_id

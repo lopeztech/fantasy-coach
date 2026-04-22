@@ -87,7 +87,12 @@ class PredictionStore:
     def __init__(self, path: str | Path | None = None) -> None:
         db_path = Path(path or os.getenv(PREDICTIONS_DB_ENV, DEFAULT_PREDICTIONS_DB))
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
+        # check_same_thread=False because FastAPI serves the endpoint in a
+        # worker thread (run_in_threadpool) distinct from the one that
+        # instantiated the module-level store. Reads are serialised by the
+        # GIL and writes only come from the precompute Job (different
+        # process), so cross-thread sharing is safe here.
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_CREATE_TABLE)
 
@@ -146,6 +151,78 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
 
 
 # ---------------------------------------------------------------------------
+# Firestore-backed prediction store (production)
+# ---------------------------------------------------------------------------
+
+
+class FirestorePredictionStore:
+    """Firestore-backed prediction cache.
+
+    Document layout: one doc per ``(season, round)``, ID ``"{season}-{round}"``,
+    inside the ``predictions`` collection. The doc contains the full list of
+    ``PredictionOut`` entries for that round plus a ``createdAt`` timestamp.
+
+    This is the shape the precompute Job writes (twice a week) and the
+    ``/predictions`` endpoint reads (on every request). Using one doc per
+    round keeps both sides to a single Firestore RPC — cheaper than
+    per-match docs, and Firestore's 1 MiB doc limit is ~orders of magnitude
+    more than a round's prediction payload.
+    """
+
+    _COLLECTION = "predictions"
+
+    def __init__(
+        self,
+        client: Any = None,
+        project: str | None = None,
+        database: str = "(default)",
+    ) -> None:
+        if client is not None:
+            self._db = client
+        else:
+            from google.cloud import firestore  # noqa: PLC0415
+
+            self._db = firestore.Client(project=project, database=database)
+
+    def close(self) -> None:  # symmetry with PredictionStore; Firestore has no conn to close
+        return
+
+    def get(self, season: int, round_: int) -> list[PredictionOut]:
+        snap = self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).get()
+        if not snap.exists:
+            return []
+        data = snap.to_dict() or {}
+        return [PredictionOut(**p) for p in data.get("predictions", [])]
+
+    def put(self, season: int, round_: int, predictions: list[PredictionOut]) -> None:
+        self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).set(
+            {
+                "season": season,
+                "round": round_,
+                "predictions": [p.model_dump() for p in predictions],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+
+
+def _doc_id(season: int, round_: int) -> str:
+    return f"{season}-{round_}"
+
+
+def get_prediction_store() -> PredictionStore | FirestorePredictionStore:
+    """Factory: pick the prediction store backend from ``STORAGE_BACKEND``.
+
+    Mirrors ``fantasy_coach.config.get_repository`` so API + Job share one
+    switch. Defaults to SQLite for local dev; Cloud Run deploy sets
+    ``STORAGE_BACKEND=firestore``.
+    """
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        return FirestorePredictionStore()
+    return PredictionStore()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -182,18 +259,27 @@ def compute_predictions(
     model_path: Path | None = None,
     fetch_round_fn: Any = fetch_round,
     fetch_match_fn: Any = fetch_match_from_url,
+    force: bool = False,
 ) -> list[PredictionOut]:
     """Return predictions for season/round; compute and cache them on miss.
+
+    ``force=True`` bypasses the cache-hit short-circuit so the precompute
+    Job can refresh stored predictions when team lists change between
+    scheduled runs. On cache miss ``force`` is a no-op.
 
     Raises ``FileNotFoundError`` if the model artefact does not exist (caller
     should surface this as HTTP 503).
     """
-    cached = store.get(season, round_)
-    if cached:
-        logger.info(
-            "Cache hit: returning %d stored predictions for %d r%d", len(cached), season, round_
-        )
-        return cached
+    if not force:
+        cached = store.get(season, round_)
+        if cached:
+            logger.info(
+                "Cache hit: returning %d stored predictions for %d r%d",
+                len(cached),
+                season,
+                round_,
+            )
+            return cached
 
     # Resolve and load the model
     path = model_path or Path(os.getenv(MODEL_PATH_ENV, DEFAULT_MODEL_PATH))
