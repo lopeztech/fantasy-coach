@@ -10,6 +10,9 @@ export type FeatureContribution = {
   feature: string;
   value: number;
   contribution: number; // signed log-odds push
+  // Optional structured data for richer rendering (#124).
+  // For key_absence_diff: { home_missing: MissingPlayer[], away_missing: MissingPlayer[] }
+  detail?: Record<string, unknown> | null;
 };
 
 export type Prediction = {

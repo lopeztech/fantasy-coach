@@ -156,10 +156,11 @@ class FeatureBuilder:
         )
         # League-wide rolling totals for shrinkage prior.
         self._league_total: deque[int] = deque(maxlen=REF_WINDOW * 5)
-        # Per-team rolling record of ``{player_id: position}`` for each
-        # recent match's starting XIII. ``_key_absence`` reads this to
-        # compute the team's regular XIII + each regular's usual position.
-        self._team_starters: dict[int, deque[dict[int, str]]] = defaultdict(
+        # Per-team rolling record of ``{player_id: (position, display_name)}``
+        # for each recent match's starting XIII. ``_key_absence`` reads this
+        # to compute the regular XIII; ``_key_absence_detail`` also reads
+        # stored names to populate the per-contribution detail list.
+        self._team_starters: dict[int, deque[dict[int, tuple[str, str | None]]]] = defaultdict(
             lambda: deque(maxlen=KEY_ABSENCE_WINDOW)
         )
         # Wider rolling windows (10 matches) used as the opponent baseline
@@ -262,7 +263,7 @@ class FeatureBuilder:
         starts: Counter[int] = Counter()
         position_counts: dict[int, Counter[str]] = defaultdict(Counter)
         for match_starters in history:
-            for pid, pos in match_starters.items():
+            for pid, (pos, _name) in match_starters.items():
                 starts[pid] += 1
                 position_counts[pid][pos] += 1
 
@@ -275,6 +276,47 @@ class FeatureBuilder:
             regular_pos = position_counts[pid].most_common(1)[0][0]
             total += POSITION_WEIGHTS.get(regular_pos, 1.0)
         return total
+
+    def _key_absence_detail(self, team_id: int, current_players: list[PlayerRow]) -> list[dict]:
+        """Return detail rows for regular starters absent from today's XIII.
+
+        Each row: ``{player_id, name, position, weight}``. Used to populate
+        the ``key_absence_diff`` contribution's ``detail`` field so the UI
+        can render "Missing Ilias (Halfback)" instead of a raw feature value.
+        """
+        history = self._team_starters.get(team_id)
+        if not history:
+            return []
+        current_starters = {p.player_id for p in current_players if p.is_on_field}
+        if not current_starters:
+            return []
+
+        starts: Counter[int] = Counter()
+        position_counts: dict[int, Counter[str]] = defaultdict(Counter)
+        name_latest: dict[int, str | None] = {}
+        for match_starters in history:
+            for pid, (pos, name) in match_starters.items():
+                starts[pid] += 1
+                position_counts[pid][pos] += 1
+                if name is not None:
+                    name_latest[pid] = name
+
+        result = []
+        for pid, count in starts.items():
+            if count < KEY_ABSENCE_REGULAR_MIN_STARTS:
+                continue
+            if pid in current_starters:
+                continue
+            regular_pos = position_counts[pid].most_common(1)[0][0]
+            result.append(
+                {
+                    "player_id": pid,
+                    "name": name_latest.get(pid),
+                    "position": regular_pos,
+                    "weight": POSITION_WEIGHTS.get(regular_pos, 1.0),
+                }
+            )
+        return result
 
     def _referee_features(self, referee_id: int | None) -> tuple[float, float, float]:
         """Return (ref_avg_total_points, ref_home_penalty_diff, missing_referee).
@@ -422,15 +464,24 @@ def build_training_frame(
     )
 
 
-def _starters_by_position(players: list[PlayerRow]) -> dict[int, str]:
-    """Return ``{player_id: position}`` for players flagged ``is_on_field``.
+def _starters_by_position(players: list[PlayerRow]) -> dict[int, tuple[str, str | None]]:
+    """Return ``{player_id: (position, display_name)}`` for starting XIII.
 
     Used by ``FeatureBuilder._key_absence`` to track each team's recent
     starting XIIIs. Players without a position are skipped; players with
     ``is_on_field=None`` (pre-team-list-drop scrape, or older data missing
     the flag) are also skipped — no signal is better than wrong signal.
+    Display name is ``"First Last"`` when both fields are present, ``None``
+    when neither name field was scraped (rare for historical data).
     """
-    return {p.player_id: p.position for p in players if p.is_on_field and p.position is not None}
+    result: dict[int, tuple[str, str | None]] = {}
+    for p in players:
+        if not p.is_on_field or p.position is None:
+            continue
+        parts = [p.first_name, p.last_name]
+        name_str = " ".join(x for x in parts if x) or None
+        result[p.player_id] = (p.position, name_str)
+    return result
 
 
 def _is_complete(match: MatchRow) -> bool:

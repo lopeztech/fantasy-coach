@@ -77,11 +77,18 @@ class FeatureContribution(BaseModel):
     plain-English labels per ``feature``. Only emitted for logistic models
     today (see ``_compute_contributions``); other model types get
     ``contributions`` omitted so the UI degrades gracefully.
+
+    ``detail`` carries optional per-feature structured data for richer UI
+    rendering. Currently only populated for ``key_absence_diff``:
+    ``{"home_missing": [{player_id, name, position, weight}, ...],
+       "away_missing": [{...}, ...]}``.
+    Older predictions that pre-date this field always have ``detail=None``.
     """
 
     feature: str  # matches a FEATURE_NAMES entry
     value: float  # raw (pre-scaling) feature value
     contribution: float  # signed log-odds contribution
+    detail: dict | None = None
 
 
 class PredictionOut(BaseModel):
@@ -351,7 +358,12 @@ def _record_team_list_snapshots(team_list_repo: Any, row: MatchRow) -> None:
 
 
 def _compute_contributions(
-    loaded: Any, x: np.ndarray, *, top_k: int = 5
+    loaded: Any,
+    x: np.ndarray,
+    *,
+    builder: Any = None,
+    match: Any = None,
+    top_k: int = 5,
 ) -> list[FeatureContribution] | None:
     """Return top-K signed log-odds contributions for a logistic pipeline.
 
@@ -361,6 +373,15 @@ def _compute_contributions(
     logistic model. Calibrated probabilities apply a monotone transform on
     top, so the ordering of contributions stays meaningful as "which features
     pushed hardest" even though the absolute sum no longer equals logit(p).
+
+    Sentinel values are filtered before ranking so that uninformative defaults
+    (e.g. ``venue_avg_total_points=0`` when no venue history exists, or
+    ``missing_weather=0`` meaning "weather available") never occupy a top-K
+    slot. Filtered features are excluded entirely; remaining slots are filled
+    from the non-sentinel features by descending |contribution|.
+
+    ``builder`` + ``match`` are optional; when provided, ``key_absence_diff``
+    gains a ``detail`` dict with the names and positions of missing regulars.
 
     Returns ``None`` for non-logistic artefacts (ensemble/xgboost). Callers
     should ``p.contributions = result`` either way — the UI hides its reasons
@@ -391,15 +412,58 @@ def _compute_contributions(
     safe_scale = np.where(scale == 0.0, 1.0, scale)
     contributions = coef * (raw - mean) / safe_scale
 
-    top_idx = np.argsort(-np.abs(contributions))[:top_k]
-    return [
-        FeatureContribution(
-            feature=feature_names[i],
-            value=round(float(raw[i]), 6),
-            contribution=round(float(contributions[i]), 4),
+    # Build sentinel mask: True = keep, False = drop before top-K selection.
+    # This prevents default-value features from wasting a contributions slot.
+    feat_idx = {f: i for i, f in enumerate(feature_names)}
+    mr_idx = feat_idx.get("missing_referee")
+    keep = np.ones(len(feature_names), dtype=bool)
+    for i, fname in enumerate(feature_names):
+        v = float(raw[i])
+        if fname == "is_home_field":
+            # Constant for every match; never discriminatory.
+            keep[i] = False
+        elif fname in ("missing_weather", "missing_referee") and v == 0.0:
+            # "Weather available" / "Referee confirmed" — no issue, not signal.
+            keep[i] = False
+        elif fname == "venue_avg_total_points" and v == 0.0:
+            # No venue history yet; sentinel default, not a real measurement.
+            keep[i] = False
+        elif fname == "venue_home_win_rate" and v == 0.5:
+            # Neutral prior when no venue history — not a real measurement.
+            keep[i] = False
+        elif (
+            fname in ("ref_avg_total_points", "ref_home_penalty_diff")
+            and mr_idx is not None
+            and raw[mr_idx] == 1.0
+        ):
+            # When referee is unknown, ref features fall back to league-mean
+            # defaults; they carry no referee-specific signal.
+            keep[i] = False
+
+    candidate_idx = np.where(keep)[0]
+    if len(candidate_idx) == 0:
+        return []
+    order = np.argsort(-np.abs(contributions[candidate_idx]))
+    top_idx = candidate_idx[order[:top_k]]
+
+    result = []
+    for i in top_idx:
+        fname = feature_names[i]
+        detail: dict | None = None
+        if fname == "key_absence_diff" and builder is not None and match is not None:
+            detail = {
+                "home_missing": builder._key_absence_detail(match.home.team_id, match.home.players),
+                "away_missing": builder._key_absence_detail(match.away.team_id, match.away.players),
+            }
+        result.append(
+            FeatureContribution(
+                feature=fname,
+                value=round(float(raw[i]), 6),
+                contribution=round(float(contributions[i]), 4),
+                detail=detail,
+            )
         )
-        for i in top_idx
-    ]
+    return result
 
 
 def _build_inference_state(history: list[MatchRow]) -> FeatureBuilder:
@@ -520,7 +584,7 @@ def compute_predictions(
                 homeWinProbability=prob,
                 modelVersion=mv,
                 featureHash=fh,
-                contributions=_compute_contributions(loaded, x),
+                contributions=_compute_contributions(loaded, x, builder=builder, match=match),
             )
         )
 

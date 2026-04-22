@@ -32,9 +32,11 @@ export function labelFor(
 ): ContributionLabel {
   const { feature, value, contribution } = c;
   const favours = favouredBy(contribution);
-  const text = describe(feature, value, contribution, home, away);
+  const text = describe(feature, value, contribution, home, away, c.detail);
   return { text, favours };
 }
+
+type MissingPlayer = { name: string | null; position: string };
 
 function describe(
   feature: string,
@@ -42,6 +44,7 @@ function describe(
   contribution: number,
   home: string,
   away: string,
+  detail?: Record<string, unknown> | null,
 ): string {
   const mag = Math.abs(value);
   const rounded = (n: number, d = 1) => n.toFixed(d).replace(/\.0$/, "");
@@ -115,6 +118,22 @@ function describe(
     case "form_diff_pa_adjusted": {
       const who = teamFavoured(-value, home, away);
       return `${who} conceding ${rounded(Math.abs(value))} fewer points relative to opponent's scoring baseline`;
+    }
+    case "key_absence_diff": {
+      if (value === 0) return "No key player absences for either side";
+      // value > 0 → home missing more (hurts home); value < 0 → away missing more.
+      const affectedTeam = value > 0 ? home : away;
+      const missingKey = value > 0 ? "home_missing" : "away_missing";
+      const missing = detail?.[missingKey] as MissingPlayer[] | undefined;
+      if (missing && missing.length > 0) {
+        const first = missing[0];
+        const playerStr = first.name
+          ? `${first.name} (${first.position})`
+          : first.position;
+        if (missing.length === 1) return `${affectedTeam} missing ${playerStr}`;
+        return `${affectedTeam} missing ${playerStr} and ${missing.length - 1} other${missing.length > 2 ? "s" : ""}`;
+      }
+      return `${affectedTeam} missing key player${Math.abs(value) > 1 ? "s" : ""}`;
     }
     default:
       // Fallback for unknown feature names (e.g. future feature additions).
