@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth";
 import { AuthButton } from "./components/AuthButton";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 export default function App() {
   return (
@@ -14,7 +15,10 @@ export default function App() {
           <Link to="/" className="brand">
             Fantasy Coach
           </Link>
-          <AuthButton />
+          <div className="header-controls">
+            <ThemeToggle />
+            <AuthButton />
+          </div>
         </header>
         <main className="app-main">
           <Outlet />
