@@ -172,9 +172,7 @@ def test_ensure_model_raises_when_missing_and_no_gcs_uri(
         _ensure_model(tmp_path / "missing.joblib")
 
 
-def test_ensure_model_downloads_from_gcs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ensure_model_downloads_from_gcs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "subdir" / "logistic.joblib"
     monkeypatch.setenv(
         "FANTASY_COACH_MODEL_GCS_URI",
