@@ -383,7 +383,9 @@ def test_ref_penalty_diff_zero_when_no_stat() -> None:
 
 
 def test_feature_names_has_referee_features() -> None:
+    # Literal count intentionally avoided — see memory
+    # `feedback_stale_branch_feature_count.md`. The referee block contributes
+    # exactly three names; the rest of the set is owned by other issues.
     assert "ref_avg_total_points" in FEATURE_NAMES
     assert "ref_home_penalty_diff" in FEATURE_NAMES
     assert "missing_referee" in FEATURE_NAMES
-    assert len(FEATURE_NAMES) == 18

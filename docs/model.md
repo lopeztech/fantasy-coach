@@ -35,6 +35,81 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `ref_avg_total_points` | Rolling-20 average total points for matches officiated by this referee; shrunk toward league mean for < 10 prior matches. | Some referees blow more penalties/restarts affecting scoring pace. |
 | `ref_home_penalty_diff` | Rolling-20 average (home − away) Penalties Conceded for this referee; `0.0` when unavailable. | Captures whether a referee tends to penalise the home or away team more often. |
 | `missing_referee` | `1.0` when referee ID is absent (upcoming fixtures or pre-2026 data).                                   | Explicit missing-data flag. |
+| `key_absence_diff` | Position-weighted count of this team's "regular" starters missing from the current XIII, home minus away. See "Position weighting" below. | A team missing its halfback or hooker measurably underperforms — a far bigger deal than missing a bench forward. |
+
+### Position weighting (#27)
+
+`feature_engineering.POSITION_WEIGHTS` assigns per-position importance used
+by `key_absence_diff`. The ratios are expert-prior, informed by consensus
+rugby-league analytics that primary playmakers (7, 9) and last-line defenders
+(1) are the highest-leverage positions on the field; exact values are
+low-stakes because the logistic coefficient normalises scale, but the
+*ratios* matter.
+
+| Position | Weight | Why |
+|----------|--------|-----|
+| Halfback (7) | 3.0 | Primary playmaker — sets attacking shape, controls kicks, most irreplaceable. |
+| Hooker (9) | 2.5 | Dummy-half distribution + middle defensive reads. |
+| Fullback (1) | 2.5 | Last line of defence + kick-return / counter-attack engine. |
+| Five-Eighth (6) | 2.0 | Secondary playmaker, often carries the running game. |
+| Lock (13) | 1.5 | Middle forward engine, frequently team captain / leader. |
+| Centre (3, 4) | 1.5 | Defensive reads + attacking shape on the edges. |
+| 2nd Row (11, 12) | 1.2 | Middle forward workload; more interchangeable than locks. |
+| Prop (8, 10) | 1.0 | Rotated role — bench cover is plentiful. |
+| Winger (2, 5) | 1.0 | Impactful on the day but replaceable across rounds. |
+| Interchange (14–17) | 0.5 | Bench is inherently rotation-heavy; less signal per change. |
+
+"Regular starter" = a player who started in ≥ 2 of the team's last 5
+completed matches (`KEY_ABSENCE_REGULAR_MIN_STARTS` / `KEY_ABSENCE_WINDOW`).
+Each regular carries their *most common* starting position in that window;
+that's the position the weight table looks up. Feature returns `0.0` before
+a team has enough history (first few rounds) and when the current scrape
+has no `is_on_field` flag (pre-team-list-drop — no signal rather than
+false signal).
+
+### Ablation notes — key-absence feature (#27)
+
+Walk-forward evaluation on the 2024+2025 refreshed DB (424 predictions),
+comparing logistic with/without the `key_absence_diff` column using the
+same DB state (column zeroed in the "without" run rather than physically
+dropped, so FEATURE_NAMES order is stable):
+
+| Metric   | Without | With (position-weighted) | Δ vs without |
+|----------|--------:|-------------------------:|-------------:|
+| accuracy | 0.5401  | 0.5519                   | **+0.0118** |
+| log_loss | 0.7831  | 0.7965                   | +0.0133 (worse) |
+| brier    | 0.2710  | 0.2740                   | +0.0030 (worse) |
+
+**Result: mixed tradeoff — accuracy up, calibration down.** The feature
+converts some close calls into correct picks (~5 additional correct out of
+424) but when the model is wrong, it's more wrong — the classic
+"bolder-but-spikier" signature of a high-coefficient binary-ish feature.
+
+Coefficient inspection on the retrained model puts `key_absence_diff` at
+rank #4 in magnitude (−0.109) with the expected negative sign — the model
+*did* learn a real signal from the feature, it just spends that signal on
+being more decisive.
+
+A secondary ablation with **flat weights** (all positions = 1.0, i.e. the
+feature degenerates to "count of missing regular starters") gave:
+
+| Metric   | Without | With (flat) | Δ vs without |
+|----------|--------:|------------:|-------------:|
+| accuracy | 0.5401  | 0.5495      | +0.0094 |
+| log_loss | 0.7831  | 0.7928      | +0.0097 (worse) |
+| brier    | 0.2710  | 0.2725      | +0.0015 (worse) |
+
+Flat weights sit on a slightly better point in the accuracy-vs-calibration
+tradeoff, but still regress log-loss. The position-weighted scheme is kept
+because (a) the issue AC explicitly asks for it, and (b) the extra
+accuracy is load-bearing for the SPA's "Pick: X" headline.
+
+**Known limitation / follow-up:** 424 predictions is a small sample, and
+walk-forward refits from scratch per round, so early-season rounds — when
+every team's "regular XIII" is still stabilising — noise the training
+signal. Revisit once we have a second full season of is-on-field data
+(currently 2024+2025 only; 2023 would add another 200 matches of warm-up
+history). Weight ratio tuning is filed as a follow-up.
 
 ### Ablation notes — referee features (#57)
 
@@ -70,7 +145,7 @@ feature vector; revisit with at least one full season of referee-annotated match
 ## XGBoost model (#25)
 
 An XGBClassifier is available at `fantasy_coach.models.xgboost_model` as an alternative
-to logistic regression. It uses the same 18-feature input and is trained with
+to logistic regression. It uses the same feature set (see the table above) and is trained with
 time-series-aware hyperparameter search (`GridSearchCV` + `TimeSeriesSplit(n_splits=3)`)
 over `max_depth ∈ {3, 4, 5}`, `n_estimators ∈ {100, 200}`, `learning_rate ∈ {0.05, 0.1}`.
 
