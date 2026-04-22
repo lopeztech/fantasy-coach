@@ -62,7 +62,7 @@ gcloud run deploy "$SERVICE" \
     --min-instances 0 \
     --max-instances 2 \
     --cpu 1 \
-    --memory 256Mi \
+    --memory 512Mi \
     --concurrency 80 \
     --timeout 120 \
     --cpu-throttling \
@@ -85,7 +85,7 @@ don't drift.
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
-| `--memory` | `256Mi` | Observed p99 RSS < 100 MiB; a small logistic joblib loads in a few ms. 256Mi gives ~2.5× headroom while halving the per-instance memory bill. |
+| `--memory` | `512Mi` | Observed p99 RSS < 100 MiB, so 256Mi would fit — but gen2 execution environment has a 512Mi minimum, enforced by `gcloud run deploy`. Kept at 512Mi rather than downgrade to gen1. |
 | `--cpu` | `1` | One request at a time fits well under one vCPU; the logistic predict is µs-scale. |
 | `--concurrency` | `80` | Cloud Run's default; pinned explicitly so TF/deploy can't silently drift. Revisit after we have real traffic; 200 may be viable for a mostly-I/O endpoint. |
 | `--timeout` | `120` | Down from the 300s default. First request of a round does a live scrape of nrl.com (~1s/fixture × 8 fixtures + overhead), so we can't safely cut to the AC's 60s yet — drop once #65 lands and scrape is off-path. |
