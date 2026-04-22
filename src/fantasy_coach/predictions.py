@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from fantasy_coach.feature_engineering import FEATURE_NAMES, FeatureBuilder
 from fantasy_coach.features import MatchRow, extract_match_features
-from fantasy_coach.models.logistic import load_model
+from fantasy_coach.models.loader import load_model
 from fantasy_coach.scraper import fetch_match_from_url, fetch_round
 
 logger = logging.getLogger(__name__)

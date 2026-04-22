@@ -25,12 +25,20 @@ that base predictor instead — the ensemble has learned noise, not signal.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
+import joblib
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.linear_model import LogisticRegression
+
+from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+if TYPE_CHECKING:
+    from fantasy_coach.models.loader import Model
 
 EnsembleMode = Literal["weighted", "stacked"]
 
@@ -158,6 +166,87 @@ def fit_ensemble(
     if improvement < min_improvement:
         model.fallback_to_base = best_base
     return model
+
+
+@dataclass(frozen=True)
+class LoadedEnsemble:
+    """Ensemble artifact wrapper that satisfies the ``Model`` protocol.
+
+    Holds the fitted ``EnsembleModel`` combiner plus one already-loaded base
+    model per column. At inference, scores each base on the raw feature
+    matrix, stacks their probabilities, and passes the result through the
+    ensemble combiner (honouring the kill switch).
+    """
+
+    feature_names: tuple[str, ...]
+    ensemble: EnsembleModel
+    base_models: tuple[Model, ...]
+
+    def predict_home_win_prob(self, X: np.ndarray) -> np.ndarray:
+        if X.shape[1] != len(self.feature_names):
+            raise ValueError(
+                f"Expected {len(self.feature_names)} features "
+                f"({self.feature_names}), got {X.shape[1]}"
+            )
+        base_probs = np.column_stack(
+            [np.asarray(base.predict_home_win_prob(X), dtype=float) for base in self.base_models]
+        )
+        return self.ensemble.predict_home_win_prob(base_probs)
+
+
+def save_ensemble(
+    path: Path | str,
+    *,
+    ensemble: EnsembleModel,
+    base_blobs: Sequence[dict],
+    feature_names: tuple[str, ...] = FEATURE_NAMES,
+) -> None:
+    """Persist an ensemble artifact bundling its fitted combiner + bases.
+
+    ``base_blobs`` is a sequence of per-base dicts already shaped for the
+    per-model ``_from_blob`` loaders (each carries its own ``model_type``).
+    Column order must match ``ensemble.base_model_names``.
+    """
+    if len(base_blobs) != len(ensemble.base_model_names):
+        raise ValueError(
+            f"Got {len(base_blobs)} base blobs but ensemble expects "
+            f"{len(ensemble.base_model_names)} columns"
+        )
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(
+        {
+            "model_type": "ensemble",
+            "feature_names": tuple(feature_names),
+            "ensemble": ensemble,
+            "base_blobs": list(base_blobs),
+        },
+        path,
+    )
+
+
+def _from_blob(blob: dict) -> LoadedEnsemble:
+    from fantasy_coach.models.loader import _from_blob as _recurse
+
+    feature_names = tuple(blob.get("feature_names", ()))
+    if feature_names != FEATURE_NAMES:
+        raise RuntimeError(
+            f"Ensemble trained with features {feature_names}, "
+            f"current code expects {FEATURE_NAMES}. Retrain before loading."
+        )
+    ensemble = blob["ensemble"]
+    base_blobs = blob.get("base_blobs") or []
+    if len(base_blobs) != len(ensemble.base_model_names):
+        raise RuntimeError(
+            f"Ensemble artifact has {len(base_blobs)} base blobs but "
+            f"{len(ensemble.base_model_names)} base columns — mismatch"
+        )
+    bases = tuple(_recurse(b) for b in base_blobs)
+    return LoadedEnsemble(
+        feature_names=feature_names,
+        ensemble=ensemble,
+        base_models=bases,
+    )
 
 
 def _fit_convex_weights(base_probs: np.ndarray, y: np.ndarray) -> np.ndarray:
