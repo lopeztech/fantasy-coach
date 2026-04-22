@@ -51,7 +51,13 @@ jobs:
         run: |
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/api:${GITHUB_SHA::7}"
           echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
-          docker buildx build --platform linux/amd64 -t "$IMAGE" --push .
+          docker buildx build \
+            --platform linux/amd64 \
+            -t "$IMAGE" \
+            --push \
+            --cache-from type=gha \
+            --cache-to   type=gha,mode=max \
+            .
 
       - name: Deploy revision
         env:
