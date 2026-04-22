@@ -3,11 +3,72 @@
 Running costs for the fantasy-coach stack, how we keep them low, and what
 to do when a number moves in the wrong direction.
 
-> This doc is thin today — most of the infrastructure scales to zero and
-> GCP credits cover the rest. Budget alerts, per-SKU dashboards, and a
-> real baseline come with #63 (`projects/fantasy-coach/billing.tf` and
-> Billing Export → BigQuery). Anything not filled in here is a known gap,
-> not forgotten.
+> Most of the infrastructure scales to zero and GCP credits cover the
+> rest today, so real-dollar costs are near-zero. This doc is the
+> early-warning plumbing for when credits run out or usage moves.
+
+## Baseline (April 2026)
+
+The stack is currently billed in three components. All numbers are
+projections — real dollars will come from the BigQuery billing export
+once it's manually enabled (see below).
+
+| Component | Driver | Expected monthly cost at current traffic |
+|-----------|--------|-------------------------------------------|
+| Cloud Run (API) | 0 → low; scale-to-zero; 256Mi × concurrency 80 | < $1 |
+| Firestore | Free tier (1 GiB storage, 50K reads/day) | $0 |
+| Artifact Registry | One image tag per deploy, ~1 GiB total | < $0.10 |
+| Cloud Logging | Default retention; low request volume | $0 (free tier) |
+| Vertex AI (Gemini) | Not yet wired (tracked by #22) | $0 |
+| Egress | SPA bundle from Firebase Hosting; low traffic | $0 (free tier) |
+
+Refresh these numbers by querying the BigQuery billing export dataset
+(`billing_export.gcp_billing_export_v1_<billing-account-id>`) once
+enabled — see the manual bootstrap step below.
+
+## Budget alerts
+
+A single project-wide budget is defined in
+[`lopeztech/platform-infra:projects/fantasy-coach/billing.tf`](https://github.com/lopeztech/platform-infra/blob/master/projects/fantasy-coach/billing.tf)
+via the shared `modules/budget`. Configuration lives in
+`projects/fantasy-coach/environments/prod/terraform.tfvars`:
+
+- **Monthly cap:** `$20` USD (generous alarm threshold given current
+  burn is < $1/mo — tighten later if real spend rises).
+- **Thresholds:** 50 %, 80 %, 100 % of current spend, plus
+  forecasted-100 %.
+- **Recipient:** `admin@lopezcloud.dev` (`notification_email`
+  variable). Routed via a `google_monitoring_notification_channel`
+  email channel, not the default IAM recipients.
+- **Rotation:** bump `monthly_budget_usd` in tfvars + re-apply. The
+  email address comes from the same tfvars, single source of truth.
+
+Slack webhook routing is an explicit follow-up — add a second
+notification channel to the `budget` module when we need it.
+
+## Per-SKU dashboard (manual bootstrap)
+
+Terraform manages the budget, but the per-SKU breakdown dashboard
+needs Billing Export → BigQuery turned on *at the billing-account
+level*. Enabling it requires `roles/billing.admin` on the billing
+account, which is outside `projects/fantasy-coach/`'s Terraform scope.
+One-time manual steps:
+
+1. **Enable the export** — Billing console → Billing export → BigQuery
+   export → pick project `fantasy-coach-lcd` and dataset name
+   `billing_export` (create on first run). Choose *Standard usage
+   cost* at minimum; *Detailed usage cost* if we need per-SKU
+   pricing later.
+2. **Label propagation** — Cloud Run already carries
+   `app=fantasy-coach`, `environment=prod`, `managed_by=terraform`
+   (see `cloudrun.tf`). Both the billing-account-level export and
+   BigQuery preserve these, so a Looker Studio panel can segment on
+   `labels.app` without us adding new tags.
+3. **Dashboard** — clone a Looker Studio billing template, point it at
+   the new dataset, save the public URL here once built.
+
+Until step 3 lands, per-SKU visibility lives in the Billing console's
+Reports view (filter by label `app=fantasy-coach`).
 
 ## Cloud Run right-sizing (April 2026)
 
