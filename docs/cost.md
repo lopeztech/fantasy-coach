@@ -95,3 +95,24 @@ The measurements above came from a ~13-hour window dominated by CI
 churn, not real user traffic. Revisit concurrency and memory once we
 have 30 days of real requests — concurrency especially may have room to
 go from 80 → 200 on a mostly-I/O endpoint. Tracked as a follow-up on #64.
+
+## Precompute Job vs on-request scrape (#65)
+
+The `/predictions` endpoint no longer scrapes on demand. A Cloud Run
+Job (`fantasy-coach-precompute`) runs the scrape + feature + predict
+pipeline twice a week — Tue 09:00 and Thu 06:00 AEST — and writes the
+round's predictions to Firestore. The API reads from the cache and
+returns 503 on miss.
+
+| Path | Before (on-request) | After (scheduled Job) |
+|------|---------------------|-----------------------|
+| Cloud Run billable time per round | ~30s per first-of-round request on the API instance (while it scrapes ~8 fixtures sequentially) | ~30s on the Job (one-shot container, CPU not throttled while running) — times 2 runs per round |
+| Tail latency to user | p99 dominated by the scrape on cache miss; first user of every round pays 30s+ | p99 is a Firestore doc-get (<100ms) |
+| Max-billable-CPU per stuck request | 120s timeout (deploy flag) | N/A — API path never scrapes |
+| Blast radius on scrape failure | Request returns 500 | Job fails, API still serves last-known predictions; Cloud Scheduler retries (2 retries, 30–300s backoff) |
+
+Net effect: real-dollar cost is a wash (Job instance time ≈ former
+on-request time, just moved), but p99 latency for users is an order of
+magnitude better and we gain a retry safety net. The scheduled Job also
+picks up team-list changes between Tue and Thu — the `--force` default
+re-scrapes even when a round already has cached predictions.

@@ -87,6 +87,21 @@ jobs:
           # the PredictionStore at Firestore (required once #65 landed; the
           # precompute Job and the API share cache state through Firestore).
 
+      - name: Update precompute Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-precompute
+        # The Job is created + fixed-configured by Terraform in platform-infra;
+        # only the image rotates per deploy. ``|| true`` tolerates first
+        # deployments to projects where platform-infra hasn't applied yet.
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra#65 not applied yet)."
+
       # The external /healthz smoke test has been dropped: `gcloud auth
       # print-identity-token` doesn't work with WIF-federated credentials
       # (they're OAuth2 access tokens, not OIDC ID tokens), and Cloud Run's
