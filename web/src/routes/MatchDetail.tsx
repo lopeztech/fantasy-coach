@@ -106,6 +106,8 @@ export default function MatchDetail() {
   );
 }
 
+const MOBILE_TOP = 3;
+
 function MatchDetailBody({ prediction }: { prediction: Prediction }) {
   const homePct = Math.round(prediction.homeWinProbability * 100);
   const awayPct = 100 - homePct;
@@ -114,6 +116,8 @@ function MatchDetailBody({ prediction }: { prediction: Prediction }) {
   const winnerPct = prediction.predictedWinner === "home" ? homePct : awayPct;
 
   const contributions = prediction.contributions ?? [];
+  const [expanded, setExpanded] = useState(false);
+  const hasExtra = contributions.length > MOBILE_TOP;
 
   return (
     <article className="match-detail">
@@ -144,13 +148,19 @@ function MatchDetailBody({ prediction }: { prediction: Prediction }) {
       </div>
 
       {contributions.length > 0 ? (
-        <section className="contributions" aria-labelledby="why-heading">
+        <section
+          className={`contributions${expanded ? " contributions--expanded" : ""}`}
+          aria-labelledby="why-heading"
+        >
           <h2 id="why-heading">Why this pick</h2>
           <ol className="contribution-list">
-            {contributions.map((c) => {
+            {contributions.map((c, idx) => {
               const label = labelFor(c, prediction.home.name, prediction.away.name);
               return (
-                <li key={c.feature} className={`contribution favours-${label.favours}`}>
+                <li
+                  key={c.feature}
+                  className={`contribution favours-${label.favours}${idx >= MOBILE_TOP ? " contribution--extra" : ""}`}
+                >
                   <span className="contribution-text">{label.text}</span>
                   <span
                     className="contribution-magnitude muted"
@@ -163,6 +173,17 @@ function MatchDetailBody({ prediction }: { prediction: Prediction }) {
               );
             })}
           </ol>
+          {hasExtra && (
+            <button
+              className="contributions-toggle"
+              onClick={() => setExpanded((e) => !e)}
+              aria-expanded={expanded}
+            >
+              {expanded
+                ? "Show fewer"
+                : `Show all ${contributions.length} factors`}
+            </button>
+          )}
           <p className="muted fine-print">
             Contributions are in log-odds units — higher magnitude means the feature pushed the
             probability harder in the direction shown.
