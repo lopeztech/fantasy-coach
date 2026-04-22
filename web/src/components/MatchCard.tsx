@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 
+import { TeamFormSparkline } from "./TeamFormSparkline";
 import { TipEntry } from "./TipEntry";
 import type { TipChoice } from "../tips";
-import type { Prediction } from "../types";
+import type { Prediction, TeamFormHistory } from "../types";
 
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
@@ -24,6 +25,8 @@ export function MatchCard({
   tip,
   savingTip,
   onTip,
+  homeForm,
+  awayForm,
 }: {
   prediction: Prediction;
   season: number;
@@ -32,6 +35,8 @@ export function MatchCard({
   tip?: TipChoice | null;
   savingTip?: boolean;
   onTip?: (choice: TipChoice) => void;
+  homeForm?: TeamFormHistory | null;
+  awayForm?: TeamFormHistory | null;
 }) {
   const p = prediction;
   const homePct = Math.round(p.homeWinProbability * 100);
@@ -57,6 +62,19 @@ export function MatchCard({
             {formatKickoff(p.kickoff)}
           </time>
         </header>
+
+        {(homeForm || awayForm) && (
+          <div className="form-sparklines" aria-hidden="false">
+            <TeamFormSparkline
+              matches={homeForm?.matches ?? []}
+              teamName={p.home.name}
+            />
+            <TeamFormSparkline
+              matches={awayForm?.matches ?? []}
+              teamName={p.away.name}
+            />
+          </div>
+        )}
 
         <div className="prob-bar" role="img" aria-label={`Home win probability ${homePct}%`}>
           <span

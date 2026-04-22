@@ -7,12 +7,52 @@ import { MatchCard } from "../components/MatchCard";
 import { RoundSelector } from "../components/RoundSelector";
 import { SignInRequired } from "../components/SignInRequired";
 import { getTipsByRound, saveTip, type TipChoice } from "../tips";
-import type { Prediction } from "../types";
+import type { Prediction, TeamFormHistory } from "../types";
+
+const FORM_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+function formCacheGet(teamId: number, season: number): TeamFormHistory | null {
+  try {
+    const raw = localStorage.getItem(`form:${season}:${teamId}`);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw) as { ts: number; data: TeamFormHistory };
+    if (Date.now() - ts > FORM_CACHE_TTL) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function formCacheSet(teamId: number, season: number, data: TeamFormHistory): void {
+  try {
+    localStorage.setItem(`form:${season}:${teamId}`, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // storage full — ignore
+  }
+}
+
+async function fetchTeamForm(
+  apiFetchFn: typeof apiFetch,
+  teamId: number,
+  season: number,
+): Promise<TeamFormHistory | null> {
+  const cached = formCacheGet(teamId, season);
+  if (cached) return cached;
+  try {
+    const data = await apiFetchFn<TeamFormHistory>(
+      `/teams/${teamId}/form?season=${season}&last=20`,
+    );
+    formCacheSet(teamId, season, data);
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 type Status =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ok"; predictions: Prediction[] };
+  | { kind: "ok"; predictions: Prediction[]; teamForm: Map<number, TeamFormHistory | null> };
 
 export default function Round() {
   const { season: seasonParam, round: roundParam } = useParams();
@@ -40,11 +80,18 @@ export default function Round() {
       apiFetch<Prediction[]>(`/predictions?season=${season}&round=${round}`),
       getTipsByRound(user.uid, season, round).catch(() => new Map<number, TipChoice>()),
     ])
-      .then(([predictions, loadedTips]) => {
-        if (!cancelled) {
-          setStatus({ kind: "ok", predictions });
-          setTips(loadedTips);
-        }
+      .then(async ([predictions, loadedTips]) => {
+        if (cancelled) return;
+        setTips(loadedTips);
+
+        const teamIds = [...new Set(predictions.flatMap((p) => [p.home.id, p.away.id]))];
+        const formResults = await Promise.all(
+          teamIds.map((id) => fetchTeamForm(apiFetch, id, season)),
+        );
+        if (cancelled) return;
+
+        const teamForm = new Map(teamIds.map((id, i) => [id, formResults[i]]));
+        setStatus({ kind: "ok", predictions, teamForm });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -116,6 +163,8 @@ export default function Round() {
               tip={tips.get(p.matchId) ?? null}
               savingTip={savingTip === p.matchId}
               onTip={(choice) => void handleTip(p.matchId, p.kickoff, choice)}
+              homeForm={status.teamForm.get(p.home.id)}
+              awayForm={status.teamForm.get(p.away.id)}
             />
           ))}
         </div>
