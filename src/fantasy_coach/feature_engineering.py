@@ -36,6 +36,7 @@ import numpy as np
 from fantasy_coach.features import MatchRow, PlayerRow
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
+from fantasy_coach.models.player_ratings import PlayerRatings
 from fantasy_coach.travel import travel_features
 from fantasy_coach.weather import parse_weather
 
@@ -70,6 +71,20 @@ FEATURE_NAMES = (
     # alongside the raw form features so the logistic can weight both.
     "form_diff_pf_adjusted",
     "form_diff_pa_adjusted",
+    # Availability-adjusted team strength (#109). Sum of per-player Elo-style
+    # ratings across the *named XIII + bench* this match, weighted by
+    # ``POSITION_WEIGHTS`` and a bench factor. Home − away. Unlike
+    # ``key_absence_diff`` this captures *quality* of the named lineup, not
+    # just whether regulars are missing — a rookie halfback in the starting
+    # XIII contributes less than a veteran, even though the absence feature
+    # doesn't distinguish them.
+    "player_strength_diff",
+    # Binary flag set to 1.0 when either team's players array is empty or
+    # ``is_on_field`` is universally ``None`` — happens for pre-team-list
+    # scrapes and older historical matches. Mirrors the ``missing_*`` flag
+    # pattern so the model learns a separate intercept for "no roster data"
+    # rather than imputing zero against the default rating.
+    "missing_player_strength",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -130,10 +145,19 @@ class FeatureBuilder:
     rebuilding the whole frame.
     """
 
-    def __init__(self, elo: Elo | None = None) -> None:
+    def __init__(
+        self,
+        elo: Elo | None = None,
+        *,
+        player_ratings: PlayerRatings | None = None,
+    ) -> None:
         # EloMOV promoted over plain Elo in #106: +2.36pp accuracy on the
         # 2024–2025 walk-forward baseline (plain Elo still available via Elo()).
         self.elo = elo or EloMOV()
+        # Per-player ratings (#109). Same transient-state contract as Elo:
+        # rebuilt on each FeatureBuilder instantiation from history; no
+        # separate persistence layer. See ``models.player_ratings``.
+        self.player_ratings = player_ratings or PlayerRatings()
         self._last_played: dict[int, datetime] = {}
         self._last_venue: dict[int, str | None] = {}
         self._points_for: dict[int, deque[int]] = defaultdict(lambda: deque(maxlen=ROLLING_WINDOW))
@@ -212,6 +236,9 @@ class FeatureBuilder:
         adj_pf_a = _avg(self._adj_points_for[a_id])
         adj_pa_h = _avg(self._adj_points_against[h_id])
         adj_pa_a = _avg(self._adj_points_against[a_id])
+        strength_h, has_home_roster = self._player_strength(match.home.players)
+        strength_a, has_away_roster = self._player_strength(match.away.players)
+        missing_strength = 0.0 if (has_home_roster and has_away_roster) else 1.0
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -234,7 +261,40 @@ class FeatureBuilder:
             key_abs_h - key_abs_a,
             adj_pf_h - adj_pf_a,
             adj_pa_h - adj_pa_a,
+            strength_h - strength_a,
+            missing_strength,
         ]
+
+    def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
+        """Return ``(composite, has_roster_data)`` for one team's current XIII.
+
+        ``has_roster_data`` is ``False`` (and composite is the default-rating
+        baseline) when the scrape carries no ``is_on_field`` flag anywhere —
+        older historical matches or pre-team-list-drop scrapes. Falling back
+        to the default rating rather than 0 means the feature's scaled value
+        stays near the training mean for these rows; ``missing_player_strength``
+        carries the "no data" signal separately so the model can learn a
+        distinct intercept.
+        """
+        if not players or not any(p.is_on_field is not None for p in players):
+            default = self.player_ratings.initial_rating
+            # Composite = sum of per-position weights × default rating; the
+            # diff between two such defaults is zero, which is the intended
+            # neutral contribution for no-data matches.
+            baseline = sum(POSITION_WEIGHTS.values()) * default
+            return baseline, False
+        starters = [
+            (p.player_id, p.position) for p in players if p.is_on_field and p.position is not None
+        ]
+        bench = [
+            (p.player_id, p.position)
+            for p in players
+            if p.is_on_field is False and p.position is not None
+        ]
+        composite = self.player_ratings.composite(
+            starters, bench, position_weights=POSITION_WEIGHTS
+        )
+        return composite, True
 
     def _key_absence(self, team_id: int, current_players: list[PlayerRow]) -> float:
         """Return Σ ``POSITION_WEIGHTS[pos]`` for regular starters missing today.
@@ -358,6 +418,7 @@ class FeatureBuilder:
             return
         if match.season != self._current_season:
             self.elo.regress_to_mean()
+            self.player_ratings.regress_to_mean()
             self._current_season = match.season
 
     def record(self, match: MatchRow) -> None:
@@ -412,6 +473,15 @@ class FeatureBuilder:
         # as skipping them entirely once the deque fills with real data.
         self._team_starters[h_id].append(_starters_info(match.home.players))
         self._team_starters[a_id].append(_starters_info(match.away.players))
+        # Update per-player ratings (#109). Skipped internally when either
+        # side's is_on_field is missing so we don't pollute the rating book
+        # with defaults; see ``PlayerRatings.update``.
+        self.player_ratings.update(
+            [(p.player_id, p.position, p.is_on_field) for p in match.home.players],
+            [(p.player_id, p.position, p.is_on_field) for p in match.away.players],
+            h_score,
+            a_score,
+        )
 
 
 def build_training_frame(

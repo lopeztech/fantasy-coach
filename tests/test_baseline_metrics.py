@@ -55,13 +55,18 @@ SEASONS = (2024, 2025)
 # eliminates extreme probabilities and gives better log_loss + Brier than
 # logistic (0.7110 vs 0.7978 log_loss; 0.2534 vs 0.2744 Brier) with similar
 # accuracy. Does not beat EloMOV on any metric.
+# #109 adds `player_strength_diff` + `missing_player_strength` — per-player
+# Elo-style ratings rolled up as an availability-aware composite. Logistic
+# numbers basically flat (0.5637 → 0.5519 acc / 0.7978 → 0.8026 log_loss);
+# XGBoost picks up the feature and gains +1.2pp accuracy (0.5637 → 0.5755)
+# at a small log_loss improvement too.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
-    "logistic": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7978, "brier": 0.2744},
-    "xgboost": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7687, "brier": 0.2720},
-    "skellam": {"n": 424, "accuracy": 0.5684, "log_loss": 0.7110, "brier": 0.2534},
+    "logistic": {"n": 424, "accuracy": 0.5519, "log_loss": 0.8026, "brier": 0.2750},
+    "xgboost": {"n": 424, "accuracy": 0.5755, "log_loss": 0.7657, "brier": 0.2699},
+    "skellam": {"n": 424, "accuracy": 0.5731, "log_loss": 0.7107, "brier": 0.2535},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
