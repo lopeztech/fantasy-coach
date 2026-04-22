@@ -107,6 +107,43 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    pc = sub.add_parser(
+        "precompute",
+        help=(
+            "Scrape + compute predictions and write them to the configured store. "
+            "Called by the Cloud Run Job twice a week so the API never scrapes "
+            "on the hot path."
+        ),
+    )
+    pc.add_argument(
+        "--season",
+        type=int,
+        default=None,
+        help="Season to precompute. Omit to autodetect the current year.",
+    )
+    pc.add_argument(
+        "--round",
+        type=int,
+        default=None,
+        help=(
+            "Round to precompute. Omit to autodetect the next upcoming round "
+            "(first round containing a fixture with matchState Upcoming/Pre)."
+        ),
+    )
+    pc.add_argument(
+        "--no-force",
+        action="store_true",
+        help=(
+            "Respect existing cached predictions instead of re-scraping. "
+            "Default is --force so scheduled runs pick up team-list changes."
+        ),
+    )
+    pc.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -119,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_train_logistic(args)
     if args.command == "evaluate":
         return _run_evaluate(args)
+    if args.command == "precompute":
+        return _run_precompute(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -204,6 +243,60 @@ def _run_evaluate(args: argparse.Namespace) -> int:
             f"acc={m['accuracy']:.3f} log_loss={m['log_loss']:.3f} brier={m['brier']:.3f}"
         )
     print(f"Report written to {args.report}")
+    return 0
+
+
+def _detect_upcoming_round(year: int) -> int | None:
+    """Return the first round in ``year`` with an unstarted fixture, or None.
+
+    Iterates ``fetch_round`` starting at round 1. ``matchState`` values
+    ``Upcoming`` and ``Pre`` both mean "hasn't kicked off yet". Capped at 30
+    rounds to cover regular season + finals; beyond that the season is done.
+    """
+    from fantasy_coach.scraper import fetch_round  # noqa: PLC0415
+
+    for round_ in range(1, 31):
+        payload = fetch_round(year, round_)
+        if payload is None:
+            continue
+        fixtures = payload.get("fixtures") or []
+        if any(f.get("matchState") in ("Upcoming", "Pre") for f in fixtures):
+            return round_
+    return None
+
+
+def _run_precompute(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.predictions import compute_predictions, get_prediction_store  # noqa: PLC0415
+
+    season = args.season or datetime.now(UTC).year
+    round_ = args.round
+    if round_ is None:
+        round_ = _detect_upcoming_round(season)
+        if round_ is None:
+            print(f"No upcoming round found in season {season} — nothing to precompute.")
+            return 0
+        print(f"Autodetected upcoming round: season={season} round={round_}")
+
+    repo = get_repository()
+    store = get_prediction_store()
+    try:
+        predictions = compute_predictions(
+            season,
+            round_,
+            repo,
+            store,
+            force=not args.no_force,
+        )
+    finally:
+        if hasattr(repo, "close"):
+            repo.close()
+        if hasattr(store, "close"):
+            store.close()
+
+    print(f"Precomputed {len(predictions)} predictions for season={season} round={round_}")
     return 0
 
 

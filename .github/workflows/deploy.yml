@@ -73,7 +73,7 @@ jobs:
             --port 8080 \
             --execution-environment gen2 \
             --service-account "fantasy-coach-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
-            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore" \
             --quiet
           # Auth model: Cloud Run IAM allows any caller in — the browser can't
           # mint a Google-signed OAuth2 ID token, so the alternative was an API
@@ -83,11 +83,9 @@ jobs:
           # Firebase ID token. The project ID value isn't sensitive, so plain
           # --set-env-vars is enough — Secret Manager storage lands with #16.
           #
-          # Re-add once platform-infra provisions Firestore (#15):
-          #   --set-env-vars "STORAGE_BACKEND=firestore" \
-          # Until then config.py defaults to a per-revision SQLite DB that the
-          # prediction endpoint can't populate, so /predictions returns 500
-          # until the Firestore migration lands. /healthz is unaffected.
+          # STORAGE_BACKEND=firestore points both the matches Repository and
+          # the PredictionStore at Firestore (required once #65 landed; the
+          # precompute Job and the API share cache state through Firestore).
 
       # The external /healthz smoke test has been dropped: `gcloud auth
       # print-identity-token` doesn't work with WIF-federated credentials
