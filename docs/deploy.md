@@ -58,7 +58,7 @@ gcloud run deploy "$SERVICE" \
     --region "$REGION" \
     --image "$IMAGE" \
     --platform managed \
-    --no-allow-unauthenticated \
+    --allow-unauthenticated \
     --min-instances 0 \
     --max-instances 2 \
     --cpu 1 \
@@ -66,23 +66,46 @@ gcloud run deploy "$SERVICE" \
     --cpu-throttling \
     --port 8080 \
     --execution-environment gen2 \
-    --service-account "fantasy-coach-runtime@$PROJECT_ID.iam.gserviceaccount.com"
+    --service-account "fantasy-coach-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
+    --set-env-vars "FIREBASE_PROJECT_ID=$PROJECT_ID"
 ```
 
 `--cpu-throttling` is the flag that achieves "CPU allocated only during
 requests" — without it, the container is billed for CPU even when idle.
 
+## Auth model
+
+The service is `--allow-unauthenticated` at the Cloud Run IAM layer
+because browser clients can't mint Google-signed OAuth2 ID tokens. Real
+auth lives in `FirebaseAuthMiddleware` (`src/fantasy_coach/auth.py`):
+
+- `/healthz` is open (for Cloud Run's own liveness probes + uptime checks).
+- Every other path must carry `Authorization: Bearer <firebase-id-token>`;
+  the middleware rejects missing / expired / wrong-project tokens with 401.
+
+`FIREBASE_PROJECT_ID` activates the middleware. Plain `--set-env-vars`
+(not Secret Manager) is deliberate: the project ID isn't sensitive, and
+Secret Manager wiring is deferred to #16 when the rest of the secrets
+land together.
+
 ## Smoke test
 
-The Cloud Run URL is in the deploy output (`gcloud run services describe
-$SERVICE --region $REGION --format 'value(status.url)'`). With auth still
-required (it is — see #17), use an identity token:
+Cloud Run blocks external GETs on `/healthz` because Google's Frontend
+reserves that path for its own health routing. The container's own
+liveness probes still hit it at 200 OK (visible in Cloud Run logs). For
+an external smoke test, use `/predictions` with a Firebase ID token
+instead — that reaches FastAPI and returns a real response. The
+`gcloud run services describe` still surfaces the current URL:
 
 ```bash
 URL=$(gcloud run services describe $SERVICE --region $REGION --format 'value(status.url)')
-curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" "$URL/healthz"
-# → {"status":"ok","version":"0.1.0"}
+curl "$URL/predictions?season=2026&round=1"
+# → {"detail":"Missing or malformed bearer token"}  (401 from FirebaseAuthMiddleware)
 ```
+
+The 401 without an `Authorization` header *is* the green signal — it
+proves the middleware is active. To actually fetch predictions, let the
+SPA sign in and let the browser send its Firebase ID token.
 
 ## Service account least-privilege
 
