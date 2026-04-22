@@ -3,9 +3,10 @@ import { Link, useParams } from "react-router-dom";
 
 import { apiFetch, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
+import { TeamFormChart } from "../components/TeamFormChart";
 import { labelFor } from "../features";
 import { SignInRequired } from "../components/SignInRequired";
-import type { Prediction } from "../types";
+import type { Prediction, TeamFormHistory } from "../types";
 
 type Status =
   | { kind: "loading" }
@@ -29,6 +30,8 @@ export default function MatchDetail() {
   const { season: seasonParam, round: roundParam, matchId: matchIdParam } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  const [homeForm, setHomeForm] = useState<TeamFormHistory | null>(null);
+  const [awayForm, setAwayForm] = useState<TeamFormHistory | null>(null);
 
   const season = Number(seasonParam);
   const round = Number(roundParam);
@@ -50,13 +53,32 @@ export default function MatchDetail() {
     // round in one RPC and the cache is already warm from Round.tsx, so
     // this avoids a second Firestore read for the common navigate-in case.
     apiFetch<Prediction[]>(`/predictions?season=${season}&round=${round}`)
-      .then((predictions) => {
+      .then(async (predictions) => {
         if (cancelled) return;
         const match = predictions.find((p) => p.matchId === matchId);
         if (!match) {
           setStatus({ kind: "not_found" });
-        } else {
-          setStatus({ kind: "ok", prediction: match });
+          return;
+        }
+        setStatus({ kind: "ok", prediction: match });
+
+        // Fetch Elo trend charts for both teams (best-effort; errors silently ignored).
+        const fetchForm = async (teamId: number): Promise<TeamFormHistory | null> => {
+          try {
+            return await apiFetch<TeamFormHistory>(
+              `/teams/${teamId}/form?season=${season}&last=20`,
+            );
+          } catch {
+            return null;
+          }
+        };
+        const [hf, af] = await Promise.all([
+          fetchForm(match.home.id),
+          fetchForm(match.away.id),
+        ]);
+        if (!cancelled) {
+          setHomeForm(hf);
+          setAwayForm(af);
         }
       })
       .catch((err: unknown) => {
@@ -101,14 +123,24 @@ export default function MatchDetail() {
         </div>
       )}
 
-      {status.kind === "ok" && <MatchDetailBody prediction={status.prediction} />}
+      {status.kind === "ok" && (
+        <MatchDetailBody prediction={status.prediction} homeForm={homeForm} awayForm={awayForm} />
+      )}
     </section>
   );
 }
 
 const MOBILE_TOP = 3;
 
-function MatchDetailBody({ prediction }: { prediction: Prediction }) {
+function MatchDetailBody({
+  prediction,
+  homeForm,
+  awayForm,
+}: {
+  prediction: Prediction;
+  homeForm: TeamFormHistory | null;
+  awayForm: TeamFormHistory | null;
+}) {
   const homePct = Math.round(prediction.homeWinProbability * 100);
   const awayPct = 100 - homePct;
   const winnerName =
@@ -146,6 +178,13 @@ function MatchDetailBody({ prediction }: { prediction: Prediction }) {
           Pick: <strong>{winnerName}</strong> ({winnerPct}%)
         </p>
       </div>
+
+      {(homeForm || awayForm) && (
+        <section className="form-charts" aria-label="Team Elo trends">
+          {homeForm && <TeamFormChart matches={homeForm.matches} teamName={prediction.home.name} />}
+          {awayForm && <TeamFormChart matches={awayForm.matches} teamName={prediction.away.name} />}
+        </section>
+      )}
 
       {contributions.length > 0 ? (
         <section

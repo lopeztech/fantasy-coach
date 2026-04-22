@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from fantasy_coach import __version__
 from fantasy_coach.auth import FirebaseAuthMiddleware
 from fantasy_coach.config import get_repository
+from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
@@ -41,6 +42,27 @@ class AccuracyOut(BaseModel):
     belowThreshold: bool
     threshold: float
     scoredMatches: int
+
+
+class TeamFormEntry(BaseModel):
+    round: int
+    matchId: int
+    opponentId: int
+    opponentName: str
+    isHome: bool
+    result: str  # "win" | "loss" | "draw"
+    score: int
+    opponentScore: int
+    eloAfter: float
+    eloDelta: float
+    kickoff: str  # ISO 8601 UTC
+
+
+class TeamFormHistory(BaseModel):
+    teamId: int
+    teamName: str
+    season: int
+    matches: list[TeamFormEntry]
 
 
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
@@ -252,4 +274,98 @@ def get_accuracy(
         belowThreshold=(overall_accuracy is not None and overall_accuracy < _ACCURACY_THRESHOLD),
         threshold=_ACCURACY_THRESHOLD,
         scoredMatches=total_scored,
+    )
+
+
+@app.get(
+    "/teams/{team_id}/form",
+    response_model=TeamFormHistory,
+    summary="Team form history with Elo progression",
+    description=(
+        "Returns the last N completed matches for a team, with per-match results "
+        "and EloMOV rating after each match. Elo is computed by replaying the full "
+        "season history in chronological order so all opponents' ratings are accurate."
+    ),
+)
+def get_team_form(
+    team_id: int,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+    last: int = Query(default=20, ge=1, le=40, description="Number of recent matches to return"),
+) -> TeamFormHistory:
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    completed = sorted(
+        [
+            m
+            for m in all_matches
+            if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None
+        ],
+        key=lambda m: (m.start_time, m.match_id),
+    )
+
+    elo = EloMOV()
+    entries: list[TeamFormEntry] = []
+    team_name = ""
+
+    for m in completed:
+        home_delta, away_delta = elo.update(
+            m.home.team_id,
+            m.away.team_id,
+            m.home.score,
+            m.away.score,  # type: ignore[arg-type]
+        )
+
+        is_home = m.home.team_id == team_id
+        is_away = m.away.team_id == team_id
+        if not (is_home or is_away):
+            continue
+
+        if is_home:
+            score, opp_score = m.home.score, m.away.score
+            opp_id, opp_name = m.away.team_id, m.away.name
+            delta = home_delta
+            if not team_name:
+                team_name = m.home.name
+        else:
+            score, opp_score = m.away.score, m.home.score
+            opp_id, opp_name = m.home.team_id, m.home.name
+            delta = away_delta
+            if not team_name:
+                team_name = m.away.name
+
+        assert score is not None and opp_score is not None  # narrowed above
+        if score > opp_score:
+            result = "win"
+        elif score < opp_score:
+            result = "loss"
+        else:
+            result = "draw"
+
+        entries.append(
+            TeamFormEntry(
+                round=m.round,
+                matchId=m.match_id,
+                opponentId=opp_id,
+                opponentName=opp_name,
+                isHome=is_home,
+                result=result,
+                score=score,
+                opponentScore=opp_score,
+                eloAfter=round(elo.rating(team_id), 1),
+                eloDelta=round(delta, 1),
+                kickoff=m.start_time.isoformat(),
+            )
+        )
+
+    if not team_name:
+        raise HTTPException(status_code=404, detail=f"Team {team_id} not found in season {season}")
+
+    return TeamFormHistory(
+        teamId=team_id,
+        teamName=team_name,
+        season=season,
+        matches=entries[-last:],
     )

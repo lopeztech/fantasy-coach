@@ -34,6 +34,27 @@ export type RoundAccuracy = {
   accuracy: number;
 };
 
+export type TeamFormEntry = {
+  round: number;
+  matchId: number;
+  opponentId: number;
+  opponentName: string;
+  isHome: boolean;
+  result: "win" | "loss" | "draw";
+  score: number;
+  opponentScore: number;
+  eloAfter: number;
+  eloDelta: number;
+  kickoff: string;
+};
+
+export type TeamFormHistory = {
+  teamId: number;
+  teamName: string;
+  season: number;
+  matches: TeamFormEntry[];
+};
+
 export type AccuracyOut = {
   rounds: RoundAccuracy[];
   byModelVersion: Array<{ modelVersion: string; total: number; correct: number; accuracy: number }>;

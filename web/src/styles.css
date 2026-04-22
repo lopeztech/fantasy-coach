@@ -473,6 +473,38 @@ a:focus-visible {
   margin: 0.5rem 0 0;
 }
 
+/* ── Team form sparklines (MatchCard) ──────────────────────────────────── */
+
+.form-sparklines {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 359px) {
+  .form-sparklines {
+    display: none;
+  }
+}
+
+/* ── Team form Elo charts (MatchDetail) ────────────────────────────────── */
+
+.form-charts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.form-chart-figure {
+  margin: 0;
+  color: var(--color-primary);
+}
+
+.form-chart {
+  display: block;
+}
+
 /* Mobile-only: collapse contributions beyond the first MOBILE_TOP items. */
 .contributions-toggle {
   display: none; /* hidden on desktop; shown below 480 px */
