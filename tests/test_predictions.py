@@ -29,6 +29,7 @@ from fantasy_coach.predictions import (
     _compute_contributions,
     _ensure_model,
     _feature_hash,
+    _record_team_list_snapshots,
     compute_predictions,
     get_prediction_store,
 )
@@ -432,6 +433,88 @@ def test_store_roundtrips_missing_contributions_as_none(store: PredictionStore) 
     store.put(2026, 8, [pred])
     loaded = store.get(2026, 8)
     assert loaded[0].contributions is None
+
+
+# ---------------------------------------------------------------------------
+# _record_team_list_snapshots — wiring guard
+# ---------------------------------------------------------------------------
+
+
+def _make_match_row_with_team_lists(has_is_on_field: bool = True):
+    from datetime import UTC, datetime
+
+    from fantasy_coach.features import MatchRow, PlayerRow, TeamRow
+
+    def _p(pid: int, jersey: int, on_field: bool | None) -> PlayerRow:
+        return PlayerRow(
+            player_id=pid,
+            jersey_number=jersey,
+            position="Fullback",
+            first_name="F",
+            last_name="L",
+            is_on_field=on_field if has_is_on_field else None,
+        )
+
+    return MatchRow(
+        match_id=12345,
+        season=2026,
+        round=8,
+        start_time=datetime(2026, 4, 24, 9, 0, tzinfo=UTC),
+        match_state="Upcoming",
+        venue="Eden Park",
+        venue_city="Auckland",
+        weather=None,
+        home=TeamRow(
+            team_id=10,
+            name="Tigers",
+            nick_name="Tigers",
+            score=None,
+            players=[_p(1, 1, True), _p(2, 14, False)],
+        ),
+        away=TeamRow(
+            team_id=20,
+            name="Raiders",
+            nick_name="Raiders",
+            score=None,
+            players=[_p(3, 1, True), _p(4, 14, False)],
+        ),
+        team_stats=[],
+    )
+
+
+def test_record_team_list_snapshots_writes_one_per_team() -> None:
+    row = _make_match_row_with_team_lists(has_is_on_field=True)
+    repo = MagicMock()
+
+    _record_team_list_snapshots(repo, row)
+
+    assert repo.record_snapshot.call_count == 2
+    snapshots = [c.args[0] for c in repo.record_snapshot.call_args_list]
+    assert {s.team_id for s in snapshots} == {10, 20}
+    assert snapshots[0].season == 2026
+    assert snapshots[0].round == 8
+
+
+def test_record_team_list_snapshots_skips_when_no_is_on_field_flag() -> None:
+    # Pre-drop scrape: players present but is_on_field is all None.
+    row = _make_match_row_with_team_lists(has_is_on_field=False)
+    repo = MagicMock()
+
+    _record_team_list_snapshots(repo, row)
+
+    repo.record_snapshot.assert_not_called()
+
+
+def test_record_team_list_snapshots_swallows_repo_errors() -> None:
+    row = _make_match_row_with_team_lists(has_is_on_field=True)
+    repo = MagicMock()
+    repo.record_snapshot.side_effect = RuntimeError("firestore down")
+
+    # Should not raise — snapshot failures are best-effort per the wiring.
+    _record_team_list_snapshots(repo, row)
+
+    # Both teams attempted (home first, then away) even after the first error.
+    assert repo.record_snapshot.call_count == 2
 
 
 def test_compute_returns_empty_when_no_fixtures(

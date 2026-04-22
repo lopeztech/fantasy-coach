@@ -104,6 +104,7 @@ def _player_to_doc(p: PlayerRow) -> dict[str, Any]:
         "position": p.position,
         "first_name": p.first_name,
         "last_name": p.last_name,
+        "is_on_field": p.is_on_field,
     }
 
 
@@ -152,6 +153,7 @@ def _player_from_doc(d: dict[str, Any]) -> PlayerRow:
         position=d.get("position"),
         first_name=d.get("first_name"),
         last_name=d.get("last_name"),
+        is_on_field=d.get("is_on_field"),
     )
 
 

@@ -85,6 +85,10 @@ class PlayerRow(BaseModel):
     position: str | None
     first_name: str | None
     last_name: str | None
+    # True = named in the starting XIII for this scrape, False = bench/reserve.
+    # Optional because completed matches don't carry this flag — only upcoming
+    # matches do (starting XIII is decided right before kickoff).
+    is_on_field: bool | None = None
 
 
 class TeamRow(BaseModel):
@@ -162,12 +166,14 @@ def _extract_team(raw: dict[str, Any]) -> TeamRow:
 
 
 def _extract_player(raw: dict[str, Any]) -> PlayerRow:
+    is_on_field = raw.get("isOnField")
     return PlayerRow(
         player_id=int(raw["playerId"]),
         jersey_number=_optional_int(raw.get("number")),
         position=raw.get("position"),
         first_name=raw.get("firstName"),
         last_name=raw.get("lastName"),
+        is_on_field=bool(is_on_field) if is_on_field is not None else None,
     )
 
 

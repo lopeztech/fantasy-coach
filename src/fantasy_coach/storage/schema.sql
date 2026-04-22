@@ -1,9 +1,10 @@
--- Schema version 2.
+-- Schema version 3.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
 -- existing match rows and re-inserting, so children stay consistent.
 -- v2 adds referee_id and video_referee_id columns to matches (NRL officials block).
+-- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -41,8 +42,25 @@ CREATE TABLE IF NOT EXISTS match_players (
     position       TEXT,
     first_name     TEXT,
     last_name      TEXT,
+    is_on_field    INTEGER,   -- 1/0/NULL; starting XIII flag from NRL's isOnField
     PRIMARY KEY (match_id, side, player_id)
 );
+
+CREATE TABLE IF NOT EXISTS team_list_snapshots (
+    snapshot_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    season        INTEGER NOT NULL,
+    round         INTEGER NOT NULL,
+    match_id      INTEGER NOT NULL,
+    team_id       INTEGER NOT NULL,
+    scraped_at    TEXT    NOT NULL,   -- ISO 8601 UTC
+    players_json  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_list_match_time
+    ON team_list_snapshots (match_id, team_id, scraped_at);
+
+CREATE INDEX IF NOT EXISTS idx_team_list_season_time
+    ON team_list_snapshots (season, scraped_at);
 
 CREATE TABLE IF NOT EXISTS match_team_stats (
     match_id    INTEGER NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,

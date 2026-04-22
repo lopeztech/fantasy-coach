@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from fantasy_coach.backfill import (
     BackfillState,
@@ -266,10 +267,15 @@ def _detect_upcoming_round(year: int) -> int | None:
 
 
 def _run_precompute(args: argparse.Namespace) -> int:
+    import os  # noqa: PLC0415
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from fantasy_coach.config import get_repository  # noqa: PLC0415
     from fantasy_coach.predictions import compute_predictions, get_prediction_store  # noqa: PLC0415
+    from fantasy_coach.storage.team_list import (  # noqa: PLC0415
+        FirestoreTeamListRepository,
+        SQLiteTeamListRepository,
+    )
 
     season = args.season or datetime.now(UTC).year
     round_ = args.round
@@ -282,6 +288,17 @@ def _run_precompute(args: argparse.Namespace) -> int:
 
     repo = get_repository()
     store = get_prediction_store()
+    # Shadow the STORAGE_BACKEND switch on the team-list side so snapshots
+    # land in the same backend as matches. SQLite dev reuses the repo's
+    # connection to keep everything in one file.
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() == "firestore":
+        team_list_repo: Any = FirestoreTeamListRepository()
+    else:
+        # Access the underlying sqlite3.Connection. SQLiteRepository exposes
+        # it as ``_conn``; tolerate absence for fake repos in tests.
+        conn = getattr(repo, "_conn", None)
+        team_list_repo = SQLiteTeamListRepository(conn) if conn is not None else None
+
     try:
         predictions = compute_predictions(
             season,
@@ -289,6 +306,7 @@ def _run_precompute(args: argparse.Namespace) -> int:
             repo,
             store,
             force=not args.no_force,
+            team_list_repo=team_list_repo,
         )
     finally:
         if hasattr(repo, "close"):
