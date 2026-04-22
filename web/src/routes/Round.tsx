@@ -82,7 +82,7 @@ export default function Round() {
       {status.kind === "ok" && status.predictions.length > 0 && (
         <div className="match-grid">
           {status.predictions.map((p) => (
-            <MatchCard key={p.matchId} prediction={p} />
+            <MatchCard key={p.matchId} prediction={p} season={season} round={round} />
           ))}
         </div>
       )}

@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import type { Prediction } from "../types";
 
 function formatKickoff(iso: string): string {
@@ -12,7 +14,17 @@ function formatKickoff(iso: string): string {
   });
 }
 
-export function MatchCard({ prediction, preview }: { prediction: Prediction; preview?: string }) {
+export function MatchCard({
+  prediction,
+  season,
+  round,
+  preview,
+}: {
+  prediction: Prediction;
+  season: number;
+  round: number;
+  preview?: string;
+}) {
   const p = prediction;
   const homePct = Math.round(p.homeWinProbability * 100);
   const awayPct = 100 - homePct;
@@ -20,39 +32,45 @@ export function MatchCard({ prediction, preview }: { prediction: Prediction; pre
   const winnerPct = p.predictedWinner === "home" ? homePct : awayPct;
 
   return (
-    <article className="match-card" aria-label={`${p.home.name} vs ${p.away.name}`}>
-      <header className="match-card-head">
-        <div className="teams">
-          <span className="team home">{p.home.name}</span>
-          <span className="muted"> vs </span>
-          <span className="team away">{p.away.name}</span>
+    <Link
+      to={`/round/${season}/${round}/${p.matchId}`}
+      className="match-card-link"
+      aria-label={`${p.home.name} vs ${p.away.name} — view why`}
+    >
+      <article className="match-card">
+        <header className="match-card-head">
+          <div className="teams">
+            <span className="team home">{p.home.name}</span>
+            <span className="muted"> vs </span>
+            <span className="team away">{p.away.name}</span>
+          </div>
+          <time className="kickoff muted" dateTime={p.kickoff}>
+            {formatKickoff(p.kickoff)}
+          </time>
+        </header>
+
+        <div className="prob-bar" role="img" aria-label={`Home win probability ${homePct}%`}>
+          <span
+            className="prob-bar-home"
+            style={{ width: `${homePct}%` }}
+            aria-hidden="true"
+          />
         </div>
-        <time className="kickoff muted" dateTime={p.kickoff}>
-          {formatKickoff(p.kickoff)}
-        </time>
-      </header>
+        <div className="prob-labels">
+          <span>
+            <strong>{p.home.name}</strong> {homePct}%
+          </span>
+          <span>
+            {awayPct}% <strong>{p.away.name}</strong>
+          </span>
+        </div>
 
-      <div className="prob-bar" role="img" aria-label={`Home win probability ${homePct}%`}>
-        <span
-          className="prob-bar-home"
-          style={{ width: `${homePct}%` }}
-          aria-hidden="true"
-        />
-      </div>
-      <div className="prob-labels">
-        <span>
-          <strong>{p.home.name}</strong> {homePct}%
-        </span>
-        <span>
-          {awayPct}% <strong>{p.away.name}</strong>
-        </span>
-      </div>
+        <p className="pick">
+          Pick: <strong>{winnerName}</strong> ({winnerPct}%)
+        </p>
 
-      <p className="pick">
-        Pick: <strong>{winnerName}</strong> ({winnerPct}%)
-      </p>
-
-      {preview ? <p className="preview">{preview}</p> : null}
-    </article>
+        {preview ? <p className="preview">{preview}</p> : null}
+      </article>
+    </Link>
   );
 }
