@@ -27,6 +27,7 @@ from fantasy_coach.models.logistic import TrainResult, train_logistic
 # xgboost eagerly pulls in libxgboost.dylib, which can't load on macOS
 # without libomp installed. Lazy import keeps the rest of the module
 # (Elo, logistic, ensemble adapter) importable in any environment.
+# Skellam import is also deferred — it pulls in scipy which is heavier.
 
 
 class Predictor(Protocol):
@@ -479,3 +480,41 @@ class EnsemblePredictor:
             return self._bases[0].predict_home_win_prob(match)
         probs = np.array([[base.predict_home_win_prob(match) for base in self._bases]], dtype=float)
         return float(self._ensemble.predict_home_win_prob(probs)[0])
+
+
+class SkellamPredictor:
+    """Walk-forward adapter for the two-Poisson Skellam margin model.
+
+    Win probability is derived from the Skellam distribution so it is
+    coherent with the predicted margin — the same λ_home / λ_away
+    parameters drive both outputs.
+    """
+
+    name = "skellam"
+
+    def __init__(self) -> None:
+        self._train_result = None
+        self._inference_builder = FeatureBuilder()
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        from fantasy_coach.models.skellam import build_skellam_frame, train_skellam  # noqa: PLC0415
+
+        frame = build_skellam_frame(history)
+        if frame.X.shape[0] < 10:
+            self._train_result = None
+        else:
+            self._train_result = train_skellam(frame)
+
+        self._inference_builder = FeatureBuilder()
+        for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
+            if match.home.score is None or match.away.score is None:
+                continue
+            self._inference_builder.advance_season_if_needed(match)
+            self._inference_builder.record(match)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        if self._train_result is None:
+            return 0.55
+        x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
+        dist = self._train_result.model.predict_margin_distribution(x)
+        return dist.home_win_prob

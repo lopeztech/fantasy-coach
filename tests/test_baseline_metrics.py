@@ -24,6 +24,7 @@ from fantasy_coach.evaluation import (
     HomePickPredictor,
     LogisticPredictor,
     Predictor,
+    SkellamPredictor,
     XGBoostPredictor,
 )
 from fantasy_coach.evaluation.harness import walk_forward_from_repo
@@ -49,12 +50,18 @@ SEASONS = (2024, 2025)
 # rolling form). Logistic shows a small regression on this 2-season window —
 # features are kept (alongside raw form) per the issue decision; signal is
 # expected to improve with more opponent-history data.
+#
+# #110 adds the Skellam two-Poisson margin model. alpha=200 (strong L2)
+# eliminates extreme probabilities and gives better log_loss + Brier than
+# logistic (0.7110 vs 0.7978 log_loss; 0.2534 vs 0.2744 Brier) with similar
+# accuracy. Does not beat EloMOV on any metric.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
     "logistic": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7978, "brier": 0.2744},
     "xgboost": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7687, "brier": 0.2720},
+    "skellam": {"n": 424, "accuracy": 0.5684, "log_loss": 0.7110, "brier": 0.2534},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
@@ -63,6 +70,7 @@ PREDICTORS: dict[str, type[Predictor]] = {
     "elo_mov": EloMOVPredictor,
     "logistic": LogisticPredictor,
     "xgboost": XGBoostPredictor,
+    "skellam": SkellamPredictor,
 }
 
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
@@ -71,7 +79,7 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # a handful of close predictions flip between macOS and Ubuntu CI (#27
 # measured a ~0.005 drift on the same nrl.db). Wider tolerance for
 # xgboost accepts that noise while still catching a 1pp regression.
-_TOL: dict[str, float] = {"xgboost": 8e-3}
+_TOL: dict[str, float] = {"xgboost": 8e-3, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 
 

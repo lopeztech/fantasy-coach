@@ -259,3 +259,49 @@ python -m fantasy_coach train-logistic \
 ```
 
 Multiple `--season` flags pool matches across seasons before splitting.
+
+## Skellam margin model — #110
+
+Models each team's score as an independent Poisson process (λ_home, λ_away),
+fit via Poisson GLM with log-link using the same `FEATURE_NAMES` feature set.
+The score difference (home − away) follows a Skellam(λ_home, λ_away)
+distribution, giving three coherent outputs from a single model:
+
+| Output | Description |
+|---|---|
+| `home_win_prob` | P(margin > 0) — sum of Skellam PMF over margins 1..80 |
+| `predicted_margin` | E[home_score − away_score] = λ_home − λ_away |
+| `margin_ci_95` | (lo, hi) covering 95 % of the PMF mass at 2.5/97.5 pct |
+
+Feature convention: the home model uses features as-is (home − away
+differences); the away model sees negated features so positive values
+consistently mean "better away team". Both models share a `StandardScaler`
+pre-processing stage and are regularised with L2 penalty α = 200 — strong
+regularisation is needed because Poisson GLM with log-link can extrapolate
+to near-0 / near-1 win probabilities for extreme feature rows.
+
+### Walk-forward ablation — 2024–2025 baseline, 424 predictions
+
+| Model | Accuracy | Log-loss | Brier |
+|---|---|---|---|
+| Home pick | 0.5731 | 0.6835 | 0.2452 |
+| Elo (plain) | 0.5943 | 0.6570 | 0.2325 |
+| EloMOV | **0.6179** | 0.6578 | **0.2323** |
+| Logistic | 0.5637 | 0.7978 | 0.2744 |
+| XGBoost | 0.5637 | 0.7687 | 0.2720 |
+| **Skellam** | 0.5684 | **0.7110** | 0.2534 |
+
+**Observations:**
+- Skellam improves log_loss and Brier vs both logistic and XGBoost, indicating
+  better probability calibration — the distribution-level training objective
+  (mean Poisson deviance) avoids the "push probabilities toward 0/1" tendency
+  of discriminative classifiers.
+- Accuracy (0.5684) is slightly above logistic (0.5637) but well below EloMOV
+  (0.6179); EloMOV remains the best single model.
+- The predicted margin output (`predicted_margin = λ_home − λ_away`) is a
+  purely additive UI feature — existing API clients that only read
+  `homeWinProbability` are unaffected.
+
+**Decision:** Skellam is added as a secondary model. It is not promoted to
+replace EloMOV as the ensemble's primary signal; the margin and CI outputs
+are surfaced as optional fields on `PredictionOut` for display purposes only.
