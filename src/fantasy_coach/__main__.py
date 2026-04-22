@@ -145,6 +145,50 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    cp = sub.add_parser(
+        "copy-matches-to-firestore",
+        help=(
+            "Copy completed matches from a local SQLite DB to Firestore. "
+            "One-off bootstrap so the precompute Job's FeatureBuilder sees "
+            "the same history the model was trained against — otherwise every "
+            "historical feature (Elo, form, h2h, venue, referee, key-absence) "
+            "defaults to zero at inference."
+        ),
+    )
+    cp.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    cp.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        default=None,
+        help="Season to copy. May be repeated. Omit to copy every season in the DB.",
+    )
+    cp.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help=(
+            "GCP project hosting Firestore. Defaults to GOOGLE_CLOUD_PROJECT / "
+            "FIREBASE_PROJECT_ID / ADC project."
+        ),
+    )
+    cp.add_argument(
+        "--database",
+        type=str,
+        default="(default)",
+        help='Firestore database name (Python client default: "(default)")',
+    )
+    cp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Count matches per season but do not write.",
+    )
+    cp.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -159,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_evaluate(args)
     if args.command == "precompute":
         return _run_precompute(args)
+    if args.command == "copy-matches-to-firestore":
+        return _run_copy_matches_to_firestore(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -315,6 +361,54 @@ def _run_precompute(args: argparse.Namespace) -> int:
             store.close()
 
     print(f"Precomputed {len(predictions)} predictions for season={season} round={round_}")
+    return 0
+
+
+def _run_copy_matches_to_firestore(args: argparse.Namespace) -> int:
+    """Copy completed matches from SQLite → Firestore one by one.
+
+    Written for the #123 one-off bootstrap — Firestore's ``matches`` collection
+    was empty in prod, which meant every rolling / historical feature defaulted
+    to zero at inference. Idempotent: ``FirestoreRepository.upsert_match`` uses
+    the match id as the doc id, so re-running this command just overwrites.
+    """
+    from fantasy_coach.storage.firestore import FirestoreRepository  # noqa: PLC0415
+
+    if not args.db.exists():
+        print(f"error: SQLite DB not found at {args.db}", file=sys.stderr)
+        return 2
+
+    src = SQLiteRepository(args.db)
+    try:
+        if args.season:
+            seasons = sorted(set(args.season))
+        else:
+            rows = src._conn.execute(  # noqa: SLF001
+                "SELECT DISTINCT season FROM matches ORDER BY season"
+            ).fetchall()
+            seasons = [r[0] for r in rows]
+
+        if not seasons:
+            print(f"No seasons present in {args.db}", file=sys.stderr)
+            return 1
+
+        dst: FirestoreRepository | None = None
+        if not args.dry_run:
+            dst = FirestoreRepository(project=args.project, database=args.database)
+
+        grand_total = 0
+        for season in seasons:
+            matches = src.list_matches(season)
+            print(f"Season {season}: {len(matches)} matches{' (dry-run)' if args.dry_run else ''}")
+            if not args.dry_run and dst is not None:
+                for row in matches:
+                    dst.upsert_match(row)
+            grand_total += len(matches)
+
+        verb = "Would copy" if args.dry_run else "Copied"
+        print(f"{verb} {grand_total} matches across {len(seasons)} season(s)")
+    finally:
+        src.close()
     return 0
 
 
