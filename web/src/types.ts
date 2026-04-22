@@ -24,3 +24,21 @@ export type Prediction = {
   contributions?: FeatureContribution[] | null;
   actualWinner?: "home" | "away" | null;
 };
+
+export type RoundAccuracy = {
+  season: number;
+  round: number;
+  modelVersion: string;
+  total: number;
+  correct: number;
+  accuracy: number;
+};
+
+export type AccuracyOut = {
+  rounds: RoundAccuracy[];
+  byModelVersion: Array<{ modelVersion: string; total: number; correct: number; accuracy: number }>;
+  overallAccuracy: number | null;
+  belowThreshold: boolean;
+  threshold: number;
+  scoredMatches: number;
+};
