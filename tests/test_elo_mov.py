@@ -44,8 +44,8 @@ def test_larger_margin_produces_larger_delta() -> None:
     close = EloMOV()
     blowout = EloMOV()
 
-    delta_close, _ = close.update(1, 2, 14, 12)      # 2-point win
-    delta_blowout, _ = blowout.update(1, 2, 40, 0)   # 40-point win
+    delta_close, _ = close.update(1, 2, 14, 12)  # 2-point win
+    delta_blowout, _ = blowout.update(1, 2, 40, 0)  # 40-point win
 
     assert abs(delta_blowout) > abs(delta_close)
 
