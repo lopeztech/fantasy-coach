@@ -9,9 +9,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
+# Copy the lockfile first so the dependency-install layer is cached across
+# source-only changes; install deps without the project source.
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --no-install-project
 
+COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
