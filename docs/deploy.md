@@ -62,7 +62,9 @@ gcloud run deploy "$SERVICE" \
     --min-instances 0 \
     --max-instances 2 \
     --cpu 1 \
-    --memory 512Mi \
+    --memory 256Mi \
+    --concurrency 80 \
+    --timeout 120 \
     --cpu-throttling \
     --port 8080 \
     --execution-environment gen2 \
@@ -72,6 +74,28 @@ gcloud run deploy "$SERVICE" \
 
 `--cpu-throttling` is the flag that achieves "CPU allocated only during
 requests" — without it, the container is billed for CPU even when idle.
+
+## Runtime sizing
+
+Flags above and in `.github/workflows/deploy.yml` must stay in sync with
+the Terraform resource (`google_cloud_run_v2_service.api` in
+platform-infra). Cloud Run stores whatever was last deployed, so the
+workflow is the effective source of truth — TF matches so fresh applies
+don't drift.
+
+| Flag | Value | Rationale |
+|------|-------|-----------|
+| `--memory` | `256Mi` | Observed p99 RSS < 100 MiB; a small logistic joblib loads in a few ms. 256Mi gives ~2.5× headroom while halving the per-instance memory bill. |
+| `--cpu` | `1` | One request at a time fits well under one vCPU; the logistic predict is µs-scale. |
+| `--concurrency` | `80` | Cloud Run's default; pinned explicitly so TF/deploy can't silently drift. Revisit after we have real traffic; 200 may be viable for a mostly-I/O endpoint. |
+| `--timeout` | `120` | Down from the 300s default. First request of a round does a live scrape of nrl.com (~1s/fixture × 8 fixtures + overhead), so we can't safely cut to the AC's 60s yet — drop once #65 lands and scrape is off-path. |
+| `--cpu-throttling` | on | Billable CPU only during requests; cold idle is free. |
+| `--min-instances` | `0` | Scale to zero when idle. |
+| `--max-instances` | `2` | Keeps the blast radius bounded while traffic is low. |
+
+These values were chosen against 13 hours of post-launch metrics, not a
+30-day window. Revisit once we have real traffic (tracked as a follow-up
+on #64).
 
 ## Auth model
 
