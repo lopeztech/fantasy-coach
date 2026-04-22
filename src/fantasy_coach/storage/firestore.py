@@ -94,6 +94,7 @@ def _team_to_doc(t: TeamRow) -> dict[str, Any]:
         "nick_name": t.nick_name,
         "score": t.score,
         "players": [_player_to_doc(p) for p in t.players],
+        "odds": t.odds,
     }
 
 
@@ -143,6 +144,7 @@ def _team_from_doc(d: dict[str, Any]) -> TeamRow:
         nick_name=d["nick_name"],
         score=d.get("score"),
         players=[_player_from_doc(p) for p in d.get("players", [])],
+        odds=d.get("odds"),
     )
 
 

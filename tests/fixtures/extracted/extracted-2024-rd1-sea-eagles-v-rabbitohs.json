@@ -157,7 +157,8 @@
         "last_name": "Arthur",
         "is_on_field": false
       }
-    ]
+    ],
+    "odds": null
   },
   "away": {
     "team_id": 500005,
@@ -309,7 +310,8 @@
         "last_name": "Hawkins",
         "is_on_field": false
       }
-    ]
+    ],
+    "odds": null
   },
   "team_stats": [
     {

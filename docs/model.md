@@ -113,6 +113,46 @@ signal. Revisit once we have a second full season of is-on-field data
 (currently 2024+2025 only; 2023 would add another 200 matches of warm-up
 history). Weight ratio tuning is filed as a follow-up.
 
+### Ablation notes — bookmaker odds feature (#26)
+
+Adds `odds_home_win_prob` (de-vigged market-implied home win probability)
+and `missing_odds`. Historical matches are populated via the new
+`merge-closing-lines` CLI reading the aussportsbetting.com NRL xlsx; live
+matches use the odds already present in the scraped `homeTeam.odds` /
+`awayTeam.odds` decimal-odds fields.
+
+Same-DB walk-forward on `baseline-nrl.db` (424 predictions), column masked
+to neutral 0.5 + missing-flag in the "without" run:
+
+| Predictor | Metric | Without | With | Δ |
+|-----------|--------|--------:|-----:|---:|
+| logistic  | accuracy | 0.5519 | **0.5566** | **+0.005** |
+| logistic  | log_loss | 0.8026 | **0.8017** | **−0.001** |
+| logistic  | brier    | 0.2750 | **0.2735** | **−0.002** |
+| **xgboost** | accuracy | 0.5660 | **0.5755** | **+0.009** |
+| **xgboost** | log_loss | 0.7551 | **0.7490** | **−0.006** |
+| **xgboost** | brier    | 0.2663 | **0.2625** | **−0.004** |
+
+**First feature in this release to lift both models across all three
+metrics cleanly.** The odds feature is orthogonal enough to the existing
+rating/form signal that even logistic gets small, uniformly-signed
+improvements — unlike the #27 / #109 features where multicollinearity
+hurt logistic. The model learns the correct (positive) coefficient; on
+the retrained artefact, `odds_home_win_prob` has the **largest
+coefficient in the entire feature set** (+0.391), narrowly beating
+`form_diff_pa` and `form_diff_pa_adjusted`.
+
+Magnitude is small because odds already encode Elo + form + public news,
+so adding them on top of those features captures only the *extra* signal
+(late money, injury whispers, sharp opinion). The issue's caveat stands:
+"if odds become our strongest feature, we're partly predicting the
+market" — we now confirm that empirically.
+
+Historical coverage of 77% (373 of 484 completed 2024+2025 matches);
+unmatched rows tend to be pre-season, finals, or scheduling date slips
+that `canonicalize()` couldn't resolve. Remaining slips are a clean-up
+target if we revisit.
+
 ### Ablation notes — player strength feature (#109)
 
 The `player_strength_diff` / `missing_player_strength` pair wraps a

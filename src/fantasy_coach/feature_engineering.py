@@ -33,6 +33,7 @@ from datetime import datetime
 
 import numpy as np
 
+from fantasy_coach.bookmaker.lines import devig_two_way
 from fantasy_coach.features import MatchRow, PlayerRow
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
@@ -85,6 +86,18 @@ FEATURE_NAMES = (
     # pattern so the model learns a separate intercept for "no roster data"
     # rather than imputing zero against the default rating.
     "missing_player_strength",
+    # De-vigged bookmaker-implied home win probability in [0, 1] (#26). The
+    # market's consensus view, encoding late-money / injury whispers /
+    # sharp opinion that our scraper can't see directly. Historical matches
+    # are populated via ``merge-closing-lines`` (aussportsbetting.com
+    # xlsx); live matches via the scraped ``homeTeam.odds`` / ``awayTeam.odds``
+    # decimal odds.
+    "odds_home_win_prob",
+    # Flag mirroring ``missing_*`` — 1.0 when odds data was unavailable for
+    # this match (pre-merge historical row, or live match where the NRL feed
+    # hadn't published a line yet). Lets the model learn a separate
+    # intercept for "no market signal" rather than anchoring to 0.5.
+    "missing_odds",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -239,6 +252,7 @@ class FeatureBuilder:
         strength_h, has_home_roster = self._player_strength(match.home.players)
         strength_a, has_away_roster = self._player_strength(match.away.players)
         missing_strength = 0.0 if (has_home_roster and has_away_roster) else 1.0
+        odds_prob, missing_odds = _odds_home_win_prob(match.home.odds, match.away.odds)
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -263,6 +277,8 @@ class FeatureBuilder:
             adj_pa_h - adj_pa_a,
             strength_h - strength_a,
             missing_strength,
+            odds_prob,
+            missing_odds,
         ]
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
@@ -537,6 +553,22 @@ def build_training_frame(
         match_ids=np.asarray(match_ids, dtype=int),
         start_times=np.asarray(start_times, dtype="datetime64[s]"),
     )
+
+
+def _odds_home_win_prob(home_odds: float | None, away_odds: float | None) -> tuple[float, float]:
+    """Return ``(p_home_devigged, missing_flag)`` for the bookmaker feature (#26).
+
+    Neutral value 0.5 when either side's odds are absent — same "no signal"
+    shape as the ``venue_home_win_rate`` neutral prior. The missing flag
+    carries the actual "no data" signal so the model can learn a separate
+    intercept for unpriced matches rather than treating them as 50/50.
+    """
+    if home_odds is None or away_odds is None:
+        return 0.5, 1.0
+    try:
+        return devig_two_way(float(home_odds), float(away_odds)), 0.0
+    except ValueError:
+        return 0.5, 1.0
 
 
 def _starters_info(players: list[PlayerRow]) -> dict[int, tuple[str, str]]:

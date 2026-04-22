@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class SQLiteRepository:
@@ -45,8 +45,9 @@ class SQLiteRepository:
                     venue, venue_city, weather,
                     home_team_id, home_name, home_nick, home_score,
                     away_team_id, away_name, away_nick, away_score,
-                    referee_id, video_referee_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    referee_id, video_referee_id,
+                    home_odds, away_odds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.match_id,
@@ -67,6 +68,8 @@ class SQLiteRepository:
                     row.away.score,
                     row.referee_id,
                     row.video_referee_id,
+                    row.home.odds,
+                    row.away.odds,
                 ),
             )
             self._insert_players(row.match_id, "home", row.home.players)
@@ -138,6 +141,15 @@ class SQLiteRepository:
                 with contextlib.suppress(Exception):
                     self._conn.execute("ALTER TABLE match_players ADD COLUMN is_on_field INTEGER")
                 self._conn.execute("UPDATE schema_version SET version = 3")
+        if from_version < 4:
+            with self._conn:
+                # v3 → v4: add home_odds / away_odds columns (#26). Decimal
+                # odds; populated by live scrape for upcoming matches and by
+                # merge-closing-lines CLI for historical ones.
+                for col in ("home_odds REAL", "away_odds REAL"):
+                    with contextlib.suppress(Exception):
+                        self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
+                self._conn.execute("UPDATE schema_version SET version = 4")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
@@ -226,6 +238,7 @@ class SQLiteRepository:
                 nick_name=match["home_nick"],
                 score=match["home_score"],
                 players=home_players,
+                odds=_safe_column(match, "home_odds"),
             ),
             away=TeamRow(
                 team_id=match["away_team_id"],
@@ -233,6 +246,7 @@ class SQLiteRepository:
                 nick_name=match["away_nick"],
                 score=match["away_score"],
                 players=away_players,
+                odds=_safe_column(match, "away_odds"),
             ),
             team_stats=[
                 TeamStat(
@@ -259,3 +273,18 @@ class SQLiteRepository:
             last_name=p["last_name"],
             is_on_field=None if raw_on_field is None else bool(raw_on_field),
         )
+
+
+def _safe_column(row: sqlite3.Row, name: str) -> float | None:
+    """Tolerant column lookup: returns None when the column is absent.
+
+    SQLite DBs that migrated from v3→v4 pick up the new columns via ALTER,
+    but freshly constructed in-memory connections built via tests don't
+    always end up with the full column set populated if they bypass the
+    migration path. Falling back to None instead of raising keeps tests
+    and legacy DB files importable.
+    """
+    try:
+        return row[name]
+    except (IndexError, KeyError):
+        return None

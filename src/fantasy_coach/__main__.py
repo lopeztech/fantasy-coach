@@ -189,6 +189,37 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    mcl = sub.add_parser(
+        "merge-closing-lines",
+        help=(
+            "Merge bookmaker closing lines from the aussportsbetting xlsx "
+            "into a local SQLite DB's match rows (#26). Historical matches "
+            "lose their odds in the NRL API post-kickoff, so the logistic "
+            "feature pipeline needs a secondary source to see odds during "
+            "training. Idempotent; re-running updates existing rows."
+        ),
+    )
+    mcl.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    mcl.add_argument(
+        "--xlsx",
+        type=Path,
+        required=True,
+        help="aussportsbetting NRL xlsx — download from "
+        "https://www.aussportsbetting.com/historical_data/nrl.xlsx",
+    )
+    mcl.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        default=None,
+        help="Season to merge. Repeatable. Omit to merge every season in the DB.",
+    )
+    mcl.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -205,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_precompute(args)
     if args.command == "copy-matches-to-firestore":
         return _run_copy_matches_to_firestore(args)
+    if args.command == "merge-closing-lines":
+        return _run_merge_closing_lines(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -409,6 +442,81 @@ def _run_copy_matches_to_firestore(args: argparse.Namespace) -> int:
         print(f"{verb} {grand_total} matches across {len(seasons)} season(s)")
     finally:
         src.close()
+    return 0
+
+
+def _run_merge_closing_lines(args: argparse.Namespace) -> int:
+    """Merge historical closing lines from the aussportsbetting xlsx into SQLite.
+
+    Written for #26 — bookmaker odds as a live feature. The live NRL scrape
+    carries odds pre-match but wipes them after kickoff, so historical
+    matches in the training set don't have any odds signal. This CLI reads
+    the xlsx, canonicalises team names via the existing
+    ``fantasy_coach.bookmaker.team_names.canonicalize`` helper, matches each
+    line to a SQLite match row by (kickoff-local date, canonical home,
+    canonical away), and updates ``home.odds`` / ``away.odds`` on that row.
+
+    Idempotent — ``SQLiteRepository.upsert_match`` deletes + inserts, so
+    re-running the command overwrites any previously merged odds.
+    """
+    from datetime import timedelta, timezone  # noqa: PLC0415
+
+    from fantasy_coach.bookmaker.lines import load_closing_lines  # noqa: PLC0415
+    from fantasy_coach.bookmaker.team_names import canonicalize  # noqa: PLC0415
+
+    if not args.db.exists():
+        print(f"error: SQLite DB not found at {args.db}", file=sys.stderr)
+        return 2
+    if not args.xlsx.exists():
+        print(f"error: xlsx not found at {args.xlsx}", file=sys.stderr)
+        return 2
+
+    lines = load_closing_lines(args.xlsx)
+    aest = timezone(timedelta(hours=10))  # AEST fallback — same as BookmakerPredictor
+
+    repo = SQLiteRepository(args.db)
+    try:
+        if args.season:
+            seasons = sorted(set(args.season))
+        else:
+            rows = repo._conn.execute(  # noqa: SLF001
+                "SELECT DISTINCT season FROM matches ORDER BY season"
+            ).fetchall()
+            seasons = [r[0] for r in rows]
+
+        total_updated = 0
+        total_missed = 0
+        for season in seasons:
+            updated, missed = 0, 0
+            for match in repo.list_matches(season):
+                home_canon = canonicalize(match.home.nick_name) or canonicalize(match.home.name)
+                away_canon = canonicalize(match.away.nick_name) or canonicalize(match.away.name)
+                if not home_canon or not away_canon:
+                    missed += 1
+                    continue
+                center = match.start_time.astimezone(aest).date()
+                line = None
+                for delta in (-1, 0, 1):  # ±1 day to absorb DST/scheduling slop
+                    line = lines.get((center + timedelta(days=delta), home_canon, away_canon))
+                    if line is not None:
+                        break
+                if line is None:
+                    missed += 1
+                    continue
+                updated_row = match.model_copy(
+                    update={
+                        "home": match.home.model_copy(update={"odds": line.home_odds_close}),
+                        "away": match.away.model_copy(update={"odds": line.away_odds_close}),
+                    }
+                )
+                repo.upsert_match(updated_row)
+                updated += 1
+            print(f"Season {season}: merged {updated} odds rows, {missed} unmatched")
+            total_updated += updated
+            total_missed += missed
+        print(f"Total: {total_updated} merged, {total_missed} unmatched")
+    finally:
+        repo.close()
     return 0
 
 

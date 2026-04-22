@@ -12,14 +12,16 @@
     "name": "Wests Tigers",
     "nick_name": "Wests Tigers",
     "score": null,
-    "players": []
+    "players": [],
+    "odds": 1.56
   },
   "away": {
     "team_id": 500013,
     "name": "Canberra Raiders",
     "nick_name": "Raiders",
     "score": null,
-    "players": []
+    "players": [],
+    "odds": 2.42
   },
   "team_stats": [
     {

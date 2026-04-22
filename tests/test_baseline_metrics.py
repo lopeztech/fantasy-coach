@@ -57,16 +57,22 @@ SEASONS = (2024, 2025)
 # accuracy. Does not beat EloMOV on any metric.
 # #109 adds `player_strength_diff` + `missing_player_strength` — per-player
 # Elo-style ratings rolled up as an availability-aware composite. Logistic
-# numbers basically flat (0.5637 → 0.5519 acc / 0.7978 → 0.8026 log_loss);
-# XGBoost picks up the feature and gains +1.2pp accuracy (0.5637 → 0.5755)
-# at a small log_loss improvement too.
+# roughly flat, XGBoost gains across all three metrics.
+#
+# #26 adds `odds_home_win_prob` + `missing_odds` — de-vigged bookmaker-implied
+# home win probability, populated from the scrape for upcoming matches and
+# merged from the aussportsbetting xlsx for historical training rows.
+# `merge-closing-lines` CLI joined 373 of 630 matches (2024+2025 ~77% coverage,
+# 2026 rounds 1-5 ~21% — pre-season + finals tend to be unpriced).
+# Both logistic AND XGBoost improve across all three metrics — the first
+# feature this release to cleanly lift both models.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
-    "logistic": {"n": 424, "accuracy": 0.5519, "log_loss": 0.8026, "brier": 0.2750},
-    "xgboost": {"n": 424, "accuracy": 0.5755, "log_loss": 0.7657, "brier": 0.2699},
-    "skellam": {"n": 424, "accuracy": 0.5731, "log_loss": 0.7107, "brier": 0.2535},
+    "logistic": {"n": 424, "accuracy": 0.5566, "log_loss": 0.8017, "brier": 0.2735},
+    "xgboost": {"n": 424, "accuracy": 0.5755, "log_loss": 0.7490, "brier": 0.2625},
+    "skellam": {"n": 424, "accuracy": 0.5778, "log_loss": 0.7051, "brier": 0.2508},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
