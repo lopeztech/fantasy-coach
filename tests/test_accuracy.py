@@ -82,9 +82,9 @@ def test_accuracy_returns_correct_round_stats(client: TestClient, tmp_path: Path
     ]
     # Predictions: 2/3 correct (match 1 correct, match 2 correct, match 3 wrong)
     preds = [
-        _make_pred(1, "home"),   # correct
-        _make_pred(2, "away"),   # correct
-        _make_pred(3, "home"),   # wrong (tie counted as away)
+        _make_pred(1, "home"),  # correct
+        _make_pred(2, "away"),  # correct
+        _make_pred(3, "home"),  # wrong (tie counted as away)
     ]
 
     mock_repo = MagicMock()
@@ -180,9 +180,7 @@ def test_accuracy_multiple_rounds_last_n_respected(client: TestClient, tmp_path:
         for r in range(1, 6)
         for i in [r * 10]
     ]
-    preds_by_round = {
-        r: [_make_pred(r * 10, "home")] for r in range(1, 6)
-    }
+    preds_by_round = {r: [_make_pred(r * 10, "home")] for r in range(1, 6)}
 
     mock_repo = MagicMock()
     mock_repo.list_matches.return_value = matches

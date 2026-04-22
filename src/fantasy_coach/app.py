@@ -2,7 +2,6 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-
 from pydantic import BaseModel
 
 from fantasy_coach import __version__
@@ -42,6 +41,7 @@ class AccuracyOut(BaseModel):
     belowThreshold: bool
     threshold: float
     scoredMatches: int
+
 
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
@@ -122,7 +122,6 @@ def _annotate_results(
     return result
 
 
-
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
@@ -182,11 +181,7 @@ def get_accuracy(
     results: dict[int, str] = {}
     completed_match_ids_by_round: dict[int, list[int]] = {}
     for m in matches:
-        if (
-            m.match_state == "FullTime"
-            and m.home.score is not None
-            and m.away.score is not None
-        ):
+        if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None:
             winner = "home" if m.home.score > m.away.score else "away"
             results[m.match_id] = winner
             completed_match_ids_by_round.setdefault(m.round, []).append(m.match_id)
@@ -254,9 +249,7 @@ def get_accuracy(
         rounds=round_accuracy_list,
         byModelVersion=by_model_version,
         overallAccuracy=overall_accuracy,
-        belowThreshold=(
-            overall_accuracy is not None and overall_accuracy < _ACCURACY_THRESHOLD
-        ),
+        belowThreshold=(overall_accuracy is not None and overall_accuracy < _ACCURACY_THRESHOLD),
         threshold=_ACCURACY_THRESHOLD,
         scoredMatches=total_scored,
     )
