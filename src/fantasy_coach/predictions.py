@@ -97,6 +97,10 @@ class PredictionOut(BaseModel):
     contributions: list[FeatureContribution] | None = None
     # Populated at serve-time when match_state == "FullTime" (not cached).
     actualWinner: str | None = None  # "home" | "away"
+    # Populated when a Skellam model is used (optional — additive, does not
+    # break existing SPA clients that ignore unknown fields).
+    predictedMargin: float | None = None  # E[home_score - away_score]
+    marginCi95: tuple[int, int] | None = None  # (lo, hi) at 2.5/97.5 pct
 
 
 # ---------------------------------------------------------------------------
