@@ -59,6 +59,15 @@ PREDICTORS: dict[str, type[Predictor]] = {
     "xgboost": XGBoostPredictor,
 }
 
+# Per-predictor tolerance. sklearn-based predictors are bit-stable across
+# Linux + macOS, so 1e-3 catches real regressions. xgboost's
+# OMP-parallelised tree splits are *not* bit-stable across platforms —
+# a handful of close predictions flip between macOS and Ubuntu CI (#27
+# measured a ~0.005 drift on the same nrl.db). Wider tolerance for
+# xgboost accepts that noise while still catching a 1pp regression.
+_TOL: dict[str, float] = {"xgboost": 8e-3}
+_DEFAULT_TOL = 1e-3
+
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_walk_forward_metrics_match_baseline(name: str) -> None:
@@ -77,9 +86,9 @@ def test_walk_forward_metrics_match_baseline(name: str) -> None:
     assert result.n == expected["n"], (
         f"{name}: prediction count drift, got n={result.n}, want {expected['n']}"
     )
-    # 1e-3 tolerance covers cross-platform sklearn / BLAS jitter without
-    # masking real regressions (a 0.5pp accuracy drop is meaningful here).
+    tol = _TOL.get(name, _DEFAULT_TOL)
     for key in ("accuracy", "log_loss", "brier"):
-        assert metrics[key] == pytest.approx(expected[key], abs=1e-3), (
-            f"{name}: {key} drifted from baseline. got={metrics[key]:.4f} want={expected[key]:.4f}"
+        assert metrics[key] == pytest.approx(expected[key], abs=tol), (
+            f"{name}: {key} drifted from baseline. got={metrics[key]:.4f} "
+            f"want={expected[key]:.4f} (tol={tol})"
         )
