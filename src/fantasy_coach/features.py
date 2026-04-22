@@ -99,6 +99,11 @@ class TeamRow(BaseModel):
     nick_name: str
     score: int | None
     players: list[PlayerRow]
+    # Live decimal odds from the scrape (pre-match only — NRL wipes them
+    # after kickoff). For historical matches, ``odds`` is None at scrape
+    # time; the ``merge-closing-lines`` CLI (#26) backfills from the
+    # aussportsbetting.com xlsx so the training frame has real signal.
+    odds: float | None = None
 
 
 class TeamStat(BaseModel):
@@ -156,12 +161,14 @@ def extract_match_features(raw: dict[str, Any]) -> MatchRow:
 
 def _extract_team(raw: dict[str, Any]) -> TeamRow:
     _log_unknown_keys("team", raw, _KNOWN_TEAM_KEYS)
+    raw_odds = raw.get("odds")
     return TeamRow(
         team_id=int(raw["teamId"]),
         name=str(raw["name"]),
         nick_name=str(raw["nickName"]),
         score=_optional_int(raw.get("score")),
         players=[_extract_player(p) for p in raw.get("players") or []],
+        odds=float(raw_odds) if raw_odds not in (None, "") else None,
     )
 
 

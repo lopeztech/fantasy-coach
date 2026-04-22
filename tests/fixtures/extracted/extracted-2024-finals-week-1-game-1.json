@@ -157,7 +157,8 @@
         "last_name": "McLean",
         "is_on_field": false
       }
-    ]
+    ],
+    "odds": null
   },
   "away": {
     "team_id": 500001,
@@ -309,7 +310,8 @@
         "last_name": "Jennings",
         "is_on_field": false
       }
-    ]
+    ],
+    "odds": null
   },
   "team_stats": [
     {
