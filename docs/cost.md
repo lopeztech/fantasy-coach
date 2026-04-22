@@ -116,3 +116,35 @@ on-request time, just moved), but p99 latency for users is an order of
 magnitude better and we gain a retry safety net. The scheduled Job also
 picks up team-list changes between Tue and Thu — the `--force` default
 re-scrapes even when a round already has cached predictions.
+
+## Container image (April 2026)
+
+Two-stage `python:3.12-slim` build. Key optimisations:
+
+| Technique | Effect |
+|-----------|--------|
+| Multi-stage build | Dev tools (uv, pip) stripped from the runtime image |
+| `uv.lock` copied before `src/` | Dependency layer cached across source-only changes |
+| `uv sync --no-install-project` first pass | Heavy deps installed separately; re-used when only app code changes |
+| `--mount=type=cache,target=/root/.cache/uv` | Wheel cache persisted across local builds; CI uses a fresh layer |
+| `UV_COMPILE_BYTECODE=1` | `.pyc` files pre-compiled at build time, not on first import |
+
+**Estimated image size (uncompressed, linux/amd64):** ~340–380 MB. The two
+largest contributors are `xgboost` (~80 MB, includes OpenMP shared libs) and
+the `grpc` native extension pulled by `google-cloud-firestore` (~40 MB). The
+`python:3.12-slim` base accounts for ~45 MB.
+
+**Why `python:3.12-slim` and not distroless?** `gcr.io/distroless/python3-debian12`
+was evaluated as the final-stage base. It is incompatible with two runtime
+dependencies: `google-cloud-firestore` (pulls `grpc` which requires
+`libssl`/`libcrypto`/`libstdc++`) and `xgboost` (links `libgomp`). Neither
+library is present in the distroless image. Switching would require a custom
+base, which outweighs the ~10 MB saving. Revisit if `xgboost` moves to a
+training-only dependency and `grpc` is replaced by the HTTP/1.1 transport.
+
+**Artifact Registry cleanup policy** is Terraform-managed in the
+`lopeztech/platform-infra` repository (`projects/fantasy-coach/`). The desired
+policy — keep the last 10 tagged images plus any image tagged `latest` or
+referenced by a live Cloud Run revision; delete untagged and older images — is
+tracked there. At the current deploy cadence (~2/week), storage is < $0.10/month
+even without a cleanup policy, but it should be added before traffic scales.
