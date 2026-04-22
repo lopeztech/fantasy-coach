@@ -156,10 +156,11 @@ class FeatureBuilder:
         )
         # League-wide rolling totals for shrinkage prior.
         self._league_total: deque[int] = deque(maxlen=REF_WINDOW * 5)
-        # Per-team rolling record of ``{player_id: position}`` for each
-        # recent match's starting XIII. ``_key_absence`` reads this to
-        # compute the team's regular XIII + each regular's usual position.
-        self._team_starters: dict[int, deque[dict[int, str]]] = defaultdict(
+        # Per-team rolling record of ``{player_id: (position, display_name)}``
+        # for each recent match's starting XIII. ``_key_absence`` reads the
+        # positions; ``key_absence_detail`` also reads the names so the UI
+        # can render "Missing Ilias (Halfback)" instead of a raw number.
+        self._team_starters: dict[int, deque[dict[int, tuple[str, str]]]] = defaultdict(
             lambda: deque(maxlen=KEY_ABSENCE_WINDOW)
         )
         # Wider rolling windows (10 matches) used as the opponent baseline
@@ -258,23 +259,69 @@ class FeatureBuilder:
         if not current_starters:
             return 0.0
 
-        # Per-player: count of starts in the window + most common position.
+        total = 0.0
+        for _, _, _, weight in self._absent_regulars(history, current_starters):
+            total += weight
+        return total
+
+    def key_absence_detail(
+        self, team_id: int, current_players: list[PlayerRow]
+    ) -> list[dict[str, object]]:
+        """Return the missing-regular list underlying ``_key_absence``.
+
+        Exposed for the prediction-contribution payload so the UI can render
+        "Missing Ilias (Halfback)" rather than a raw weighted sum. Returns an
+        empty list in the same conditions ``_key_absence`` returns ``0.0`` —
+        caller should treat that as "no narrative detail available".
+        """
+        history = self._team_starters.get(team_id)
+        if not history:
+            return []
+        current_starters = {p.player_id for p in current_players if p.is_on_field}
+        if not current_starters:
+            return []
+        missing = self._absent_regulars(history, current_starters)
+        # Sort by weight desc so the first entry is the most-load-bearing
+        # absence (halfback > hooker > prop > etc.), then by name for stable
+        # output when weights tie.
+        missing.sort(key=lambda r: (-r[3], r[2]))
+        return [
+            {"player_id": pid, "position": pos, "name": name, "weight": weight}
+            for pid, pos, name, weight in missing
+        ]
+
+    def _absent_regulars(
+        self,
+        history: deque[dict[int, tuple[str, str]]],
+        current_starters: set[int],
+    ) -> list[tuple[int, str, str, float]]:
+        """Shared impl of ``_key_absence`` / ``key_absence_detail``.
+
+        Returns ``(player_id, most_common_position, display_name, weight)`` for
+        each regular starter in ``history`` who is *not* in ``current_starters``.
+        """
         starts: Counter[int] = Counter()
         position_counts: dict[int, Counter[str]] = defaultdict(Counter)
+        latest_name: dict[int, str] = {}
         for match_starters in history:
-            for pid, pos in match_starters.items():
+            for pid, (pos, name) in match_starters.items():
                 starts[pid] += 1
                 position_counts[pid][pos] += 1
+                # Keep the latest observed display name — older seasons
+                # sometimes drop the first name or reorder fields.
+                if name:
+                    latest_name[pid] = name
 
-        total = 0.0
+        out: list[tuple[int, str, str, float]] = []
         for pid, count in starts.items():
             if count < KEY_ABSENCE_REGULAR_MIN_STARTS:
                 continue
             if pid in current_starters:
                 continue
             regular_pos = position_counts[pid].most_common(1)[0][0]
-            total += POSITION_WEIGHTS.get(regular_pos, 1.0)
-        return total
+            weight = POSITION_WEIGHTS.get(regular_pos, 1.0)
+            out.append((pid, regular_pos, latest_name.get(pid, f"#{pid}"), weight))
+        return out
 
     def _referee_features(self, referee_id: int | None) -> tuple[float, float, float]:
         """Return (ref_avg_total_points, ref_home_penalty_diff, missing_referee).
@@ -363,8 +410,8 @@ class FeatureBuilder:
         # ``_key_absence`` reads these to compute the regular XIII. Older
         # matches without an ``is_on_field`` flag contribute {} — same effect
         # as skipping them entirely once the deque fills with real data.
-        self._team_starters[h_id].append(_starters_by_position(match.home.players))
-        self._team_starters[a_id].append(_starters_by_position(match.away.players))
+        self._team_starters[h_id].append(_starters_info(match.home.players))
+        self._team_starters[a_id].append(_starters_info(match.away.players))
 
 
 def build_training_frame(
@@ -422,15 +469,27 @@ def build_training_frame(
     )
 
 
-def _starters_by_position(players: list[PlayerRow]) -> dict[int, str]:
-    """Return ``{player_id: position}`` for players flagged ``is_on_field``.
+def _starters_info(players: list[PlayerRow]) -> dict[int, tuple[str, str]]:
+    """Return ``{player_id: (position, display_name)}`` for starting XIII players.
 
     Used by ``FeatureBuilder._key_absence`` to track each team's recent
     starting XIIIs. Players without a position are skipped; players with
     ``is_on_field=None`` (pre-team-list-drop scrape, or older data missing
     the flag) are also skipped — no signal is better than wrong signal.
     """
-    return {p.player_id: p.position for p in players if p.is_on_field and p.position is not None}
+    out: dict[int, tuple[str, str]] = {}
+    for p in players:
+        if not p.is_on_field or p.position is None:
+            continue
+        name = _display_name(p)
+        out[p.player_id] = (p.position, name)
+    return out
+
+
+def _display_name(p: PlayerRow) -> str:
+    """Best-effort "First Last" rendering; tolerates partial NRL data."""
+    parts = [s for s in (p.first_name, p.last_name) if s]
+    return " ".join(parts) if parts else f"#{p.player_id}"
 
 
 def _is_complete(match: MatchRow) -> bool:

@@ -418,6 +418,132 @@ def test_store_roundtrips_contributions(store: PredictionStore) -> None:
     assert loaded[0].contributions[0].contribution == pytest.approx(0.31)
 
 
+def test_compute_contributions_filters_sentinel_and_flag_features() -> None:
+    """Sentinel-valued / constant binary-flag features shouldn't surface in
+    the top-K list, even if the coefficient happens to be big.
+
+    ``is_home_field`` is a constant 1.0; ``missing_weather=0`` is "we have
+    weather" (data-era flag, not narrative); ``venue_avg_total_points=0`` is
+    "no venue history" (sentinel). None should appear in contributions.
+    """
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+    from fantasy_coach.models.logistic import LoadedModel
+
+    # Train a logistic with the real FEATURE_NAMES shape.
+    rng = np.random.default_rng(0)
+    n = 200
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    # Force ``is_home_field`` to always be 1.0 (its true value) so the trained
+    # pipeline sees the same constant as in prod.
+    home_idx = FEATURE_NAMES.index("is_home_field")
+    X[:, home_idx] = 1.0
+    y = (X[:, 0] > 0).astype(int)
+    pipeline = Pipeline(
+        steps=[("scale", StandardScaler()), ("lr", LogisticRegression(max_iter=1000))]
+    )
+    pipeline.fit(X, y)
+    loaded = LoadedModel(pipeline=pipeline, feature_names=FEATURE_NAMES)
+
+    # Build an inference row where the sentinel/flag features are at their
+    # "hide me" values.
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, home_idx] = 1.0  # constant flag
+    x[0, FEATURE_NAMES.index("missing_weather")] = 0.0  # "we do have weather"
+    x[0, FEATURE_NAMES.index("venue_avg_total_points")] = 0.0  # no history
+    x[0, FEATURE_NAMES.index("venue_home_win_rate")] = 0.5  # neutral prior
+    x[0, FEATURE_NAMES.index("key_absence_diff")] = 0.0  # no missing regulars
+    # Make one real feature carry strong signal so something survives.
+    x[0, 0] = 2.0
+
+    contribs = _compute_contributions(loaded, x, top_k=10)
+    assert contribs is not None
+    surfaced = {c.feature for c in contribs}
+    assert "is_home_field" not in surfaced
+    assert "missing_weather" not in surfaced
+    assert "venue_avg_total_points" not in surfaced
+    assert "venue_home_win_rate" not in surfaced
+    assert "key_absence_diff" not in surfaced
+
+
+def test_compute_contributions_enriches_key_absence_with_missing_players() -> None:
+    """When builder + match are provided, ``key_absence_diff`` gets a
+    structured detail list of missing-regular players the UI can render."""
+    from datetime import UTC, datetime
+
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, FeatureBuilder
+    from fantasy_coach.features import MatchRow, PlayerRow, TeamRow
+    from fantasy_coach.models.logistic import LoadedModel
+
+    builder = FeatureBuilder()
+
+    # Seed a "regular" halfback for team 10 by recording two prior matches.
+    def _p(pid: int, jersey: int, pos: str, on: bool, first: str, last: str) -> PlayerRow:
+        return PlayerRow(
+            player_id=pid,
+            jersey_number=jersey,
+            position=pos,
+            first_name=first,
+            last_name=last,
+            is_on_field=on,
+        )
+
+    def _match(match_id: int, start_day: int, home_players, away_players) -> MatchRow:
+        return MatchRow(
+            match_id=match_id,
+            season=2024,
+            round=1,
+            start_time=datetime(2024, 3, start_day, tzinfo=UTC),
+            match_state="FullTime",
+            venue="Eden Park",
+            venue_city="Auckland",
+            weather=None,
+            home=TeamRow(team_id=10, name="T10", nick_name="T10", score=20, players=home_players),
+            away=TeamRow(team_id=20, name="T20", nick_name="T20", score=14, players=away_players),
+            team_stats=[],
+        )
+
+    regular_halfback = _p(107, 7, "Halfback", True, "Lachlan", "Ilias")
+    home_regular = [regular_halfback, _p(101, 1, "Fullback", True, "F", "Fullback")]
+    away_regular = [_p(207, 7, "Halfback", True, "Nathan", "Cleary")]
+    for r in range(2):
+        builder.record(_match(1000 + r, r + 1, home_regular, away_regular))
+
+    # "Today": regular halfback is missing; fill-in is on field.
+    fill_in = _p(999, 7, "Halfback", True, "Rookie", "Halfback")
+    today_home = [fill_in, _p(101, 1, "Fullback", True, "F", "Fullback")]
+    today_away = away_regular
+    today = _match(2000, 10, today_home, today_away)
+
+    # Build a trivial logistic on the live FEATURE_NAMES shape so the
+    # detail-enrichment path is exercised on the key_absence_diff row.
+    rng = np.random.default_rng(1)
+    X = rng.standard_normal((100, len(FEATURE_NAMES)))
+    y = (X[:, 0] > 0).astype(int)
+    pipeline = Pipeline(
+        steps=[("scale", StandardScaler()), ("lr", LogisticRegression(max_iter=1000))]
+    )
+    pipeline.fit(X, y)
+    loaded = LoadedModel(pipeline=pipeline, feature_names=FEATURE_NAMES)
+
+    x = np.asarray([builder.feature_row(today)], dtype=float)
+    contribs = _compute_contributions(loaded, x, builder=builder, match=today, top_k=20)
+    assert contribs is not None
+
+    absence = next((c for c in contribs if c.feature == "key_absence_diff"), None)
+    assert absence is not None, (
+        "key_absence_diff should surface when a regular is missing; "
+        f"got: {[c.feature for c in contribs]}"
+    )
+    assert absence.detail is not None
+    home_missing = absence.detail.get("home_missing") or []
+    away_missing = absence.detail.get("away_missing") or []
+    assert len(home_missing) == 1, f"expected home missing the halfback, got {home_missing}"
+    assert home_missing[0]["name"] == "Lachlan Ilias"
+    assert home_missing[0]["position"] == "Halfback"
+    assert home_missing[0]["weight"] > 0
+    assert away_missing == []
+
+
 def test_store_roundtrips_missing_contributions_as_none(store: PredictionStore) -> None:
     pred = PredictionOut(
         matchId=43,

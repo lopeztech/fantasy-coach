@@ -30,10 +30,40 @@ export function labelFor(
   home: string,
   away: string,
 ): ContributionLabel {
-  const { feature, value, contribution } = c;
+  const { feature, value, contribution, detail } = c;
   const favours = favouredBy(contribution);
+  // Structured-detail paths take priority — they render player names and
+  // other concrete narrative the aggregate value can't.
+  if (feature === "key_absence_diff" && detail) {
+    return { text: describeKeyAbsence(detail, home, away), favours };
+  }
   const text = describe(feature, value, contribution, home, away);
   return { text, favours };
+}
+
+function describeKeyAbsence(
+  detail: NonNullable<FeatureContribution["detail"]>,
+  home: string,
+  away: string,
+): string {
+  const homeMissing = detail.home_missing ?? [];
+  const awayMissing = detail.away_missing ?? [];
+  const parts: string[] = [];
+  if (homeMissing.length) parts.push(`${home} missing ${formatPlayers(homeMissing)}`);
+  if (awayMissing.length) parts.push(`${away} missing ${formatPlayers(awayMissing)}`);
+  if (!parts.length) return "Starting XIIIs intact on both sides";
+  return parts.join("; ");
+}
+
+function formatPlayers(
+  players: Array<{ name: string; position: string }>,
+  showFirst = 2,
+): string {
+  const leading = players.slice(0, showFirst);
+  const rest = players.length - leading.length;
+  const formatted = leading.map((p) => `${p.name} (${p.position})`);
+  if (rest > 0) formatted.push(`${rest} other${rest === 1 ? "" : "s"}`);
+  return formatted.join(", ");
 }
 
 function describe(
@@ -115,6 +145,13 @@ function describe(
     case "form_diff_pa_adjusted": {
       const who = teamFavoured(-value, home, away);
       return `${who} conceding ${rounded(Math.abs(value))} fewer points relative to opponent's scoring baseline`;
+    }
+    case "key_absence_diff": {
+      // Fallback when the backend-side `detail.{home,away}_missing` list
+      // isn't present (older cached predictions). The sign of the diff tells
+      // us which side has more weighted absences; we can't name the players.
+      const disadvantaged = value >= 0 ? home : away;
+      return `${disadvantaged} missing weighted regulars (${rounded(mag)})`;
     }
     default:
       // Fallback for unknown feature names (e.g. future feature additions).
