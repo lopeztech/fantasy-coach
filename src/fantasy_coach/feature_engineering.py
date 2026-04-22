@@ -26,14 +26,14 @@ Features (all home-minus-away unless noted):
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
 
-from fantasy_coach.features import MatchRow
+from fantasy_coach.features import MatchRow, PlayerRow
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.travel import travel_features
 from fantasy_coach.weather import parse_weather
@@ -57,7 +57,39 @@ FEATURE_NAMES = (
     "ref_avg_total_points",
     "ref_home_penalty_diff",
     "missing_referee",
+    # Position-weighted count of this team's "regular" starters who are NOT
+    # in the current match's starting XIII. Positive ⇒ home is missing more
+    # key players than away (hurts home); model learns a negative coefficient.
+    # See ``POSITION_WEIGHTS`` and the docstring on ``_key_absence``.
+    "key_absence_diff",
 )
+
+# Plain-English rationale in docs/model.md. These are expert-prior weights:
+# the impact of losing a halfback is meaningfully larger than losing a prop.
+# Absolute magnitudes are low-stakes for the logistic baseline — the
+# coefficient normalises the scale after StandardScaler — but the *ratios*
+# matter because they're what changes the feature's signed direction across
+# matches. See the "Ablation notes — key-absence feature" in docs/model.md
+# for the flat-weights comparison.
+POSITION_WEIGHTS: dict[str, float] = {
+    "Halfback": 3.0,
+    "Hooker": 2.5,
+    "Fullback": 2.5,
+    "Five-Eighth": 2.0,
+    "Lock": 1.5,
+    "Centre": 1.5,
+    "2nd Row": 1.2,
+    "Prop": 1.0,
+    "Winger": 1.0,
+    "Interchange": 0.5,
+}
+
+# How many recent completed matches define a team's "regular XIII".
+KEY_ABSENCE_WINDOW = 5
+# A player needs to have started this many of the last KEY_ABSENCE_WINDOW
+# matches to count as a "regular" — stops one-off fill-ins from polluting
+# the baseline.
+KEY_ABSENCE_REGULAR_MIN_STARTS = 2
 
 VENUE_TOTAL_WINDOW = 10
 VENUE_WIN_WINDOW = 20
@@ -113,6 +145,12 @@ class FeatureBuilder:
         )
         # League-wide rolling totals for shrinkage prior.
         self._league_total: deque[int] = deque(maxlen=REF_WINDOW * 5)
+        # Per-team rolling record of ``{player_id: position}`` for each
+        # recent match's starting XIII. ``_key_absence`` reads this to
+        # compute the team's regular XIII + each regular's usual position.
+        self._team_starters: dict[int, deque[dict[int, str]]] = defaultdict(
+            lambda: deque(maxlen=KEY_ABSENCE_WINDOW)
+        )
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -140,6 +178,8 @@ class FeatureBuilder:
             _avg(self._venue_home_wins[vkey]) if (vkey and self._venue_home_wins[vkey]) else 0.5
         )
         ref_tp, ref_pd, missing_ref = self._referee_features(match.referee_id)
+        key_abs_h = self._key_absence(h_id, match.home.players)
+        key_abs_a = self._key_absence(a_id, match.away.players)
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -159,7 +199,49 @@ class FeatureBuilder:
             ref_tp,
             ref_pd,
             missing_ref,
+            key_abs_h - key_abs_a,
         ]
+
+    def _key_absence(self, team_id: int, current_players: list[PlayerRow]) -> float:
+        """Return Σ ``POSITION_WEIGHTS[pos]`` for regular starters missing today.
+
+        "Regular" = player who started in ``KEY_ABSENCE_REGULAR_MIN_STARTS`` or
+        more of the team's last ``KEY_ABSENCE_WINDOW`` completed matches. Each
+        regular carries their *most common* recent starting position, which is
+        what the weight table keys on.
+
+        Returns ``0.0`` when:
+        - the team has no recent-match history yet (first few rounds of data);
+        - the current match has no ``is_on_field`` flag on any player (the
+          scrape pre-dates the team-list drop, so we don't know the starting
+          XIII at prediction time).
+        The neutral value feeds through to the model as "no signal", which is
+        what we want — rather than silently penalising early-season matches.
+        """
+        history = self._team_starters.get(team_id)
+        if not history:
+            return 0.0
+        current_starters = {p.player_id for p in current_players if p.is_on_field}
+        if not current_starters:
+            return 0.0
+
+        # Per-player: count of starts in the window + most common position.
+        starts: Counter[int] = Counter()
+        position_counts: dict[int, Counter[str]] = defaultdict(Counter)
+        for match_starters in history:
+            for pid, pos in match_starters.items():
+                starts[pid] += 1
+                position_counts[pid][pos] += 1
+
+        total = 0.0
+        for pid, count in starts.items():
+            if count < KEY_ABSENCE_REGULAR_MIN_STARTS:
+                continue
+            if pid in current_starters:
+                continue
+            regular_pos = position_counts[pid].most_common(1)[0][0]
+            total += POSITION_WEIGHTS.get(regular_pos, 1.0)
+        return total
 
     def _referee_features(self, referee_id: int | None) -> tuple[float, float, float]:
         """Return (ref_avg_total_points, ref_home_penalty_diff, missing_referee).
@@ -227,6 +309,12 @@ class FeatureBuilder:
             penalty_diff = _penalty_diff(match)
             if penalty_diff is not None:
                 self._ref_penalty_diff[match.referee_id].append(penalty_diff)
+        # Fold the match's starting XIII (by position) into per-team history.
+        # ``_key_absence`` reads these to compute the regular XIII. Older
+        # matches without an ``is_on_field`` flag contribute {} — same effect
+        # as skipping them entirely once the deque fills with real data.
+        self._team_starters[h_id].append(_starters_by_position(match.home.players))
+        self._team_starters[a_id].append(_starters_by_position(match.away.players))
 
 
 def build_training_frame(
@@ -282,6 +370,17 @@ def build_training_frame(
         match_ids=np.asarray(match_ids, dtype=int),
         start_times=np.asarray(start_times, dtype="datetime64[s]"),
     )
+
+
+def _starters_by_position(players: list[PlayerRow]) -> dict[int, str]:
+    """Return ``{player_id: position}`` for players flagged ``is_on_field``.
+
+    Used by ``FeatureBuilder._key_absence`` to track each team's recent
+    starting XIIIs. Players without a position are skipped; players with
+    ``is_on_field=None`` (pre-team-list-drop scrape, or older data missing
+    the flag) are also skipped — no signal is better than wrong signal.
+    """
+    return {p.player_id: p.position for p in players if p.is_on_field and p.position is not None}
 
 
 def _is_complete(match: MatchRow) -> bool:

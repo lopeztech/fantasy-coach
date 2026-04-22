@@ -267,7 +267,7 @@ def test_compute_dispatches_ensemble_artifact_end_to_end(
     from fantasy_coach.models.ensemble import EnsembleModel, save_ensemble
     from fantasy_coach.models.logistic import train_logistic
 
-    # Two logistic bases trained on the live 18-feature shape, different seeds.
+    # Two logistic bases trained on the live FEATURE_NAMES shape, different seeds.
     rng = np.random.default_rng(7)
     n = 150
     X = rng.standard_normal((n, len(FEATURE_NAMES)))

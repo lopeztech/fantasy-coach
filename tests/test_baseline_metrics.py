@@ -31,20 +31,25 @@ from fantasy_coach.storage import SQLiteRepository
 BASELINE_DB = Path(__file__).parent / "fixtures" / "baseline-nrl.db"
 SEASONS = (2024, 2025)
 
-# Snapshot from a 2024+2025 backfill on 2026-04-21 (213 matches/season,
-# draws dropped → 424 scored predictions).
-# Logistic updated in #55 (travel), #54 (weather/venue), and #57 (referee). Extra
-# features increase variance at this sample size; expected to help tree models with
-# more data. Referee features show negligible signal on the 2024-2025 baseline (all
-# referee_id values NULL after v1→v2 migration) — see docs/model.md for ablation notes.
+# Snapshot from a 2024+2025 backfill on 2026-04-22 (213 matches/season,
+# draws dropped → 424 scored predictions). Baseline DB refreshed in #27 so
+# the ``is_on_field`` flag (from #24) is populated for all historical rows.
 #
-# XGBoost (#25): log_loss 0.7599 vs logistic 0.7640 (Δ=+0.41pp) — below the 1-point
-# threshold; logistic remains the default model. See docs/model.md for comparison.
+# Logistic updated in #55 (travel), #54 (weather/venue), #57 (referee), and
+# #27 (key-absence). Referee features show negligible signal on this window
+# (all referee_id NULL after v1→v2 migration). The #27 absence feature trades
+# accuracy (+1.2pp) for a small log-loss regression (+0.013) — see
+# docs/model.md's "Ablation notes — key-absence feature" for the full table.
+#
+# XGBoost picks up the biggest absolute improvement from #27's new feature:
+# accuracy 0.5448 → 0.5708 (+2.6pp), log_loss 0.7599 → 0.7708 (+0.011).
+# Tree models can split on position-specific thresholds the logistic can't.
+# Elo stays the top model on log_loss; xgboost closes the accuracy gap.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
-    "logistic": {"n": 424, "accuracy": 0.5660, "log_loss": 0.7640, "brier": 0.2654},
-    "xgboost": {"n": 424, "accuracy": 0.5448, "log_loss": 0.7599, "brier": 0.2721},
+    "logistic": {"n": 424, "accuracy": 0.5519, "log_loss": 0.7965, "brier": 0.2740},
+    "xgboost": {"n": 424, "accuracy": 0.5708, "log_loss": 0.7708, "brier": 0.2717},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
@@ -53,6 +58,15 @@ PREDICTORS: dict[str, type[Predictor]] = {
     "logistic": LogisticPredictor,
     "xgboost": XGBoostPredictor,
 }
+
+# Per-predictor tolerance. sklearn-based predictors are bit-stable across
+# Linux + macOS, so 1e-3 catches real regressions. xgboost's
+# OMP-parallelised tree splits are *not* bit-stable across platforms —
+# a handful of close predictions flip between macOS and Ubuntu CI (#27
+# measured a ~0.005 drift on the same nrl.db). Wider tolerance for
+# xgboost accepts that noise while still catching a 1pp regression.
+_TOL: dict[str, float] = {"xgboost": 8e-3}
+_DEFAULT_TOL = 1e-3
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
@@ -72,9 +86,9 @@ def test_walk_forward_metrics_match_baseline(name: str) -> None:
     assert result.n == expected["n"], (
         f"{name}: prediction count drift, got n={result.n}, want {expected['n']}"
     )
-    # 1e-3 tolerance covers cross-platform sklearn / BLAS jitter without
-    # masking real regressions (a 0.5pp accuracy drop is meaningful here).
+    tol = _TOL.get(name, _DEFAULT_TOL)
     for key in ("accuracy", "log_loss", "brier"):
-        assert metrics[key] == pytest.approx(expected[key], abs=1e-3), (
-            f"{name}: {key} drifted from baseline. got={metrics[key]:.4f} want={expected[key]:.4f}"
+        assert metrics[key] == pytest.approx(expected[key], abs=tol), (
+            f"{name}: {key} drifted from baseline. got={metrics[key]:.4f} "
+            f"want={expected[key]:.4f} (tol={tol})"
         )

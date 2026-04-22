@@ -310,7 +310,7 @@ def test_ensemble_predictor_empty_bases_rejects():
 def _two_logistic_blobs(rng: np.random.Generator):
     """Produce two logistic-blob dicts over the live FEATURE_NAMES.
 
-    Both bases are trained on the same synthetic 18-feature frame with
+    Both bases are trained on the same synthetic ``FEATURE_NAMES``-shaped frame with
     different random seeds so they disagree — enough for the ensemble's
     weighted combination to differ from either base alone.
     """
