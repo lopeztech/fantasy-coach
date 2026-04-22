@@ -81,10 +81,11 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
 # Linux + macOS, so 1e-3 catches real regressions. xgboost's
 # OMP-parallelised tree splits are *not* bit-stable across platforms —
-# a handful of close predictions flip between macOS and Ubuntu CI (#27
-# measured a ~0.005 drift on the same nrl.db). Wider tolerance for
-# xgboost accepts that noise while still catching a 1pp regression.
-_TOL: dict[str, float] = {"xgboost": 8e-3, "skellam": 5e-3}
+# a handful of close predictions flip between macOS and Ubuntu CI.
+# #27 measured ~0.005 drift, #109 measured ~0.011 drift once player_ratings
+# added variance. Widened to 1.5e-2 to swallow that; still tight enough
+# to catch a 1.5pp regression, which is well above any noise floor.
+_TOL: dict[str, float] = {"xgboost": 1.5e-2, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 
 
