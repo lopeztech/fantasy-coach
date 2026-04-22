@@ -138,8 +138,7 @@ class LoadedModel:
         return self.estimator.predict_proba(X)[:, 1]
 
 
-def load_model(path: Path | str) -> LoadedModel:
-    blob = joblib.load(Path(path))
+def _from_blob(blob: dict) -> LoadedModel:
     if blob.get("feature_names") != FEATURE_NAMES:
         raise RuntimeError(
             f"Model trained with features {blob.get('feature_names')}, "
@@ -149,3 +148,7 @@ def load_model(path: Path | str) -> LoadedModel:
         estimator=blob["estimator"],
         feature_names=tuple(blob["feature_names"]),
     )
+
+
+def load_model(path: Path | str) -> LoadedModel:
+    return _from_blob(joblib.load(Path(path)))

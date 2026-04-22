@@ -93,7 +93,11 @@ def save_model(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    blob: dict = {"pipeline": result.pipeline, "feature_names": result.feature_names}
+    blob: dict = {
+        "model_type": "logistic",
+        "pipeline": result.pipeline,
+        "feature_names": result.feature_names,
+    }
     if calibration_wrapper is not None:
         blob["calibration_wrapper"] = calibration_wrapper
     joblib.dump(blob, path)
@@ -117,8 +121,7 @@ class LoadedModel:
         return self.pipeline.predict_proba(X)[:, 1]
 
 
-def load_model(path: Path | str) -> LoadedModel:
-    blob = joblib.load(Path(path))
+def _from_blob(blob: dict) -> LoadedModel:
     if blob.get("feature_names") != FEATURE_NAMES:
         raise RuntimeError(
             f"Model trained with features {blob.get('feature_names')}, "
@@ -129,3 +132,7 @@ def load_model(path: Path | str) -> LoadedModel:
         feature_names=tuple(blob["feature_names"]),
         calibration_wrapper=blob.get("calibration_wrapper"),
     )
+
+
+def load_model(path: Path | str) -> LoadedModel:
+    return _from_blob(joblib.load(Path(path)))

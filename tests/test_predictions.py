@@ -184,6 +184,83 @@ def test_compute_cache_miss_scrapes_and_stores(
     assert cached[0].matchId == p.matchId
 
 
+def test_compute_dispatches_ensemble_artifact_end_to_end(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    """Point FANTASY_COACH_MODEL_PATH at an ensemble artifact (not logistic)
+    and verify the returned probability comes from the ensemble combiner.
+
+    Exercises the artifact-sniffing loader end-to-end — no patching of
+    ``load_model``; just the real dispatcher path.
+    """
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
+    from fantasy_coach.models.ensemble import EnsembleModel, save_ensemble
+    from fantasy_coach.models.logistic import train_logistic
+
+    # Two logistic bases trained on the live 18-feature shape, different seeds.
+    rng = np.random.default_rng(7)
+    n = 150
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    y = ((X[:, 0] + 0.5 * X[:, 1]) > 0).astype(int)
+    frame = TrainingFrame(
+        X=X,
+        y=y,
+        match_ids=np.arange(n),
+        start_times=np.arange(n, dtype=float),
+        feature_names=FEATURE_NAMES,
+    )
+    base_a = train_logistic(frame, test_fraction=0.0, random_state=0)
+    base_b = train_logistic(frame, test_fraction=0.0, random_state=11)
+    base_blobs = [
+        {
+            "model_type": "logistic",
+            "pipeline": base_a.pipeline,
+            "feature_names": base_a.feature_names,
+        },
+        {
+            "model_type": "logistic",
+            "pipeline": base_b.pipeline,
+            "feature_names": base_b.feature_names,
+        },
+    ]
+    weights = np.array([0.6, 0.4])
+    ensemble = EnsembleModel(
+        mode="weighted",
+        base_model_names=("a", "b"),
+        weights=weights,
+    )
+    model_path = tmp_path / "ensemble.joblib"
+    save_ensemble(model_path, ensemble=ensemble, base_blobs=base_blobs)
+
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+
+    result = compute_predictions(
+        2026,
+        8,
+        sqlite_repo,
+        store,
+        model_path=model_path,
+        fetch_round_fn=mock_round,
+        fetch_match_fn=mock_match,
+    )
+
+    assert len(result) == 1
+    pred = result[0]
+    # Probability must be the ensemble-combined value — derive the expected
+    # prob from the actual feature row the endpoint would have fed in.
+    from fantasy_coach.feature_engineering import FeatureBuilder
+    from fantasy_coach.features import extract_match_features
+
+    match = extract_match_features(raw_match)
+    feature_row = np.asarray([FeatureBuilder().feature_row(match)], dtype=float)
+    pa = base_a.pipeline.predict_proba(feature_row)[0, 1]
+    pb = base_b.pipeline.predict_proba(feature_row)[0, 1]
+    expected = round(float(weights[0] * pa + weights[1] * pb), 4)
+    assert pred.homeWinProbability == expected
+
+
 def test_compute_returns_empty_when_no_fixtures(
     store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
 ) -> None:
