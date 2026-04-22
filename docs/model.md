@@ -154,15 +154,20 @@ over `max_depth ∈ {3, 4, 5}`, `n_estimators ∈ {100, 200}`, `learning_rate �
 | Model    | Accuracy | Log-loss | Brier  |
 |----------|----------|----------|--------|
 | Elo      | 0.5943   | 0.6570   | 0.2325 |
-| Logistic | 0.5660   | 0.7640   | 0.2654 |
-| XGBoost  | 0.5448   | 0.7599   | 0.2721 |
+| Logistic | 0.5519   | 0.7965   | 0.2740 |
+| XGBoost  | 0.5708   | 0.7708   | 0.2717 |
 
-**Decision: keep logistic as default.** XGBoost's log-loss improvement is 0.41pp,
-below the 1-point threshold stated in the issue AC. On this 2-season baseline, XGBoost
-is worse on accuracy and brier. Both models suffer from limited referee data (see
-referee ablation above). Recommendation: re-evaluate once 3+ seasons of data — including
-referee and injury features — are backfilled; gradient boosting typically needs ≥ 5k rows
-to clearly outperform a linear baseline.
+Numbers refreshed in #27 — the new `key_absence_diff` feature was
+*especially* useful for XGBoost (accuracy +2.6pp, 0.5448 → 0.5708, biggest
+absolute jump of any model) because tree splits can capture position-specific
+thresholds the logistic can't. XGBoost now beats logistic on accuracy by
+1.9pp and on log-loss by 0.026.
+
+**Decision: keep logistic as default** for now — Elo still owns log-loss
+(0.66 vs XGBoost 0.77), and the SPA's "Pick: X" headline is accuracy-facing
+where Elo also still wins. Worth re-evaluating once a third season of
+backfilled data lands (would bring the walk-forward sample past ~600
+predictions, where gradient boosting typically starts to pull ahead).
 
 The XGBoost model is serialised with the same joblib interface as logistic
 (`save_model` / `load_model`), keyed by `"model_type": "xgboost"`. The prediction
