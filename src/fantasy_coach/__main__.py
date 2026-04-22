@@ -74,6 +74,25 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    txg = sub.add_parser(
+        "train-xgboost",
+        help=(
+            "Train the XGBoost model against backfilled matches. Produces a "
+            "joblib artefact at the same shape as train-logistic; the "
+            "inference loader (``models.loader.load_model``) dispatches by "
+            "``model_type`` so either artefact can serve at the same GCS path."
+        ),
+    )
+    txg.add_argument("--season", type=int, action="append", required=True)
+    txg.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    txg.add_argument("--out", type=Path, default=Path("artifacts/xgboost.joblib"))
+    txg.add_argument("--test-fraction", type=float, default=0.2)
+    txg.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     ev = sub.add_parser(
         "evaluate",
         help="Walk-forward evaluation across one or more models.",
@@ -230,6 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_backfill(args)
     if args.command == "train-logistic":
         return _run_train_logistic(args)
+    if args.command == "train-xgboost":
+        return _run_train_xgboost(args)
     if args.command == "evaluate":
         return _run_evaluate(args)
     if args.command == "precompute":
@@ -285,6 +306,42 @@ def _run_train_logistic(args: argparse.Namespace) -> int:
         f"Trained on {result.n_train} matches, tested on {result.n_test}. "
         f"Train acc={result.train_accuracy:.3f} "
         f"test acc={result.test_accuracy:.3f}. "
+        f"Saved to {args.out}"
+    )
+    return 0
+
+
+def _run_train_xgboost(args: argparse.Namespace) -> int:
+    """Train XGBoost + write artefact at the same joblib shape as logistic.
+
+    ``models.loader.load_model`` dispatches by ``model_type``, so swapping
+    artefacts at the GCS path the Job pulls from is the only step needed
+    to promote XGBoost to production (#136).
+    """
+    from fantasy_coach.models.xgboost_model import (  # noqa: PLC0415
+        save_model as save_xgb,
+    )
+    from fantasy_coach.models.xgboost_model import (
+        train_xgboost,
+    )
+
+    repo = SQLiteRepository(args.db)
+    try:
+        matches = []
+        for season in args.season:
+            matches.extend(repo.list_matches(season))
+    finally:
+        repo.close()
+
+    frame = build_training_frame(matches)
+    result = train_xgboost(frame, test_fraction=args.test_fraction)
+    save_xgb(result, args.out)
+
+    print(
+        f"Trained on {result.n_train} matches, tested on {result.n_test}. "
+        f"Train acc={result.train_accuracy:.3f} "
+        f"test acc={result.test_accuracy:.3f}. "
+        f"best_params={result.best_params}. "
         f"Saved to {args.out}"
     )
     return 0

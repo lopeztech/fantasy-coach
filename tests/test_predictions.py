@@ -465,6 +465,48 @@ def test_compute_contributions_filters_sentinel_and_flag_features() -> None:
     assert "key_absence_diff" not in surfaced
 
 
+def test_compute_contributions_dispatches_to_xgboost() -> None:
+    """XGBoost artefacts use pred_contribs instead of coef × scaled-feature,
+    but the returned shape is the same (top-K FeatureContribution list) and
+    the sentinel filter still applies."""
+    try:
+        from xgboost import XGBClassifier
+
+        from fantasy_coach.models.xgboost_model import LoadedModel as XGBLoaded
+    except Exception:
+        pytest.skip("xgboost / libomp not importable")
+
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+    rng = np.random.default_rng(7)
+    n = 120
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    # Make feature 0 carry real signal; seed a few constant sentinel columns.
+    y = (X[:, 0] > 0).astype(int)
+    X[:, FEATURE_NAMES.index("is_home_field")] = 1.0
+    X[:, FEATURE_NAMES.index("missing_weather")] = 0.0
+
+    est = XGBClassifier(n_estimators=40, max_depth=3, eval_metric="logloss", verbosity=0)
+    est.fit(X, y)
+    loaded = XGBLoaded(estimator=est, feature_names=FEATURE_NAMES)
+
+    # Same inference row the logistic ablation used — strong signal on feat 0.
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, 0] = 2.0
+    x[0, FEATURE_NAMES.index("is_home_field")] = 1.0
+    x[0, FEATURE_NAMES.index("missing_weather")] = 0.0
+
+    contribs = _compute_contributions(loaded, x, top_k=5)
+    assert contribs is not None
+    surfaced = {c.feature for c in contribs}
+    # Sentinel / flag features never surface, no matter how large their
+    # coefficient/split contribution happens to be.
+    assert "is_home_field" not in surfaced
+    assert "missing_weather" not in surfaced
+    # Top contribution has the real signal feature at rank 1.
+    assert contribs[0].feature == "elo_diff"  # FEATURE_NAMES[0]
+
+
 def test_compute_contributions_enriches_key_absence_with_missing_players() -> None:
     """When builder + match are provided, ``key_absence_diff`` gets a
     structured detail list of missing-regular players the UI can render."""
