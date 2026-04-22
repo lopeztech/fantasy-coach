@@ -6,6 +6,7 @@ import App from "./App";
 import Home from "./routes/Home";
 import MatchDetail from "./routes/MatchDetail";
 import Round from "./routes/Round";
+import Scoreboard from "./routes/Scoreboard";
 import "./styles.css";
 
 const router = createBrowserRouter([
@@ -16,6 +17,7 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: "round/:season/:round", element: <Round /> },
       { path: "round/:season/:round/:matchId", element: <MatchDetail /> },
+      { path: "scoreboard", element: <Scoreboard /> },
     ],
   },
 ]);

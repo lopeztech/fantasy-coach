@@ -5,12 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fantasy_coach import __version__
 from fantasy_coach.auth import FirebaseAuthMiddleware
+from fantasy_coach.config import get_repository
 from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
     get_prediction_store,
 )
+from fantasy_coach.storage.repository import Repository
 
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
@@ -49,8 +51,9 @@ app.add_middleware(
     max_age=600,
 )
 
-# Module-level prediction store — created lazily on first use.
+# Module-level prediction store and match repo — both created lazily.
 _store: PredictionStore | FirestorePredictionStore | None = None
+_repo: Repository | None = None
 
 
 def _get_store() -> PredictionStore | FirestorePredictionStore:
@@ -58,6 +61,36 @@ def _get_store() -> PredictionStore | FirestorePredictionStore:
     if _store is None:
         _store = get_prediction_store()
     return _store
+
+
+def _get_repo() -> Repository:
+    global _repo
+    if _repo is None:
+        _repo = get_repository()
+    return _repo
+
+
+def _annotate_results(
+    predictions: list[PredictionOut], season: int, round_: int
+) -> list[PredictionOut]:
+    """Attach actualWinner from the match repo (FullTime matches only)."""
+    try:
+        matches = {m.match_id: m for m in _get_repo().list_matches(season, round_)}
+    except Exception:
+        return predictions  # repo unavailable — return predictions as-is
+    result = []
+    for p in predictions:
+        m = matches.get(p.matchId)
+        if (
+            m
+            and m.match_state == "FullTime"
+            and m.home.score is not None
+            and m.away.score is not None
+        ):
+            winner = "home" if m.home.score > m.away.score else "away"
+            p = p.model_copy(update={"actualWinner": winner})
+        result.append(p)
+    return result
 
 
 @app.get("/healthz")
@@ -91,4 +124,4 @@ def get_predictions(
                 "`gcloud run jobs execute fantasy-coach-precompute`."
             ),
         )
-    return cached
+    return _annotate_results(cached, season, round)

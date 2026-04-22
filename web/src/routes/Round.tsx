@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { apiFetch, ApiError, NotSignedInError } from "../api";
@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { MatchCard } from "../components/MatchCard";
 import { RoundSelector } from "../components/RoundSelector";
 import { SignInRequired } from "../components/SignInRequired";
+import { getTipsByRound, saveTip, type TipChoice } from "../tips";
 import type { Prediction } from "../types";
 
 type Status =
@@ -17,6 +18,8 @@ export default function Round() {
   const { season: seasonParam, round: roundParam } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  const [tips, setTips] = useState<Map<number, TipChoice>>(new Map());
+  const [savingTip, setSavingTip] = useState<number | null>(null);
 
   const season = Number(seasonParam);
   const round = Number(roundParam);
@@ -32,9 +35,16 @@ export default function Round() {
 
     let cancelled = false;
     setStatus({ kind: "loading" });
-    apiFetch<Prediction[]>(`/predictions?season=${season}&round=${round}`)
-      .then((predictions) => {
-        if (!cancelled) setStatus({ kind: "ok", predictions });
+
+    Promise.all([
+      apiFetch<Prediction[]>(`/predictions?season=${season}&round=${round}`),
+      getTipsByRound(user.uid, season, round).catch(() => new Map<number, TipChoice>()),
+    ])
+      .then(([predictions, loadedTips]) => {
+        if (!cancelled) {
+          setStatus({ kind: "ok", predictions });
+          setTips(loadedTips);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -54,6 +64,22 @@ export default function Round() {
       cancelled = true;
     };
   }, [authLoading, user, paramsValid, season, round]);
+
+  const handleTip = useCallback(
+    async (matchId: number, kickoff: string, choice: TipChoice) => {
+      if (!user) return;
+      setSavingTip(matchId);
+      try {
+        await saveTip(user.uid, matchId, choice, kickoff, season, round);
+        setTips((prev) => new Map(prev).set(matchId, choice));
+      } catch {
+        // silently fail — tip just won't persist
+      } finally {
+        setSavingTip(null);
+      }
+    },
+    [user, season, round],
+  );
 
   if (authLoading) return <p>Loading…</p>;
   if (!user) return <SignInRequired message="Sign in to see predictions for this round." />;
@@ -82,7 +108,15 @@ export default function Round() {
       {status.kind === "ok" && status.predictions.length > 0 && (
         <div className="match-grid">
           {status.predictions.map((p) => (
-            <MatchCard key={p.matchId} prediction={p} season={season} round={round} />
+            <MatchCard
+              key={p.matchId}
+              prediction={p}
+              season={season}
+              round={round}
+              tip={tips.get(p.matchId) ?? null}
+              savingTip={savingTip === p.matchId}
+              onTip={(choice) => void handleTip(p.matchId, p.kickoff, choice)}
+            />
           ))}
         </div>
       )}

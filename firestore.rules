@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User tips: each user owns their own tips subcollection.
+    // - Read: only the owning user.
+    // - Create/Update: only before kickoff (enforced via the kickoff field).
+    // - Delete: never (audit trail).
+    match /users/{uid}/tips/{matchId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && request.resource.data.keys().hasAll(["tip", "kickoff", "season", "round"])
+                    && request.resource.data.tip in ["home", "away"]
+                    && request.time < request.resource.data.kickoff;
+
+      allow update: if request.auth != null
+                    && request.auth.uid == uid
+                    && request.resource.data.tip in ["home", "away"]
+                    && request.time < resource.data.kickoff;
+
+      allow delete: if false;
+    }
+
+    // Deny all other reads/writes by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
