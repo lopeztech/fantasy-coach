@@ -7,8 +7,17 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "size": "size-limit",
+    "lhci": "lhci autorun"
   },
+  "size-limit": [
+    {
+      "path": "dist/assets/*.js",
+      "gzip": true,
+      "limit": "200 KB"
+    }
+  ],
   "dependencies": {
     "firebase": "^12.12.1",
     "react": "^18.3.1",
@@ -16,9 +25,12 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.14.0",
+    "@size-limit/file": "^11.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "size-limit": "^11.0.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.11"
   }

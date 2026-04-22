@@ -5,7 +5,7 @@ import { SignInRequired } from "../components/SignInRequired";
 export default function Home() {
   const { user, loading } = useAuth();
 
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <p role="status">Loading…</p>;
 
   return (
     <section>

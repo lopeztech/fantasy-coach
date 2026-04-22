@@ -67,7 +67,7 @@ export default function Round() {
         <RoundSelector initialSeason={season} initialRound={round} />
       </header>
 
-      {status.kind === "loading" && <p>Loading predictions…</p>}
+      {status.kind === "loading" && <p role="status">Loading predictions…</p>}
 
       {status.kind === "error" && (
         <div className="error-box" role="alert">

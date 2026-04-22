@@ -230,6 +230,19 @@ button:hover {
   outline-offset: 2px;
 }
 
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+/* ── Reduced-motion override ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .match-card-link {
+    transition: none;
+  }
+}
+
 /* ── Match detail page ─────────────────────────────────────────────────── */
 
 .back-link {

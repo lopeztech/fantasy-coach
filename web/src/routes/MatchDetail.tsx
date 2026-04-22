@@ -87,7 +87,7 @@ export default function MatchDetail() {
         <Link to={`/round/${season}/${round}`}>← Back to Round {round}</Link>
       </p>
 
-      {status.kind === "loading" && <p>Loading match…</p>}
+      {status.kind === "loading" && <p role="status">Loading match…</p>}
 
       {status.kind === "error" && (
         <div className="error-box" role="alert">
