@@ -43,5 +43,15 @@ jobs:
       - name: Bundle-size budget (< 200 KB gzip)
         run: npm run size
 
+      - name: Resolve Chrome path
+        run: |
+          # Prefer system Google Chrome (standard GitHub-hosted ubuntu runners);
+          # fall back to Playwright's bundled Chromium (present in self-hosted runners).
+          CHROME=$(which google-chrome-stable 2>/dev/null \
+            || which google-chrome 2>/dev/null \
+            || find /opt/pw-browsers -maxdepth 4 -name "chrome" -type f 2>/dev/null | head -1 \
+            || true)
+          echo "CHROME_PATH=${CHROME}" >> "$GITHUB_ENV"
+
       - name: Lighthouse CI (accessibility ≥ 95, perf / best-practices ≥ 90)
         run: npm run lhci
