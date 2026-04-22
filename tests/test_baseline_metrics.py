@@ -44,12 +44,17 @@ SEASONS = (2024, 2025)
 # ``elo_diff`` feature (+2.36pp accuracy over plain Elo on this baseline).
 # Logistic and XGBoost numbers updated to reflect EloMOV elo_diff inputs.
 # Plain Elo (EloPredictor) uses its own rater and is unchanged.
+#
+# #108 adds form_diff_pf_adjusted + form_diff_pa_adjusted (opponent-adjusted
+# rolling form). Logistic shows a small regression on this 2-season window —
+# features are kept (alongside raw form) per the issue decision; signal is
+# expected to improve with more opponent-history data.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
-    "logistic": {"n": 424, "accuracy": 0.5613, "log_loss": 0.7926, "brier": 0.2718},
-    "xgboost": {"n": 424, "accuracy": 0.5613, "log_loss": 0.7718, "brier": 0.2731},
+    "logistic": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7978, "brier": 0.2744},
+    "xgboost": {"n": 424, "accuracy": 0.5637, "log_loss": 0.7687, "brier": 0.2720},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

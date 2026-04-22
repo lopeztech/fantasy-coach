@@ -63,6 +63,13 @@ FEATURE_NAMES = (
     # key players than away (hurts home); model learns a negative coefficient.
     # See ``POSITION_WEIGHTS`` and the docstring on ``_key_absence``.
     "key_absence_diff",
+    # Opponent-strength-adjusted form (#108). For each of the last 5 matches,
+    # subtract the opponent's rolling-10 baseline (PA for PF, PF for PA),
+    # then average. Captures "points scored above what this opponent concedes"
+    # and "points conceded relative to what this opponent scores". Kept
+    # alongside the raw form features so the logistic can weight both.
+    "form_diff_pf_adjusted",
+    "form_diff_pa_adjusted",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -96,6 +103,7 @@ VENUE_TOTAL_WINDOW = 10
 VENUE_WIN_WINDOW = 20
 
 ROLLING_WINDOW = 5
+ADJ_OPP_WINDOW = 10  # opponent's rolling window for adjusted-form baselines
 H2H_WINDOW = 3
 DEFAULT_DAYS_REST = 14
 
@@ -154,6 +162,22 @@ class FeatureBuilder:
         self._team_starters: dict[int, deque[dict[int, str]]] = defaultdict(
             lambda: deque(maxlen=KEY_ABSENCE_WINDOW)
         )
+        # Wider rolling windows (10 matches) used as the opponent baseline
+        # for adjusted form computation. Separate from the 5-match windows
+        # so the existing raw form features are unaffected.
+        self._opp_pf_window: dict[int, deque[int]] = defaultdict(
+            lambda: deque(maxlen=ADJ_OPP_WINDOW)
+        )
+        self._opp_pa_window: dict[int, deque[int]] = defaultdict(
+            lambda: deque(maxlen=ADJ_OPP_WINDOW)
+        )
+        # Adjusted form deques (rolling-5, one entry per completed match).
+        self._adj_points_for: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=ROLLING_WINDOW)
+        )
+        self._adj_points_against: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=ROLLING_WINDOW)
+        )
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -183,6 +207,10 @@ class FeatureBuilder:
         ref_tp, ref_pd, missing_ref = self._referee_features(match.referee_id)
         key_abs_h = self._key_absence(h_id, match.home.players)
         key_abs_a = self._key_absence(a_id, match.away.players)
+        adj_pf_h = _avg(self._adj_points_for[h_id])
+        adj_pf_a = _avg(self._adj_points_for[a_id])
+        adj_pa_h = _avg(self._adj_points_against[h_id])
+        adj_pa_a = _avg(self._adj_points_against[a_id])
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -203,6 +231,8 @@ class FeatureBuilder:
             ref_pd,
             missing_ref,
             key_abs_h - key_abs_a,
+            adj_pf_h - adj_pf_a,
+            adj_pa_h - adj_pa_a,
         ]
 
     def _key_absence(self, team_id: int, current_players: list[PlayerRow]) -> float:
@@ -289,6 +319,23 @@ class FeatureBuilder:
             return
         h_id, a_id = match.home.team_id, match.away.team_id
         h_score, a_score = int(match.home.score), int(match.away.score)
+
+        # Opponent-adjusted form: compute baselines from pre-update windows,
+        # then store adjusted scores. No leakage — _opp_*_window for both
+        # teams reflects only matches completed before this one.
+        opp_pa_h = _avg(self._opp_pa_window[a_id])  # away's rolling-10 PA
+        opp_pa_a = _avg(self._opp_pa_window[h_id])  # home's rolling-10 PA
+        opp_pf_h = _avg(self._opp_pf_window[a_id])  # away's rolling-10 PF
+        opp_pf_a = _avg(self._opp_pf_window[h_id])  # home's rolling-10 PF
+        self._adj_points_for[h_id].append(h_score - opp_pa_h)
+        self._adj_points_for[a_id].append(a_score - opp_pa_a)
+        self._adj_points_against[h_id].append(a_score - opp_pf_h)
+        self._adj_points_against[a_id].append(h_score - opp_pf_a)
+        self._opp_pf_window[h_id].append(h_score)
+        self._opp_pf_window[a_id].append(a_score)
+        self._opp_pa_window[h_id].append(a_score)
+        self._opp_pa_window[a_id].append(h_score)
+
         self._points_for[h_id].append(h_score)
         self._points_for[a_id].append(a_score)
         self._points_against[h_id].append(a_score)

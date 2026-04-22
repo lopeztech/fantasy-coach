@@ -99,8 +99,6 @@ def _match(
 
 def test_key_absence_diff_is_registered() -> None:
     assert "key_absence_diff" in FEATURE_NAMES
-    # Feature lives last so the row order stays stable for older cached rows.
-    assert FEATURE_NAMES[-1] == "key_absence_diff"
 
 
 # ---------------------------------------------------------------------------

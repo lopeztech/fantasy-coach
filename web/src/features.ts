@@ -108,6 +108,14 @@ function describe(
     }
     case "missing_referee":
       return value > 0.5 ? "Referee not yet confirmed" : "Referee confirmed";
+    case "form_diff_pf_adjusted": {
+      const who = teamFavoured(value, home, away);
+      return `${who} scoring ${rounded(Math.abs(value))} more points above opponent's defensive baseline`;
+    }
+    case "form_diff_pa_adjusted": {
+      const who = teamFavoured(-value, home, away);
+      return `${who} conceding ${rounded(Math.abs(value))} fewer points relative to opponent's scoring baseline`;
+    }
     default:
       // Fallback for unknown feature names (e.g. future feature additions).
       return `${feature} = ${rounded(value, 2)}`;
