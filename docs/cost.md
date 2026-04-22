@@ -148,3 +148,57 @@ policy — keep the last 10 tagged images plus any image tagged `latest` or
 referenced by a live Cloud Run revision; delete untagged and older images — is
 tracked there. At the current deploy cadence (~2/week), storage is < $0.10/month
 even without a cleanup policy, but it should be added before traffic scales.
+
+## CI costs (#120)
+
+GitHub Actions minutes are free for public repos but every workflow run costs
+real developer wall-clock time. The four workflows are optimised as follows:
+
+### Path filters
+
+All four workflows have `paths:` filters on both `push` and `pull_request`
+events so unrelated changes don't trigger unrelated CI:
+
+| Workflow | Triggers on |
+|----------|-------------|
+| `ci.yml` | `src/`, `tests/`, `pyproject.toml`, `uv.lock`, `ci.yml` |
+| `web-ci.yml` | `web/`, `firebase.json`, `.firebaserc`, `web-ci.yml` |
+| `deploy.yml` | `src/`, `Dockerfile`, `pyproject.toml`, `uv.lock`, `deploy.yml` |
+| `web-deploy.yml` | `web/`, `firebase.json`, `.firebaserc`, `web-deploy.yml` |
+
+A pure-frontend change (e.g. `web/src/styles.css`) skips `ci.yml` and
+`deploy.yml` entirely; a Python-only change skips `web-ci.yml` and
+`web-deploy.yml`.
+
+### uv dependency cache
+
+`ci.yml` uses `astral-sh/setup-uv@v5` with `enable-cache: true`. The action
+stores the resolved wheel cache (keyed on `uv.lock`) in the GHA cache;
+subsequent runs that don't change `uv.lock` restore the entire virtual-env in
+seconds instead of re-downloading wheels.
+
+**Breaking the cache intentionally:** bump any dependency in `pyproject.toml`
+and commit. The new `uv.lock` SHA invalidates the old cache entry and forces a
+fresh wheel download on the next run.
+
+### npm dependency cache
+
+Both `web-ci.yml` and `web-deploy.yml` use `actions/setup-node@v4` with
+`cache: 'npm'` and `cache-dependency-path: web/package-lock.json`. The node
+modules are restored from the GHA cache unless `package-lock.json` changes.
+
+### Docker buildx layer cache
+
+`deploy.yml` passes `--cache-from type=gha` and `--cache-to type=gha,mode=max`
+to `docker buildx build`. On a warm run, unchanged layers (especially the
+`uv sync` layer which pulls `xgboost`, `grpc`, etc.) are restored from the GHA
+cache rather than re-downloaded and rebuilt. A source-only change typically
+skips all dependency layers and rebuilds only the final `COPY src/ .` layer.
+
+The GHA cache backend uses the repo's 10 GB free-tier cache. The buildx cache
+entry for this image is ~300–400 MB compressed; it's invalidated any time
+`uv.lock` or `Dockerfile` changes.
+
+**Note:** `type=gha` is preferred over `type=registry` here because it carries
+no extra AR storage cost and the 10 GB free tier is ample for a single-image
+project. Switch to `type=registry` if the project ever moves off GitHub Actions.
