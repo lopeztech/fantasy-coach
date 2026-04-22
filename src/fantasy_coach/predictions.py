@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -77,11 +78,18 @@ class FeatureContribution(BaseModel):
     plain-English labels per ``feature``. Only emitted for logistic models
     today (see ``_compute_contributions``); other model types get
     ``contributions`` omitted so the UI degrades gracefully.
+
+    ``detail`` carries optional per-feature structured data the label
+    renderer can use for narrative (e.g. the list of missing regular
+    starters behind a ``key_absence_diff`` row). Shape is feature-specific;
+    the backend adds keys only when the detail is materially more
+    informative than the raw ``value``.
     """
 
     feature: str  # matches a FEATURE_NAMES entry
     value: float  # raw (pre-scaling) feature value
     contribution: float  # signed log-odds contribution
+    detail: dict[str, Any] | None = None
 
 
 class PredictionOut(BaseModel):
@@ -346,8 +354,33 @@ def _record_team_list_snapshots(team_list_repo: Any, row: MatchRow) -> None:
             )
 
 
+# Features whose default / flag value carries no narrative signal. Entries
+# map feature name → predicate on the raw value; when the predicate returns
+# True the contribution is dropped from the user-facing list. Background:
+# #124 — several rows surfaced with nonsensical labels ("Venue typically
+# sees 0 combined points per match" for a one-off neutral venue, "Weather
+# data available" for every modern match, etc.) because the underlying
+# feature value is a sentinel or a binary era flag, not a measurement.
+_SENTINEL_PREDICATES: dict[str, Callable[[float], bool]] = {
+    "is_home_field": lambda _: True,  # constant 1.0, never a discriminator
+    "missing_weather": lambda v: v < 0.5,  # hide when we *do* have weather
+    "missing_referee": lambda v: v < 0.5,  # hide when we *do* have a ref
+    "venue_avg_total_points": lambda v: v == 0.0,  # no venue history yet
+    "venue_home_win_rate": lambda v: v == 0.5,  # neutral prior
+    "ref_avg_total_points": lambda v: v == 0.0,  # no ref data + empty league_total
+    "ref_home_penalty_diff": lambda v: v == 0.0,  # no ref penalty data
+    "key_absence_diff": lambda v: v == 0.0,  # no missing regulars today
+    "h2h_recent_diff": lambda v: v == 0.0,  # no recent head-to-head
+}
+
+
 def _compute_contributions(
-    loaded: Any, x: np.ndarray, *, top_k: int = 5
+    loaded: Any,
+    x: np.ndarray,
+    *,
+    top_k: int = 5,
+    builder: Any = None,
+    match: Any = None,
 ) -> list[FeatureContribution] | None:
     """Return top-K signed log-odds contributions for a logistic pipeline.
 
@@ -361,6 +394,10 @@ def _compute_contributions(
     Returns ``None`` for non-logistic artefacts (ensemble/xgboost). Callers
     should ``p.contributions = result`` either way — the UI hides its reasons
     panel gracefully when the field is absent.
+
+    ``builder`` + ``match`` are optional; when both are supplied we enrich
+    specific rows with structured ``detail`` (today: the missing-regulars
+    list behind ``key_absence_diff``).
     """
     pipeline = getattr(loaded, "pipeline", None)
     if pipeline is None:
@@ -387,15 +424,41 @@ def _compute_contributions(
     safe_scale = np.where(scale == 0.0, 1.0, scale)
     contributions = coef * (raw - mean) / safe_scale
 
-    top_idx = np.argsort(-np.abs(contributions))[:top_k]
-    return [
-        FeatureContribution(
-            feature=feature_names[i],
-            value=round(float(raw[i]), 6),
-            contribution=round(float(contributions[i]), 4),
+    # Rank all features by |contribution|, then filter out sentinel/flag
+    # rows before slicing to top_k. Filtering *after* the rank keeps us
+    # deterministic even if a filtered feature outranks a real one.
+    order = np.argsort(-np.abs(contributions))
+    picked: list[FeatureContribution] = []
+    for idx in order:
+        name = feature_names[idx]
+        value = float(raw[idx])
+        predicate = _SENTINEL_PREDICATES.get(name)
+        if predicate is not None and predicate(value):
+            continue
+        picked.append(
+            FeatureContribution(
+                feature=name,
+                value=round(value, 6),
+                contribution=round(float(contributions[idx]), 4),
+                detail=_contribution_detail(name, builder, match),
+            )
         )
-        for i in top_idx
-    ]
+        if len(picked) >= top_k:
+            break
+    return picked
+
+
+def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:
+    """Return per-feature structured narrative detail, or None."""
+    if builder is None or match is None:
+        return None
+    if feature == "key_absence_diff":
+        home = builder.key_absence_detail(match.home.team_id, match.home.players)
+        away = builder.key_absence_detail(match.away.team_id, match.away.players)
+        if not home and not away:
+            return None
+        return {"home_missing": home, "away_missing": away}
+    return None
 
 
 def _build_inference_state(history: list[MatchRow]) -> FeatureBuilder:
@@ -516,7 +579,7 @@ def compute_predictions(
                 homeWinProbability=prob,
                 modelVersion=mv,
                 featureHash=fh,
-                contributions=_compute_contributions(loaded, x),
+                contributions=_compute_contributions(loaded, x, builder=builder, match=match),
             )
         )
 
