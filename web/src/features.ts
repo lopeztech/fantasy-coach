@@ -153,6 +153,14 @@ function describe(
       const disadvantaged = value >= 0 ? home : away;
       return `${disadvantaged} missing weighted regulars (${rounded(mag)})`;
     }
+    case "player_strength_diff": {
+      // Availability-adjusted composite lineup rating (player Elo × position weight).
+      // Positive = home named XIII is rated stronger overall.
+      const who = teamFavoured(value, home, away);
+      return `${who}'s named lineup rated ${rounded(mag, 0)} points stronger`;
+    }
+    case "missing_player_strength":
+      return value > 0.5 ? "Player strength data unavailable" : "Player strength data available";
     default:
       // Fallback for unknown feature names (e.g. future feature additions).
       return `${feature} = ${rounded(value, 2)}`;

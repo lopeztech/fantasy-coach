@@ -21,15 +21,19 @@ from sklearn.preprocessing import StandardScaler
 from fantasy_coach.app import app
 from fantasy_coach.features import extract_match_features
 from fantasy_coach.predictions import (
+    AlternativeModels,
     FeatureContribution,
     FirestorePredictionStore,
+    PickSummary,
     PredictionOut,
     PredictionStore,
     TeamInfo,
+    _bookmaker_pick_summary,
     _compute_contributions,
     _ensure_model,
     _feature_hash,
     _record_team_list_snapshots,
+    _try_load_secondary_model,
     compute_predictions,
     get_prediction_store,
 )
@@ -932,3 +936,230 @@ def test_endpoint_returns_cached_predictions(client: TestClient, tmp_path: Path)
     assert pred["homeWinProbability"] == 0.65
     assert pred["modelVersion"] == "abc123"
     assert "featureHash" in pred
+
+
+# ---------------------------------------------------------------------------
+# _bookmaker_pick_summary — bookmaker implied pick (#140)
+# ---------------------------------------------------------------------------
+
+
+def test_bookmaker_pick_summary_returns_pick_when_odds_available() -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    odds_idx = FEATURE_NAMES.index("odds_home_win_prob")
+    missing_idx = FEATURE_NAMES.index("missing_odds")
+    x[0, odds_idx] = 0.72
+    x[0, missing_idx] = 0.0  # odds available
+
+    pick = _bookmaker_pick_summary(x, FEATURE_NAMES)
+    assert pick is not None
+    assert pick.predictedWinner == "home"
+    assert pick.homeWinProbability == pytest.approx(0.72)
+
+
+def test_bookmaker_pick_summary_away_when_prob_below_half() -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.38
+    x[0, FEATURE_NAMES.index("missing_odds")] = 0.0
+
+    pick = _bookmaker_pick_summary(x, FEATURE_NAMES)
+    assert pick is not None
+    assert pick.predictedWinner == "away"
+    assert pick.homeWinProbability == pytest.approx(0.38)
+
+
+def test_bookmaker_pick_summary_returns_none_when_odds_missing() -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.65
+    x[0, FEATURE_NAMES.index("missing_odds")] = 1.0  # no odds data
+
+    pick = _bookmaker_pick_summary(x, FEATURE_NAMES)
+    assert pick is None
+
+
+def test_bookmaker_pick_summary_returns_none_for_unknown_feature_names() -> None:
+    pick = _bookmaker_pick_summary(np.zeros((1, 3)), ("feat_a", "feat_b", "feat_c"))
+    assert pick is None
+
+
+# ---------------------------------------------------------------------------
+# _try_load_secondary_model — graceful loading of logistic artefact (#140)
+# ---------------------------------------------------------------------------
+
+
+def test_try_load_secondary_model_returns_none_when_missing_and_no_gcs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("FANTASY_COACH_LOGISTIC_GCS_URI", raising=False)
+    result = _try_load_secondary_model(
+        tmp_path / "missing.joblib", "FANTASY_COACH_LOGISTIC_GCS_URI"
+    )
+    assert result is None
+
+
+def test_try_load_secondary_model_loads_when_file_exists(tmp_path: Path) -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
+    from fantasy_coach.models.logistic import save_model, train_logistic
+
+    rng = np.random.default_rng(0)
+    n = 60
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    y = (X[:, 0] > 0).astype(int)
+    frame = TrainingFrame(
+        X=X,
+        y=y,
+        match_ids=np.arange(n),
+        start_times=np.arange(n, dtype=float),
+        feature_names=FEATURE_NAMES,
+    )
+    result = train_logistic(frame, test_fraction=0.0)
+    model_path = tmp_path / "logistic.joblib"
+    save_model(result, model_path)
+
+    loaded = _try_load_secondary_model(model_path, "FANTASY_COACH_LOGISTIC_GCS_URI")
+    assert loaded is not None
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    prob = loaded.predict_home_win_prob(x)
+    assert 0.0 <= prob[0] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# AlternativeModels round-trip through SQLite store (#140)
+# ---------------------------------------------------------------------------
+
+
+def test_store_roundtrips_alternatives(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=55,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.65,
+        modelVersion="mv",
+        featureHash="fh",
+        alternatives=AlternativeModels(
+            logistic=PickSummary(predictedWinner="away", homeWinProbability=0.45),
+            bookmaker=PickSummary(predictedWinner="home", homeWinProbability=0.68),
+        ),
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 1
+    alts = loaded[0].alternatives
+    assert alts is not None
+    assert alts.logistic is not None
+    assert alts.logistic.predictedWinner == "away"
+    assert alts.logistic.homeWinProbability == pytest.approx(0.45)
+    assert alts.bookmaker is not None
+    assert alts.bookmaker.predictedWinner == "home"
+    assert alts.bookmaker.homeWinProbability == pytest.approx(0.68)
+
+
+def test_store_roundtrips_null_alternatives(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=56,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.7,
+        modelVersion="mv",
+        featureHash="fh",
+        # alternatives intentionally absent
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    assert loaded[0].alternatives is None
+
+
+# ---------------------------------------------------------------------------
+# compute_predictions — alternatives populated when logistic model present (#140)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_populates_alternatives_when_logistic_model_provided(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
+    from fantasy_coach.models.logistic import save_model, train_logistic
+
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+
+    # Primary model (mock — stands in for XGBoost)
+    primary_model = _make_mock_model(0.72)
+    primary_path = tmp_path / "primary.joblib"
+    primary_path.write_bytes(b"primary-bytes")
+
+    # Secondary logistic model (real — needs proper feature_names for bookmaker pick)
+    rng = np.random.default_rng(1)
+    n = 60
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    y = (X[:, 0] > 0).astype(int)
+    frame = TrainingFrame(
+        X=X,
+        y=y,
+        match_ids=np.arange(n),
+        start_times=np.arange(n, dtype=float),
+        feature_names=FEATURE_NAMES,
+    )
+    logistic_result = train_logistic(frame, test_fraction=0.0)
+    logistic_path = tmp_path / "logistic.joblib"
+    save_model(logistic_result, logistic_path)
+
+    with patch("fantasy_coach.predictions.load_model", return_value=primary_model):
+        result = compute_predictions(
+            2026,
+            8,
+            sqlite_repo,
+            store,
+            model_path=primary_path,
+            logistic_path=logistic_path,
+            fetch_round_fn=mock_round,
+            fetch_match_fn=mock_match,
+        )
+
+    assert len(result) == 1
+    pred = result[0]
+    assert pred.alternatives is not None
+    # Logistic pick must be present and valid
+    assert pred.alternatives.logistic is not None
+    assert pred.alternatives.logistic.predictedWinner in ("home", "away")
+    assert 0.0 <= pred.alternatives.logistic.homeWinProbability <= 1.0
+
+
+def test_compute_alternatives_absent_when_same_path(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    """When primary and logistic paths point at the same artefact, skip secondary load."""
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+    mock_model = _make_mock_model(0.55)
+    same_path = tmp_path / "model.joblib"
+    same_path.write_bytes(b"bytes")
+
+    with patch("fantasy_coach.predictions.load_model", return_value=mock_model):
+        result = compute_predictions(
+            2026,
+            8,
+            sqlite_repo,
+            store,
+            model_path=same_path,
+            logistic_path=same_path,  # same as primary
+            fetch_round_fn=mock_round,
+            fetch_match_fn=mock_match,
+        )
+
+    assert len(result) == 1
+    # alternatives may be None or only have bookmaker (odds-based) — logistic must not be set
+    pred = result[0]
+    if pred.alternatives is not None:
+        assert pred.alternatives.logistic is None

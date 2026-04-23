@@ -36,7 +36,10 @@ logger = logging.getLogger(__name__)
 PREDICTIONS_DB_ENV = "FANTASY_COACH_PREDICTIONS_DB_PATH"
 MODEL_PATH_ENV = "FANTASY_COACH_MODEL_PATH"
 MODEL_GCS_URI_ENV = "FANTASY_COACH_MODEL_GCS_URI"
+LOGISTIC_PATH_ENV = "FANTASY_COACH_LOGISTIC_PATH"
+LOGISTIC_GCS_URI_ENV = "FANTASY_COACH_LOGISTIC_GCS_URI"
 DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
+DEFAULT_LOGISTIC_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
 
 _CREATE_TABLE = """
@@ -55,6 +58,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     feature_hash     TEXT    NOT NULL,
     created_at       TEXT    NOT NULL,
     contributions    TEXT,
+    alternatives     TEXT,
     PRIMARY KEY (season, round, match_id)
 );
 """
@@ -92,6 +96,26 @@ class FeatureContribution(BaseModel):
     detail: dict[str, Any] | None = None
 
 
+class PickSummary(BaseModel):
+    """Compact pick + probability for one source in the three-way consensus panel."""
+
+    predictedWinner: str  # "home" | "away"
+    homeWinProbability: float
+
+
+class AlternativeModels(BaseModel):
+    """Secondary picks shown alongside the primary XGBoost prediction.
+
+    Both fields are optional: ``logistic`` is absent when the logistic
+    artefact path isn't configured (``FANTASY_COACH_LOGISTIC_PATH`` unset);
+    ``bookmaker`` is absent when odds data wasn't available for the match
+    (``missing_odds`` feature = 1.0).
+    """
+
+    logistic: PickSummary | None = None
+    bookmaker: PickSummary | None = None
+
+
 class PredictionOut(BaseModel):
     matchId: int
     home: TeamInfo
@@ -109,6 +133,9 @@ class PredictionOut(BaseModel):
     # break existing SPA clients that ignore unknown fields).
     predictedMargin: float | None = None  # E[home_score - away_score]
     marginCi95: tuple[int, int] | None = None  # (lo, hi) at 2.5/97.5 pct
+    # Three-way consensus (#140): logistic + bookmaker picks alongside the
+    # primary XGBoost pick. Absent on predictions cached before #140 shipped.
+    alternatives: AlternativeModels | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -130,11 +157,12 @@ class PredictionStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_CREATE_TABLE)
-        # Forward-compat for DB files created before #58 shipped — adds the
-        # new column in place; no-op on a fresh DB since CREATE TABLE above
-        # already includes it.
+        # Forward-compat migrations — each ALTER TABLE is a no-op on a fresh
+        # DB (CREATE TABLE above already defines the column).
         with contextlib.suppress(sqlite3.OperationalError):
             self._conn.execute("ALTER TABLE predictions ADD COLUMN contributions TEXT")
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE predictions ADD COLUMN alternatives TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -155,6 +183,9 @@ class PredictionStore:
                     if p.contributions is not None
                     else None
                 )
+                alts_json = (
+                    json.dumps(p.alternatives.model_dump()) if p.alternatives is not None else None
+                )
                 self._conn.execute(
                     """
                     INSERT OR REPLACE INTO predictions
@@ -162,8 +193,8 @@ class PredictionStore:
                          home_id, home_name, away_id, away_name,
                          kickoff, predicted_winner, home_win_prob,
                          model_version, feature_hash, created_at,
-                         contributions)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         contributions, alternatives)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         season,
@@ -180,16 +211,20 @@ class PredictionStore:
                         p.featureHash,
                         now,
                         contribs_json,
+                        alts_json,
                     ),
                 )
 
 
 def _row_to_out(r: sqlite3.Row) -> PredictionOut:
     # sqlite3.Row exposes column names via .keys(); plain `in r` iterates values.
-    contribs_raw = r["contributions"] if "contributions" in tuple(r.keys()) else None
+    cols = tuple(r.keys())
+    contribs_raw = r["contributions"] if "contributions" in cols else None
     contribs = (
         [FeatureContribution(**c) for c in json.loads(contribs_raw)] if contribs_raw else None
     )
+    alts_raw = r["alternatives"] if "alternatives" in cols else None
+    alternatives = AlternativeModels(**json.loads(alts_raw)) if alts_raw else None
     return PredictionOut(
         matchId=r["match_id"],
         home=TeamInfo(id=r["home_id"], name=r["home_name"]),
@@ -200,6 +235,7 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
         modelVersion=r["model_version"],
         featureHash=r["feature_hash"],
         contributions=contribs,
+        alternatives=alternatives,
     )
 
 
@@ -375,6 +411,8 @@ _SENTINEL_PREDICATES: dict[str, Callable[[float], bool]] = {
     "ref_home_penalty_diff": lambda v: v == 0.0,  # no ref penalty data
     "key_absence_diff": lambda v: v == 0.0,  # no missing regulars today
     "h2h_recent_diff": lambda v: v == 0.0,  # no recent head-to-head
+    "missing_player_strength": lambda v: v < 0.5,  # hide when we *do* have player data
+    "missing_odds": lambda v: v < 0.5,  # hide when odds data is present
 }
 
 
@@ -530,6 +568,63 @@ def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, An
     return None
 
 
+def _bookmaker_pick_summary(x: np.ndarray, feature_names: tuple[str, ...]) -> PickSummary | None:
+    """Derive a bookmaker-implied pick from the odds_home_win_prob feature.
+
+    Returns None when odds data is absent (``missing_odds`` = 1.0) or when
+    the feature names tuple doesn't contain the expected columns.
+    """
+    try:
+        odds_idx = feature_names.index("odds_home_win_prob")
+        missing_idx = feature_names.index("missing_odds")
+    except ValueError:
+        return None
+    raw = np.asarray(x, dtype=float).reshape(-1)
+    if len(raw) <= max(odds_idx, missing_idx):
+        return None
+    if raw[missing_idx] > 0.5:  # odds not available for this match
+        return None
+    prob = round(float(raw[odds_idx]), 4)
+    return PickSummary(
+        predictedWinner="home" if prob >= 0.5 else "away",
+        homeWinProbability=prob,
+    )
+
+
+def _try_load_secondary_model(path: Path, gcs_uri_env: str) -> Any | None:
+    """Load an optional secondary model artefact; return None on any failure.
+
+    Used for the alternatives panel (#140): loads the logistic artefact
+    alongside the primary XGBoost model so both picks can be shown. Returns
+    None silently when the file is missing and no GCS URI is configured, so
+    the absence of a secondary model never blocks prediction computation.
+    """
+    try:
+        if not path.exists():
+            gcs_uri = os.getenv(gcs_uri_env)
+            if not gcs_uri:
+                return None
+            if not gcs_uri.startswith("gs://"):
+                logger.warning("Secondary model GCS URI malformed: %s", gcs_uri)
+                return None
+            bucket_name, _, blob_name = gcs_uri.removeprefix("gs://").partition("/")
+            if not bucket_name or not blob_name:
+                logger.warning("Secondary model GCS URI malformed: %s", gcs_uri)
+                return None
+            from google.cloud import storage as gcs  # noqa: PLC0415
+
+            path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info("Downloading secondary model from %s to %s", gcs_uri, path)
+            client = gcs.Client()
+            client.bucket(bucket_name).blob(blob_name).download_to_filename(str(path))
+        return load_model(path)
+    except Exception:
+        logger.debug(
+            "Secondary model not available at %s — alternatives panel will be partial", path
+        )
+        return None
+
+
 def _build_inference_state(history: list[MatchRow]) -> FeatureBuilder:
     builder = FeatureBuilder()
     for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
@@ -552,6 +647,7 @@ def compute_predictions(
     store: PredictionStore,
     *,
     model_path: Path | None = None,
+    logistic_path: Path | None = None,
     fetch_round_fn: Any = fetch_round,
     fetch_match_fn: Any = fetch_match_from_url,
     force: bool = False,
@@ -583,7 +679,7 @@ def compute_predictions(
             )
             return cached
 
-    # Resolve and load the model — fetching from GCS on first miss if
+    # Resolve and load the primary model — fetching from GCS on first miss if
     # FANTASY_COACH_MODEL_GCS_URI is set (production path).
     path = model_path or Path(os.getenv(MODEL_PATH_ENV, DEFAULT_MODEL_PATH))
     _ensure_model(path)
@@ -591,6 +687,13 @@ def compute_predictions(
     loaded = load_model(path)
     mv = _model_version(path)
     fh = _feature_hash()
+
+    # Load the secondary logistic model for the three-way consensus panel (#140).
+    # Returns None when unconfigured — alternatives.logistic will be absent.
+    log_path = logistic_path or Path(os.getenv(LOGISTIC_PATH_ENV, DEFAULT_LOGISTIC_PATH))
+    logistic_loaded = None
+    if log_path != path:  # skip if operator pointed both models at the same artefact
+        logistic_loaded = _try_load_secondary_model(log_path, LOGISTIC_GCS_URI_ENV)
 
     # Scrape fixtures for the requested round
     round_payload = fetch_round_fn(season, round_)
@@ -634,10 +737,28 @@ def compute_predictions(
 
     builder = _build_inference_state(history)
 
+    _fn = getattr(loaded, "feature_names", None)
+    feature_names: tuple[str, ...] = _fn if isinstance(_fn, tuple) else FEATURE_NAMES
     predictions: list[PredictionOut] = []
     for match in sorted(round_matches, key=lambda m: (m.start_time, m.match_id)):
         x = np.asarray([builder.feature_row(match)], dtype=float)
         prob = round(float(loaded.predict_home_win_prob(x)[0]), 4)
+
+        # Build the three-way consensus alternatives (#140).
+        logistic_pick: PickSummary | None = None
+        if logistic_loaded is not None:
+            lprob = round(float(logistic_loaded.predict_home_win_prob(x)[0]), 4)
+            logistic_pick = PickSummary(
+                predictedWinner="home" if lprob >= 0.5 else "away",
+                homeWinProbability=lprob,
+            )
+        bm_pick = _bookmaker_pick_summary(x, feature_names)
+        alternatives = (
+            AlternativeModels(logistic=logistic_pick, bookmaker=bm_pick)
+            if (logistic_pick is not None or bm_pick is not None)
+            else None
+        )
+
         predictions.append(
             PredictionOut(
                 matchId=match.match_id,
@@ -649,6 +770,7 @@ def compute_predictions(
                 modelVersion=mv,
                 featureHash=fh,
                 contributions=_compute_contributions(loaded, x, builder=builder, match=match),
+                alternatives=alternatives,
             )
         )
 
