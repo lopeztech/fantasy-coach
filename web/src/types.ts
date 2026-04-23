@@ -28,6 +28,16 @@ export type FeatureContribution = {
   } | null;
 };
 
+export type PickSummary = {
+  predictedWinner: "home" | "away";
+  homeWinProbability: number;
+};
+
+export type AlternativeModels = {
+  logistic?: PickSummary | null;
+  bookmaker?: PickSummary | null;
+};
+
 export type Prediction = {
   matchId: number;
   home: Team;
@@ -39,6 +49,8 @@ export type Prediction = {
   featureHash: string;
   contributions?: FeatureContribution[] | null;
   actualWinner?: "home" | "away" | null;
+  // Three-way consensus (#140): absent on predictions cached before #140 shipped.
+  alternatives?: AlternativeModels | null;
 };
 
 export type RoundAccuracy = {

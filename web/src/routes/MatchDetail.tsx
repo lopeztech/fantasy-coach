@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import { TeamFormChart } from "../components/TeamFormChart";
 import { labelFor } from "../features";
 import { SignInRequired } from "../components/SignInRequired";
-import type { Prediction, TeamFormHistory } from "../types";
+import type { AlternativeModels, PickSummary, Prediction, TeamFormHistory } from "../types";
 
 type Status =
   | { kind: "loading" }
@@ -132,6 +132,73 @@ export default function MatchDetail() {
 
 const MOBILE_TOP = 3;
 
+type ConsensusRow = {
+  label: string;
+  pick: PickSummary;
+  isPrimary?: boolean;
+};
+
+function ConsensusPanel({
+  primary,
+  alternatives,
+  home,
+  away,
+}: {
+  primary: PickSummary;
+  alternatives: AlternativeModels;
+  home: string;
+  away: string;
+}) {
+  const rows: ConsensusRow[] = [
+    { label: "XGBoost", pick: primary, isPrimary: true },
+    ...(alternatives.logistic ? [{ label: "Logistic", pick: alternatives.logistic }] : []),
+    ...(alternatives.bookmaker ? [{ label: "Market", pick: alternatives.bookmaker }] : []),
+  ];
+
+  const allAgree = rows.every((r) => r.pick.predictedWinner === primary.predictedWinner);
+  const winnerName = primary.predictedWinner === "home" ? home : away;
+
+  return (
+    <section className="consensus-panel" aria-labelledby="consensus-heading">
+      <h2 id="consensus-heading">Three-way consensus</h2>
+      {allAgree && rows.length === 3 ? (
+        <div className="consensus-unanimous" role="status">
+          <span className="consensus-badge consensus-badge--agree">Unanimous</span>
+          <p>
+            All three sources agree: <strong>{winnerName}</strong> wins.
+          </p>
+        </div>
+      ) : null}
+      <ol className="consensus-list">
+        {rows.map((row) => {
+          const agrees = row.pick.predictedWinner === primary.predictedWinner;
+          const pct = Math.round(row.pick.homeWinProbability * 100);
+          const pickName = row.pick.predictedWinner === "home" ? home : away;
+          return (
+            <li key={row.label} className="consensus-row">
+              <span className="consensus-source">{row.label}</span>
+              <span className="consensus-pick">
+                <strong>{pickName}</strong> ({row.pick.predictedWinner === "home" ? pct : 100 - pct}%)
+              </span>
+              {!row.isPrimary && (
+                <span
+                  className={`consensus-badge consensus-badge--${agrees ? "agree" : "disagree"}`}
+                  aria-label={agrees ? "Agrees with primary" : "Disagrees with primary"}
+                >
+                  {agrees ? "agree" : "disagree"}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="muted fine-print">
+        XGBoost is the primary pick. Logistic and Market are shown for cross-reference only.
+      </p>
+    </section>
+  );
+}
+
 function MatchDetailBody({
   prediction,
   homeForm,
@@ -233,6 +300,20 @@ function MatchDetailBody({
           This prediction was generated before per-feature explanations were available.
         </p>
       )}
+
+      {prediction.alternatives &&
+        (prediction.alternatives.logistic != null ||
+          prediction.alternatives.bookmaker != null) && (
+          <ConsensusPanel
+            primary={{
+              predictedWinner: prediction.predictedWinner,
+              homeWinProbability: prediction.homeWinProbability,
+            }}
+            alternatives={prediction.alternatives}
+            home={prediction.home.name}
+            away={prediction.away.name}
+          />
+        )}
     </article>
   );
 }

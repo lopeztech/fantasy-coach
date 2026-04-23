@@ -1020,3 +1020,101 @@ a:focus-visible {
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
 }
+
+/* ── Three-way consensus panel (#140) ───────────────────────────────────── */
+
+.consensus-panel {
+  margin-top: 2rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+}
+
+.consensus-panel h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+.consensus-unanimous {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.consensus-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.consensus-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.consensus-source {
+  min-width: 5rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.consensus-pick {
+  flex: 1;
+}
+
+/* Badges — used both in the consensus panel and on MatchCard */
+.consensus-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-full);
+}
+
+.consensus-badge--agree,
+.consensus-badge--unanimous {
+  background: #e6f4ea;
+  color: #1e6e35;
+}
+
+.consensus-badge--disagree {
+  background: #fdecea;
+  color: var(--color-error-text);
+}
+
+.consensus-badge--split {
+  background: #fff3e0;
+  color: #7a4f00;
+}
+
+[data-theme="dark"] .consensus-badge--agree,
+[data-theme="dark"] .consensus-badge--unanimous {
+  background: #0d2b15;
+  color: #68d391;
+}
+
+[data-theme="dark"] .consensus-badge--disagree {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+[data-theme="dark"] .consensus-badge--split {
+  background: #2d1f00;
+  color: #f6c90e;
+}
+
+/* Inline badge on MatchCard */
+.match-card .consensus-badge {
+  margin-top: 0.25rem;
+}

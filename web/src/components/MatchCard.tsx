@@ -3,7 +3,18 @@ import { Link } from "react-router-dom";
 import { TeamFormSparkline } from "./TeamFormSparkline";
 import { TipEntry } from "./TipEntry";
 import type { TipChoice } from "../tips";
-import type { Prediction, TeamFormHistory } from "../types";
+import type { AlternativeModels, Prediction, TeamFormHistory } from "../types";
+
+function consensusStatus(
+  primaryWinner: "home" | "away",
+  alternatives: AlternativeModels | null | undefined,
+): "unanimous" | "split" | null {
+  if (!alternatives) return null;
+  const others = [alternatives.logistic, alternatives.bookmaker].filter(Boolean);
+  if (others.length === 0) return null;
+  const allAgree = others.every((p) => p!.predictedWinner === primaryWinner);
+  return allAgree ? "unanimous" : "split";
+}
 
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
@@ -95,6 +106,23 @@ export function MatchCard({
         <p className="pick">
           Pick: <strong>{winnerName}</strong> ({winnerPct}%)
         </p>
+
+        {(() => {
+          const status = consensusStatus(p.predictedWinner, p.alternatives);
+          if (!status) return null;
+          return (
+            <span
+              className={`consensus-badge consensus-badge--${status}`}
+              aria-label={
+                status === "unanimous"
+                  ? "All sources agree on this pick"
+                  : "Sources disagree on this pick"
+              }
+            >
+              {status === "unanimous" ? "Consensus" : "Split pick"}
+            </span>
+          );
+        })()}
 
         {preview ? <p className="preview">{preview}</p> : null}
 
