@@ -255,12 +255,19 @@ def default_drift_writer(report: DriftReport) -> None:
 
     Collection: ``model_drift_reports``. Doc id: ``{season}-{round:02d}``
     so a week's report replaces itself on re-run (idempotent).
+
+    ``ttl_timestamp`` is set to 18 months from now so Firestore's native TTL
+    policy (configured in platform-infra/logging.tf) auto-deletes stale reports.
     """
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
     from google.cloud import firestore  # noqa: PLC0415
 
     client = firestore.Client()
     doc_id = f"{report.season}-{report.round:02d}"
-    client.collection("model_drift_reports").document(doc_id).set(report.to_dict())
+    data = report.to_dict()
+    data["ttl_timestamp"] = datetime.now(UTC) + timedelta(days=548)  # ~18 months
+    client.collection("model_drift_reports").document(doc_id).set(data)
 
 
 def default_gcs_uploader(local_path: Path, gcs_uri: str) -> None:
