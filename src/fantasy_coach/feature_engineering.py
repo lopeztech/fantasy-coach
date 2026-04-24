@@ -34,7 +34,7 @@ from datetime import datetime
 import numpy as np
 
 from fantasy_coach.bookmaker.lines import devig_two_way
-from fantasy_coach.features import MatchRow, PlayerRow
+from fantasy_coach.features import MatchRow, PlayerRow, TeamStat
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import PlayerRatings
@@ -130,6 +130,14 @@ FEATURE_NAMES = (
     "home_days_rest",
     "away_days_rest",
     "short_turnaround_diff",
+    # Team-stat rolling features (#160). Per-match team-aggregate stats as
+    # rolling-5 window proxies for player-level contribution signals.
+    # All expressed home minus away; missing_team_stats flags data gaps.
+    "rolling_kick_metres_diff",
+    "rolling_kick_return_metres_diff",
+    "rolling_line_breaks_diff",
+    "rolling_all_runs_diff",
+    "missing_team_stats",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -172,6 +180,7 @@ DEFAULT_DAYS_REST = 14
 
 REF_WINDOW = 20  # rolling window for referee stats
 REF_SHRINKAGE_N = 10  # shrink toward league mean for fewer than N prior matches
+_TEAM_STATS_WINDOW = 5
 
 
 @dataclass(frozen=True)
@@ -254,6 +263,19 @@ class FeatureBuilder:
         self._adj_points_against: dict[int, deque[float]] = defaultdict(
             lambda: deque(maxlen=ROLLING_WINDOW)
         )
+        # Team-stat rolling deques (#160) — updated in record() after each completed match.
+        self._team_kick_metres: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_kick_return_metres: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_line_breaks: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_all_runs: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -305,6 +327,16 @@ class FeatureBuilder:
             match.home.odds,
             match.away.odds,
         )
+        kick_m_h = _avg(self._team_kick_metres[h_id])
+        kick_m_a = _avg(self._team_kick_metres[a_id])
+        kick_ret_h = _avg(self._team_kick_return_metres[h_id])
+        kick_ret_a = _avg(self._team_kick_return_metres[a_id])
+        lb_h = _avg(self._team_line_breaks[h_id])
+        lb_a = _avg(self._team_line_breaks[a_id])
+        runs_h = _avg(self._team_all_runs[h_id])
+        runs_a = _avg(self._team_all_runs[a_id])
+        missing_ts = 1.0 if len(self._team_kick_metres[h_id]) == 0 else 0.0
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -340,6 +372,11 @@ class FeatureBuilder:
             home_dr,
             away_dr,
             st_diff,
+            kick_m_h - kick_m_a,
+            kick_ret_h - kick_ret_a,
+            lb_h - lb_a,
+            runs_h - runs_a,
+            missing_ts,
         ]
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
@@ -561,6 +598,22 @@ class FeatureBuilder:
             h_score,
             a_score,
         )
+        # Update team-stat rolling deques (#160). Skip when stat is absent so
+        # the deque correctly reflects the last _TEAM_STATS_WINDOW matches with
+        # real data rather than being diluted by zeros.
+        for team_id, side in ((h_id, "home"), (a_id, "away")):
+            km = _extract_stat(match.team_stats, "Kicking Metres", side)
+            if km is not None:
+                self._team_kick_metres[team_id].append(km)
+            kr = _extract_stat(match.team_stats, "Kick Return Metres", side)
+            if kr is not None:
+                self._team_kick_return_metres[team_id].append(kr)
+            lb = _extract_stat(match.team_stats, "Line Breaks", side)
+            if lb is not None:
+                self._team_line_breaks[team_id].append(lb)
+            ar = _extract_stat(match.team_stats, "All Runs", side)
+            if ar is not None:
+                self._team_all_runs[team_id].append(ar)
 
 
 def build_training_frame(
@@ -690,6 +743,14 @@ def _is_complete(match: MatchRow) -> bool:
         and match.home.score is not None
         and match.away.score is not None
     )
+
+
+def _extract_stat(team_stats: list[TeamStat], title: str, side: str) -> float | None:
+    """Return the home or away value for a named team stat, or None if absent."""
+    for stat in team_stats:
+        if stat.title == title:
+            return stat.home_value if side == "home" else stat.away_value
+    return None
 
 
 def _avg(values: Iterable[int | float]) -> float:
