@@ -138,7 +138,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
     max_age=600,
 )
@@ -663,6 +663,12 @@ def _require_auth(request: Request) -> str:
     return uid if uid is not None else "__dev__"
 
 
+class NotificationSubscribeIn(BaseModel):
+    token: str
+    platform: str = "web"
+    timezone: str | None = None  # IANA timezone string, e.g. "Australia/Sydney"
+
+
 @app.get(
     "/me/dashboard",
     response_model=DashboardOut,
@@ -851,3 +857,43 @@ def get_teams(
     )
     _teams_cache[season] = teams
     return teams
+
+
+@app.post(
+    "/notifications/subscribe",
+    summary="Register an FCM token for push notifications",
+    description=(
+        "Persists the caller's FCM device token under `users/{uid}/fcm_tokens/{token}` "
+        "in Firestore. Idempotent — re-subscribing with the same token is a no-op. "
+        "Requires Firestore (STORAGE_BACKEND=firestore)."
+    ),
+    status_code=204,
+)
+def notifications_subscribe(
+    request: Request,
+    body: NotificationSubscribeIn,
+) -> None:
+    uid = _require_auth(request)
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend != "firestore":
+        # Local SQLite dev — silently accept so the client doesn't 500.
+        return
+
+    try:
+        from google.cloud import firestore as _fs  # noqa: PLC0415
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="Firestore not available") from exc
+
+    project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    db = _fs.Client(project=project)
+    token_ref = db.collection("users").document(uid).collection("fcm_tokens").document(body.token)
+    token_ref.set(
+        {
+            "token": body.token,
+            "platform": body.platform,
+            "timezone": body.timezone,
+            "created_at": _fs.SERVER_TIMESTAMP,
+            "last_seen_at": _fs.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )

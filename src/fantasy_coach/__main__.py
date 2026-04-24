@@ -366,6 +366,21 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    nrp = sub.add_parser(
+        "notify-round-published",
+        help=(
+            "Send 'predictions ready' push notification to all opted-in users. "
+            "Requires STORAGE_BACKEND=firestore and FIREBASE_PROJECT_ID."
+        ),
+    )
+    nrp.add_argument("--season", type=int, required=True, help="NRL season year, e.g. 2026")
+    nrp.add_argument("--round", type=int, required=True, dest="round_id", help="Round number")
+    nrp.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     ccc = sub.add_parser(
         "clear-commentary-cache",
         help=(
@@ -419,6 +434,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_tune_xgboost(args)
     if args.command == "backfill-ttl":
         return _run_backfill_ttl(args)
+    if args.command == "notify-round-published":
+        return _run_notify_round_published(args)
     if args.command == "clear-commentary-cache":
         return _run_clear_commentary_cache(args)
     parser.error(f"unknown command {args.command!r}")
@@ -1010,6 +1027,14 @@ def _run_backfill_ttl(args: argparse.Namespace) -> int:
         f"{'Dry run — ' if dry else ''}Total: "
         f"{'would update' if dry else 'updated'} {total_updated} documents."
     )
+    return 0
+
+
+def _run_notify_round_published(args: argparse.Namespace) -> int:
+    """Send 'predictions ready' push to all opted-in users."""
+    from fantasy_coach.notifications import send_round_published  # noqa: PLC0415
+
+    send_round_published(season=args.season, round_id=args.round_id)
     return 0
 
 
