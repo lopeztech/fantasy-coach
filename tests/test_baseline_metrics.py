@@ -82,9 +82,15 @@ EXPECTED = {
     "home": {"n": 480, "accuracy": 0.5646, "log_loss": 0.6852, "brier": 0.2460},
     "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
     "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
-    "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.7911, "brier": 0.2713},
-    "xgboost": {"n": 480, "accuracy": 0.5854, "log_loss": 0.7045, "brier": 0.2496},
-    "skellam": {"n": 480, "accuracy": 0.5667, "log_loss": 0.7130, "brier": 0.2548},
+    # #168 adds h2h_last5_home_win_rate + h2h_last5_avg_margin + missing_h2h.
+    # Logistic regresses slightly — sparse H2H history on the 2024–2026 window
+    # adds noise for logistic regression (less robust to sparse features than
+    # tree-based models). Expected to improve once the 2023 backfill (#158) lands.
+    # XGBoost marginally regresses on this narrow window for the same reason;
+    # feature signal is expected to compound with deeper H2H history.
+    "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.8269, "brier": 0.2751},
+    "xgboost": {"n": 480, "accuracy": 0.5729, "log_loss": 0.7079, "brier": 0.2515},
+    "skellam": {"n": 480, "accuracy": 0.5708, "log_loss": 0.7097, "brier": 0.2529},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

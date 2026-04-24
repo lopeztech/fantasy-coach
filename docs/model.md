@@ -38,6 +38,9 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `key_absence_diff` | Position-weighted count of this team's "regular" starters missing from the current XIII, home minus away. See "Position weighting" below. | A team missing its halfback or hooker measurably underperforms — a far bigger deal than missing a bench forward. |
 | `form_diff_pf_adjusted` | Rolling-5 average of (home PF − opponent's rolling-10 PA baseline) minus the same for away. Opponent baseline is pre-match state only. | Strips out opponent quality: "points scored above what this opponent usually concedes". Kept alongside raw `form_diff_pf`. |
 | `form_diff_pa_adjusted` | Rolling-5 average of (home PA − opponent's rolling-10 PF baseline) minus the same for away. | Strips out opponent quality: "points conceded relative to what this opponent usually scores". Kept alongside raw `form_diff_pa`. |
+| `h2h_last5_home_win_rate` | Home team's win rate across the last 5 head-to-head encounters (either venue), computed strictly before kickoff. Neutral 0.5 when < 3 prior meetings. | Captures structural mismatches that persist regardless of current form — e.g. a forward-dominant team that routinely beats a pace-and-space team even when Elo is close. |
+| `h2h_last5_avg_margin` | Average (home score − away score) over the last 5 H2H encounters, clipped to ±30 points, from the current home team's perspective. Neutral 0.0 when < 3 prior meetings. | Margin separates "narrow structural winner" from "blowout winner", encoding information that win-rate alone misses. |
+| `missing_h2h` | `1.0` when fewer than 3 prior encounters exist between these two clubs. | Explicit missing-data flag so the model learns a distinct intercept for "new matchup" rows rather than treating neutral H2H values as real signal. |
 
 ### Position weighting (#27)
 
