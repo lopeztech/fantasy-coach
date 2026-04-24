@@ -154,10 +154,12 @@ so adding them on top of those features captures only the *extra* signal
 "if odds become our strongest feature, we're partly predicting the
 market" — we now confirm that empirically.
 
-Historical coverage of 77% (373 of 484 completed 2024+2025 matches);
-unmatched rows tend to be pre-season, finals, or scheduling date slips
-that `canonicalize()` couldn't resolve. Remaining slips are a clean-up
-target if we revisit (#163).
+Historical coverage was 77% (373 of 484 completed 2024+2025 matches).
+After the #163 canonicalization and date-window cleanup, coverage
+improved — remaining unmatched rows are expected to be pre-season or
+finals matches absent from the aussportsbetting source (no fix without
+a second odds feed). The `merge-closing-lines` CLI now logs every
+unmatched row (team pair + classification) at DEBUG level for auditing.
 
 ### Ablation notes — bookmaker line-movement feature (#169)
 

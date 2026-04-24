@@ -12,27 +12,60 @@ from __future__ import annotations
 
 # Canonical key → set of accepted aliases (lowercased, hyphenated where useful).
 CANONICAL_TEAMS: dict[str, frozenset[str]] = {
-    "broncos": frozenset({"broncos", "brisbane broncos"}),
-    "raiders": frozenset({"raiders", "canberra raiders"}),
-    "bulldogs": frozenset({"bulldogs", "canterbury bulldogs", "canterbury-bankstown bulldogs"}),
-    "sharks": frozenset({"sharks", "cronulla sharks", "cronulla-sutherland sharks"}),
-    "dolphins": frozenset({"dolphins", "redcliffe dolphins"}),
-    "titans": frozenset({"titans", "gold coast titans"}),
+    "broncos": frozenset({"broncos", "brisbane broncos", "brisbane"}),
+    "raiders": frozenset({"raiders", "canberra raiders", "canberra"}),
+    "bulldogs": frozenset(
+        {
+            "bulldogs",
+            "canterbury bulldogs",
+            "canterbury-bankstown bulldogs",
+            "canterbury bankstown bulldogs",
+            "canterbury",
+        }
+    ),
+    "sharks": frozenset(
+        {
+            "sharks",
+            "cronulla sharks",
+            "cronulla-sutherland sharks",
+            "cronulla sutherland sharks",
+            "cronulla",
+        }
+    ),
+    "dolphins": frozenset({"dolphins", "redcliffe dolphins", "redcliffe"}),
+    "titans": frozenset({"titans", "gold coast titans", "gold coast"}),
     "sea-eagles": frozenset(
-        {"sea eagles", "sea-eagles", "manly sea eagles", "manly-warringah sea eagles"}
+        {"sea eagles", "sea-eagles", "manly sea eagles", "manly-warringah sea eagles", "manly"}
     ),
-    "storm": frozenset({"storm", "melbourne storm"}),
-    "knights": frozenset({"knights", "newcastle knights"}),
-    "cowboys": frozenset({"cowboys", "north queensland cowboys"}),
-    "eels": frozenset({"eels", "parramatta eels"}),
-    "panthers": frozenset({"panthers", "penrith panthers"}),
-    "rabbitohs": frozenset({"rabbitohs", "south sydney rabbitohs"}),
+    "storm": frozenset({"storm", "melbourne storm", "melbourne"}),
+    "knights": frozenset({"knights", "newcastle knights", "newcastle"}),
+    "cowboys": frozenset(
+        {
+            "cowboys",
+            "north queensland cowboys",
+            "north qld cowboys",
+            "nq cowboys",
+            "north queensland",
+            "north qld",
+        }
+    ),
+    "eels": frozenset({"eels", "parramatta eels", "parramatta"}),
+    "panthers": frozenset({"panthers", "penrith panthers", "penrith"}),
+    "rabbitohs": frozenset({"rabbitohs", "south sydney rabbitohs", "south sydney"}),
     "dragons": frozenset(
-        {"dragons", "st george illawarra dragons", "st. george illawarra dragons"}
+        {
+            "dragons",
+            "st george illawarra dragons",
+            "st. george illawarra dragons",
+            "st george illawarra",
+            "st. george illawarra",
+            "st george dragons",
+            "st. george dragons",
+        }
     ),
-    "roosters": frozenset({"roosters", "sydney roosters"}),
-    "warriors": frozenset({"warriors", "new zealand warriors", "nz warriors"}),
-    "wests-tigers": frozenset({"wests tigers", "wests-tigers", "west tigers"}),
+    "roosters": frozenset({"roosters", "sydney roosters", "sydney"}),
+    "warriors": frozenset({"warriors", "new zealand warriors", "nz warriors", "new zealand"}),
+    "wests-tigers": frozenset({"wests tigers", "wests-tigers", "west tigers", "western suburbs"}),
 }
 
 
