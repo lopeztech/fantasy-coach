@@ -1,6 +1,6 @@
 """Travel & scheduling features for the NRL prediction model.
 
-Three features, all expressed as home-minus-away differentials:
+Travel features (all expressed as home-minus-away differentials):
 
 - ``travel_km_diff``: great-circle kilometres each team travelled from their
   previous match venue to this one.  Teams with no prior match this season
@@ -13,6 +13,14 @@ Three features, all expressed as home-minus-away differentials:
 - ``back_to_back_short_week_diff``: +1 / −1 / 0 flag capturing the interaction
   of short rest (< 6 days) AND long travel (> 1 000 km).  Both conditions must
   hold for a team to score ±1; partial matches are 0.
+
+Rest features (granular scheduling, #170):
+
+- ``compute_rest_features`` returns ``(home_days_rest, away_days_rest,
+  short_turnaround_diff)`` where each rest value is clamped to [3, 14] and
+  imputed to 7 for a team with no prior match (round 1 / season opener).
+  ``short_turnaround_diff`` is +1 when the away team faces a short turnaround
+  (< 6 days) but the home team does not, −1 for the reverse, 0 otherwise.
 """
 
 from __future__ import annotations
@@ -153,3 +161,50 @@ def _tz_delta(prev_venue: str | None, cur_info: _VenueInfo | None) -> int:
 def _is_brutal(days_rest: float, travel_km: float) -> int:
     """Return 1 if the team has short rest AND long travel, else 0."""
     return int(days_rest < 6.0 and travel_km > 1_000.0)
+
+
+# ---------------------------------------------------------------------------
+# Granular rest features (#170)
+# ---------------------------------------------------------------------------
+
+_REST_CLAMP_MIN = 3.0
+_REST_CLAMP_MAX = 14.0
+_REST_IMPUTED = 7.0  # used when team has no prior match this season
+_SHORT_TURNAROUND_DAYS = 6.0  # strictly-less threshold for "short" turnaround
+
+
+def compute_rest_features(
+    home_days_rest_raw: float | None,
+    away_days_rest_raw: float | None,
+) -> tuple[float, float, float]:
+    """Return ``(home_days_rest, away_days_rest, short_turnaround_diff)``.
+
+    Each rest value is clamped to [3, 14] days.  ``None`` signals no prior
+    match this season (round 1 / season opener) and is imputed to 7 days.
+
+    ``short_turnaround_diff`` is +1 when away is on a short turnaround
+    (< 6 days) but home is not, −1 for the inverse, 0 for both-or-neither.
+    All three outputs are expressed from the home team's perspective.
+    """
+    h_rest = (
+        _REST_IMPUTED
+        if home_days_rest_raw is None
+        else max(_REST_CLAMP_MIN, min(_REST_CLAMP_MAX, home_days_rest_raw))
+    )
+    a_rest = (
+        _REST_IMPUTED
+        if away_days_rest_raw is None
+        else max(_REST_CLAMP_MIN, min(_REST_CLAMP_MAX, away_days_rest_raw))
+    )
+
+    h_short = h_rest < _SHORT_TURNAROUND_DAYS
+    a_short = a_rest < _SHORT_TURNAROUND_DAYS
+
+    if a_short and not h_short:
+        turnaround_diff = 1.0  # away disadvantaged relative to home → positive
+    elif h_short and not a_short:
+        turnaround_diff = -1.0
+    else:
+        turnaround_diff = 0.0
+
+    return h_rest, a_rest, turnaround_diff

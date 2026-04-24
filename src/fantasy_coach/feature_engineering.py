@@ -38,7 +38,7 @@ from fantasy_coach.features import MatchRow, PlayerRow
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import PlayerRatings
-from fantasy_coach.travel import travel_features
+from fantasy_coach.travel import compute_rest_features, travel_features
 from fantasy_coach.weather import parse_weather
 
 FEATURE_NAMES = (
@@ -119,6 +119,17 @@ FEATURE_NAMES = (
     "odds_line_move_home_prob",
     "odds_line_move_magnitude",
     "missing_line_move",
+    # Granular rest features (#170). NRL scheduling has meaningful differences
+    # between 5-, 6-, and 7-day turnarounds; the existing boolean
+    # ``back_to_back_short_week_diff`` collapses them. These three features
+    # expose the raw rest signal. Each is clamped to [3, 14] days and imputed
+    # to 7 for season-opening rounds where no prior match exists.
+    # ``short_turnaround_diff`` captures the *asymmetry* (only one team on a
+    # short week) that drives coaching/betting adjustments — +1 means away is
+    # disadvantaged, −1 means home is, 0 means symmetric.
+    "home_days_rest",
+    "away_days_rest",
+    "short_turnaround_diff",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -251,8 +262,13 @@ class FeatureBuilder:
         form_pf_a = _avg(self._points_for[a_id])
         form_pa_h = _avg(self._points_against[h_id])
         form_pa_a = _avg(self._points_against[a_id])
-        rest_h = _days_since(self._last_played.get(h_id), match.start_time)
-        rest_a = _days_since(self._last_played.get(a_id), match.start_time)
+        h_prev = self._last_played.get(h_id)
+        a_prev = self._last_played.get(a_id)
+        rest_h = _days_since(h_prev, match.start_time)
+        rest_a = _days_since(a_prev, match.start_time)
+        h_prev_raw = (match.start_time - h_prev).total_seconds() / 86400.0 if h_prev else None
+        a_prev_raw = (match.start_time - a_prev).total_seconds() / 86400.0 if a_prev else None
+        home_dr, away_dr, st_diff = compute_rest_features(h_prev_raw, a_prev_raw)
         h2h_avg = _avg(self._h2h[_h2h_key(h_id, a_id)])
         h2h_recent = h2h_avg if h_id <= a_id else -h2h_avg
         h2h_last5_win_rate, h2h_last5_margin, missing_h2h = _h2h_last5_features(
@@ -321,6 +337,9 @@ class FeatureBuilder:
             line_move,
             line_magnitude,
             missing_line_move,
+            home_dr,
+            away_dr,
+            st_diff,
         ]
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
