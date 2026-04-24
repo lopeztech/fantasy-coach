@@ -16,6 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --no-install-project
 
 COPY src/ ./src/
+COPY deploy/ ./deploy/
 # Tuned XGBoost hyperparameters (#167). train_xgboost +
 # XGBoostPredictor.fit both read this path via load_best_params();
 # without it, they fall back to the hand-picked grid (pre-HPO behaviour).
@@ -39,4 +40,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "uvicorn fantasy_coach.app:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn fantasy_coach.app:app --host 0.0.0.0 --port ${PORT} --log-config deploy/log-config.json"]

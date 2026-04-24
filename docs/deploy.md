@@ -155,3 +155,59 @@ gcloud run services update-traffic $SERVICE \
     --project $PROJECT_ID --region $REGION \
     --to-revisions $SERVICE-00042-abc=100  # the revision name from the console
 ```
+
+## Logs
+
+### Structured JSON logging
+
+The production container runs uvicorn with `--log-config deploy/log-config.json`,
+which enables the `CloudRunJsonFormatter` from `src/fantasy_coach/logging_config.py`.
+This emits one JSON object per log record with the following Cloud Logging–compatible
+fields:
+
+| Field | Description |
+|-------|-------------|
+| `severity` | `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `message` | Formatted log message |
+| `logger` | Logger name (e.g. `fantasy_coach.app`, `uvicorn.access`) |
+| `timestamp` | ISO 8601 UTC with microsecond precision |
+| `httpRequest` | Auto-populated for `uvicorn.access` records (method, URL, status, protocol) |
+
+Cloud Logging auto-parses `httpRequest` and `severity`, enabling LogExplorer
+queries like `httpRequest.status >= 400` without regex.
+
+### Log exclusions (platform-infra)
+
+The following exclusion filters are managed via Terraform in
+`lopeztech/platform-infra` → `projects/fantasy-coach/logging.tf`:
+
+- **Health check noise**: drops `httpRequest.requestUrl =~ "/healthz"` with
+  `httpRequest.status < 400` — health checks are polled every 30s by Cloud Run
+  and provide no signal beyond uptime checks.
+- **Below-INFO app logs**: drops `severity < INFO` application logs. uvicorn
+  emits DEBUG-level lines if `LOG_LEVEL=DEBUG` is ever accidentally set in prod.
+- **Precompute per-match progress**: drops Job stdout lines matching
+  `"feature: "` — these only matter during local debugging.
+
+### Disabling exclusions for incident debugging
+
+If you need `DEBUG`-level logs during a production incident:
+
+1. **Temporarily**: set `LOG_LEVEL=DEBUG` as a Cloud Run env var override:
+   ```bash
+   gcloud run services update $SERVICE \
+       --region $REGION --project $PROJECT_ID \
+       --set-env-vars LOG_LEVEL=DEBUG
+   ```
+   Revert immediately after the incident (`--set-env-vars LOG_LEVEL=INFO`).
+
+2. **In platform-infra**: comment out the `severity < INFO` exclusion block in
+   `projects/fantasy-coach/logging.tf`, apply, and revert after the incident.
+   Don't merge the commented-out exclusion to `main`.
+
+### Log retention
+
+The `_Default` sink retains logs for 30 days (pinned in Terraform to prevent
+future drift). Logs older than 30 days are deleted automatically by Cloud
+Logging. For longer-term audit trails, export to a GCS bucket or BigQuery via
+a custom sink in `logging.tf`.

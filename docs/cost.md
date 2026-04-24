@@ -202,3 +202,43 @@ entry for this image is ~300–400 MB compressed; it's invalidated any time
 **Note:** `type=gha` is preferred over `type=registry` here because it carries
 no extra AR storage cost and the 10 GB free tier is ample for a single-image
 project. Switch to `type=registry` if the project ever moves off GitHub Actions.
+
+## Cloud Logging
+
+Cloud Logging's pricing: first 50 GiB/month of ingestion is free;
+above that costs **$0.50/GiB ingested** + $0.01/GiB/month retained past
+30 days.
+
+Current estimated volume: **~2 GiB/month** (well within the free tier).
+The concern is unbounded growth as traffic scales.
+
+### Exclusion filters (managed via Terraform in platform-infra)
+
+Three exclusion filters are applied in `logging.tf`:
+
+| Filter | What it drops | Why |
+|--------|--------------|-----|
+| `/healthz` requests (status < 400) | Cloud Run liveness probe hits | 30 req/min × 8KB each; ~350 MB/month of noise with zero diagnostic value |
+| `severity < INFO` app logs | DEBUG-level uvicorn / app output | Only useful locally; emitted when `LOG_LEVEL=DEBUG` is accidentally set |
+| Precompute `"feature: "` lines | Per-match feature-computation progress | ~30 MB/run × 2 runs/week; replay-able locally |
+
+Exclusions operate at the log router before ingestion so excluded bytes
+don't count against the 50 GiB free tier and don't retain.
+
+**Audit-critical logs that are never excluded:**
+- Any log with `severity >= WARNING`
+- `FirebaseAuthMiddleware` authentication events
+- Precompute success/failure summary lines
+
+### Retention policy
+
+Log retention is pinned to **30 days** in Terraform. Logs older than 30
+days are automatically deleted. This prevents silent drift from the
+platform default.
+
+### Expected savings
+
+At current volume the exclusions reduce ingestion by an estimated
+40–60% (health check + debug noise dominate the raw stream). At 2×
+traffic the project would still be within the 50 GiB free tier with
+exclusions in place.
