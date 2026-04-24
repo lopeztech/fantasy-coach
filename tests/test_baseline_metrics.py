@@ -103,14 +103,27 @@ PREDICTORS: dict[str, type[Predictor]] = {
 }
 
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
-# Linux + macOS, so 1e-3 catches real regressions. xgboost's
-# OMP-parallelised tree splits are *not* bit-stable across platforms —
-# a handful of close predictions flip between macOS and Ubuntu CI.
-# Drift history: #27 ~0.005, #109 ~0.011, #165 (monotone constraints)
-# ~0.0165, #167 (HPO + early stopping) ~0.029 — each feature that pushes
-# predictions closer to the 0.5 decision boundary amplifies OMP-ordering
-# flips. 3.5e-2 swallows observed drift; still tight enough to catch a
-# 3.5pp regression, well above any noise floor.
+# Linux + macOS (1e-3 catches real regressions); xgboost is NOT.
+#
+# Cross-platform drift history: #27 ~0.005, #109 ~0.011, #165 ~0.0165,
+# #167 ~0.029, re-measured on #187 as 0.025. Root cause is architectural
+# — macOS Apple Silicon (NEON) vs Ubuntu CI x86 (AVX) round FP ops
+# differently, a handful of split tiebreaks go different ways, several
+# predictions land on different sides of 0.5. Not fixable at the model
+# level without Dockerising the CI runner:
+# - ``n_jobs=1`` fixed within-platform determinism (no more thread-order
+#   flakiness) but left the cross-platform gap unchanged.
+# - ``tree_method="exact"`` shrank the gap marginally (0.029 → 0.025)
+#   at a meaningful model-quality cost — reverted.
+#
+# 3.5e-2 swallows the observed cross-platform drift. Real regressions
+# of that magnitude are rare and would show up simultaneously on log_loss
+# and brier, so the test still serves its purpose as a signal — it's
+# just calibrated to hardware reality rather than to an unachievable
+# ideal. The within-platform tightening from n_jobs=1 means that on a
+# developer's own machine, drift between runs should be < 1e-3, so an
+# individual's test-suite runs stay tight even when cross-platform does
+# not.
 _TOL: dict[str, float] = {"xgboost": 3.5e-2, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 

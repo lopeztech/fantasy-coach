@@ -72,11 +72,32 @@ def _monotone_tuple() -> tuple[int, ...]:
 
 # Structural params — never tuned, always applied. Monotone constraints
 # (#165) + the classifier-level config XGBoost needs.
+#
+# ``n_jobs=1`` forces single-threaded OMP reductions inside each tree
+# split. Without it, XGBoost's parallel gradient accumulation is
+# non-deterministic across platforms — a handful of floating-point ties
+# land on different sides depending on OS scheduler + thread count, a
+# few predictions flip across the 0.5 boundary, and walk-forward
+# metrics drift 1–3 pp between macOS dev and Ubuntu CI. That drift made
+# the XGBoost baseline tolerance grow 0.008 → 0.015 → 0.020 → 0.035
+# across four PRs (#27, #109, #165, #167) — each "widen tol to
+# pass CI" commit eroded the test's ability to catch real regressions.
+# Single-threaded kills the drift at source. GridSearchCV + Optuna still
+# parallelise at the trial level (different processes), so the
+# throughput hit is modest.
 _FIXED_PARAMS: dict[str, object] = {
     "eval_metric": "logloss",
     "verbosity": 0,
     "use_label_encoder": False,
     "monotone_constraints": _monotone_tuple(),
+    # ``n_jobs=1`` makes XGBoost's OMP reductions deterministic *within*
+    # a platform. It does NOT eliminate cross-platform drift — we
+    # verified this empirically on #187: macOS (Apple Silicon NEON) and
+    # Ubuntu CI (x86 AVX) give different splits on the same data because
+    # the underlying FP operations round differently. That's why the
+    # xgboost tolerance in test_baseline_metrics stays at 3.5e-2 rather
+    # than 5e-3.
+    "n_jobs": 1,
 }
 
 # Defaults for the grid-search / small-dataset fallback paths only. Not
@@ -346,7 +367,6 @@ def optuna_search(
     start_times = frame.start_times[order]
     weights = recency_weights(start_times)
 
-    monotone = _monotone_tuple()
     tscv = TimeSeriesSplit(n_splits=_CV_SPLITS)
 
     def objective(trial: Any) -> float:
@@ -357,10 +377,7 @@ def optuna_search(
             X_val, y_val = X[val_idx], y[val_idx]
             w_tr = weights[train_idx]
             est = XGBClassifier(
-                eval_metric="logloss",
-                verbosity=0,
-                use_label_encoder=False,
-                monotone_constraints=monotone,
+                **_FIXED_PARAMS,
                 early_stopping_rounds=50,
                 random_state=random_state,
                 **params,
