@@ -526,3 +526,113 @@ class SkellamPredictor:
         x = np.asarray([self._inference_builder.feature_row(match)], dtype=float)
         dist = self._train_result.model.predict_margin_distribution(x)
         return dist.home_win_prob
+
+
+# ---------------------------------------------------------------------------
+# Stacked ensemble (#171)
+# ---------------------------------------------------------------------------
+
+
+# Below this many completed matches in history, we can't reliably fit the
+# meta-learner (too few out-of-fold predictions). Bases still get fit on
+# the full history so the predictor degrades gracefully to a plain average
+# of base probabilities.
+_STACK_MIN_HISTORY = 40
+
+# Chronological split used to produce out-of-fold base-model predictions.
+# First 80 % → base training; last 20 % → base predict + meta fit. Bigger
+# than a single-fold k-fold because our XGBoost fit is expensive and
+# walk-forward already refits the predictor per round.
+_STACK_TRAIN_FRACTION = 0.8
+
+
+class StackedEnsemblePredictor:
+    """Walk-forward stacking over XGBoost + Skellam + EloMOV (#171).
+
+    Per ``fit(history)``:
+    1. Chronologically split history 80/20.
+    2. Train each base on the 80 % slice, predict the 20 % slice — gives
+       clean out-of-fold base probabilities for meta training.
+    3. Fit the meta-learner (``fit_ensemble`` with ``mode="stacked"``) on
+       those (n_val × 3) probabilities plus the 20 % slice's outcomes.
+    4. Refit each base on the full history so inference sees the
+       strongest bases possible.
+
+    When history is < ``_STACK_MIN_HISTORY``, meta is unset and
+    ``predict_home_win_prob`` falls back to a plain mean of base
+    probabilities — safer than picking one base arbitrarily.
+    """
+
+    name = "stacked"
+
+    def __init__(self) -> None:
+        from fantasy_coach.evaluation.predictors import (
+            EloMOVPredictor,
+            SkellamPredictor,
+            XGBoostPredictor,
+        )
+
+        self._bases: dict[str, Predictor] = {
+            "xgboost": XGBoostPredictor(),
+            "skellam": SkellamPredictor(),
+            "elo_mov": EloMOVPredictor(),
+        }
+        self._ensemble: EnsembleModel | None = None
+
+    def _base_names(self) -> tuple[str, ...]:
+        return tuple(self._bases.keys())
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        completed = sorted(
+            [m for m in history if m.home.score is not None and m.away.score is not None],
+            key=lambda m: (m.start_time, m.match_id),
+        )
+
+        # Always fit bases on the full completed history — inference always
+        # goes through them. Meta is the only thing that needs the OOF split.
+        def _refit_all_on(slice_: list[MatchRow]) -> None:
+            for base in self._bases.values():
+                base.fit(slice_)
+
+        if len(completed) < _STACK_MIN_HISTORY:
+            self._ensemble = None
+            _refit_all_on(completed)
+            return
+
+        split = int(len(completed) * _STACK_TRAIN_FRACTION)
+        train_slice = completed[:split]
+        val_slice = completed[split:]
+
+        # Step 1–2: bases trained on first 80 %, predict last 20 %.
+        _refit_all_on(train_slice)
+        base_names = self._base_names()
+        val_probs = np.zeros((len(val_slice), len(base_names)), dtype=float)
+        for col, name in enumerate(base_names):
+            base = self._bases[name]
+            for row, match in enumerate(val_slice):
+                val_probs[row, col] = base.predict_home_win_prob(match)
+        val_y = np.asarray(
+            [1 if (m.home.score or 0) > (m.away.score or 0) else 0 for m in val_slice],
+            dtype=int,
+        )
+
+        # Step 3: fit the meta-learner on OOF base probs.
+        self._ensemble = fit_ensemble(
+            val_probs,
+            val_y,
+            mode="stacked",
+            base_model_names=base_names,
+        )
+
+        # Step 4: refit bases on full history for inference.
+        _refit_all_on(completed)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        base_names = self._base_names()
+        probs = np.asarray(
+            [[self._bases[n].predict_home_win_prob(match) for n in base_names]],
+            dtype=float,
+        )
+        if self._ensemble is None:
+            return float(probs.mean())
+        return float(self._ensemble.predict_home_win_prob(probs)[0])

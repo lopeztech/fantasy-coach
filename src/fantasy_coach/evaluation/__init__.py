@@ -14,6 +14,7 @@ from fantasy_coach.evaluation.predictors import (
     LogisticPredictor,
     Predictor,
     SkellamPredictor,
+    StackedEnsemblePredictor,
     XGBoostPredictor,
 )
 
@@ -29,6 +30,7 @@ __all__ = [
     "Prediction",
     "Predictor",
     "SkellamPredictor",
+    "StackedEnsemblePredictor",
     "XGBoostPredictor",
     "accuracy",
     "brier_score",
