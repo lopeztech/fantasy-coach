@@ -90,14 +90,14 @@ _FIXED_PARAMS: dict[str, object] = {
     "verbosity": 0,
     "use_label_encoder": False,
     "monotone_constraints": _monotone_tuple(),
+    # ``n_jobs=1`` makes XGBoost's OMP reductions deterministic *within*
+    # a platform. It does NOT eliminate cross-platform drift — we
+    # verified this empirically on #187: macOS (Apple Silicon NEON) and
+    # Ubuntu CI (x86 AVX) give different splits on the same data because
+    # the underlying FP operations round differently. That's why the
+    # xgboost tolerance in test_baseline_metrics stays at 3.5e-2 rather
+    # than 5e-3.
     "n_jobs": 1,
-    # ``tree_method="exact"`` uses exact split enumeration instead of the
-    # default histogram-based splits. Slower (quadratic vs linear in feature
-    # count) but deterministic across CPU architectures — histogram
-    # binning uses float quantiles that drift between Apple Silicon and
-    # x86 AVX paths. The first diagnostic (``n_jobs=1`` alone) left the
-    # macOS↔Ubuntu drift unchanged at 0.029; ``exact`` is the next lever.
-    "tree_method": "exact",
 }
 
 # Defaults for the grid-search / small-dataset fallback paths only. Not
