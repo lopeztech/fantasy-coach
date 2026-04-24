@@ -62,9 +62,7 @@ def test_copy_all_seasons_writes_every_match(seeded_db: Path) -> None:
     # The CLI now uses upsert_matches_batch (one call per season, not per match).
     assert fake_repo.upsert_matches_batch.call_count == 2  # two seasons
     all_rows = [
-        row
-        for call in fake_repo.upsert_matches_batch.call_args_list
-        for row in call.args[0]
+        row for call in fake_repo.upsert_matches_batch.call_args_list for row in call.args[0]
     ]
     assert sorted(r.match_id for r in all_rows) == [1000, 1001, 1002]
 

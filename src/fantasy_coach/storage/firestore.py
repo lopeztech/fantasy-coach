@@ -23,6 +23,7 @@ from typing import Any
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
 _COLLECTION = "matches"
+_BATCH_SIZE = 500  # Firestore WriteBatch hard limit
 
 
 class FirestoreRepository:
@@ -55,7 +56,6 @@ class FirestoreRepository:
         docs in the chunk write or none do, which eliminates partial-write state
         on transient failures (caller must retry the whole chunk).
         """
-        _BATCH_SIZE = 500  # Firestore hard limit
         for i in range(0, len(rows), _BATCH_SIZE):
             chunk = rows[i : i + _BATCH_SIZE]
             batch = self._db.batch()
