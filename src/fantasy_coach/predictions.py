@@ -412,6 +412,8 @@ _SENTINEL_PREDICATES: dict[str, Callable[[float], bool]] = {
     "h2h_recent_diff": lambda v: v == 0.0,  # no recent head-to-head
     "missing_player_strength": lambda v: v < 0.5,  # hide when we *do* have player data
     "missing_odds": lambda v: v < 0.5,  # hide when odds data is present
+    "team_venue_hga_estimate": lambda v: v == 0.0,  # no team-venue history yet
+    "is_neutral_venue": lambda v: v < 0.5,  # hide when venue is not neutral
 }
 
 

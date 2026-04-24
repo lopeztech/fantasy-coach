@@ -138,6 +138,20 @@ FEATURE_NAMES = (
     "rolling_line_breaks_diff",
     "rolling_all_runs_diff",
     "missing_team_stats",
+    # Per-(home_team, venue) rolling win-over-expected (#145). For each
+    # completed match where this team played at home at this venue we track
+    # (actual_home_result − Elo-expected_home_win_prob). The mean of the last
+    # TEAM_VENUE_WINDOW observations is the raw HGA estimate; it is regressed
+    # toward 0 when fewer than TEAM_VENUE_MIN_OBS observations exist so
+    # brand-new (team, venue) pairs don't emit extreme values. Expressed in
+    # win-probability units (roughly −1 to +1). Set to 0.0 at neutral venues.
+    "team_venue_hga_estimate",
+    # Binary flag: 1.0 when the venue is neutral for both teams — i.e. neither
+    # team has played there >= NEUTRAL_VENUE_THRESHOLD times in any of the
+    # NEUTRAL_VENUE_SEASONS_BACK prior seasons. Magic Round, Vegas, one-off
+    # grounds all trigger this. When true, team_venue_hga_estimate is forced
+    # to 0.0 so the model doesn't learn spurious intercepts from rare venues.
+    "is_neutral_venue",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -169,6 +183,12 @@ KEY_ABSENCE_REGULAR_MIN_STARTS = 2
 
 VENUE_TOTAL_WINDOW = 10
 VENUE_WIN_WINDOW = 20
+
+# Per-(team, venue) HGA estimation (#145).
+TEAM_VENUE_WINDOW = 30  # rolling window of (actual − expected) samples
+TEAM_VENUE_MIN_OBS = 5  # regress toward 0 when fewer observations than this
+NEUTRAL_VENUE_THRESHOLD = 5  # games/season to qualify as a "home ground"
+NEUTRAL_VENUE_SEASONS_BACK = 3  # seasons to look back for home-ground check
 
 ROLLING_WINDOW = 5
 ADJ_OPP_WINDOW = 10  # opponent's rolling window for adjusted-form baselines
@@ -276,6 +296,15 @@ class FeatureBuilder:
         self._team_all_runs: dict[int, deque[float]] = defaultdict(
             lambda: deque(maxlen=_TEAM_STATS_WINDOW)
         )
+        # Per-(team_id, venue_key) rolling (actual_result − expected_prob) samples (#145).
+        # Keyed on the home team only — away team's excess at this venue is
+        # not separately tracked (would require away-at-venue signal; deferred).
+        self._team_venue_excess: dict[tuple[int, str], deque[float]] = defaultdict(
+            lambda: deque(maxlen=TEAM_VENUE_WINDOW)
+        )
+        # How many times each (team_id, venue_key, season) combination has appeared.
+        # Used to determine whether a venue is a home ground for neutral-venue detection.
+        self._team_venue_season_counts: dict[tuple[int, str, int], int] = defaultdict(int)
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -336,6 +365,8 @@ class FeatureBuilder:
         runs_h = _avg(self._team_all_runs[h_id])
         runs_a = _avg(self._team_all_runs[a_id])
         missing_ts = 1.0 if len(self._team_kick_metres[h_id]) == 0 else 0.0
+        is_neutral = self._is_neutral_venue(h_id, a_id, vkey, match.season)
+        tv_hga = 0.0 if is_neutral else self._team_venue_hga_estimate(h_id, vkey)
 
         return [
             elo_diff,
@@ -377,7 +408,33 @@ class FeatureBuilder:
             lb_h - lb_a,
             runs_h - runs_a,
             missing_ts,
+            tv_hga,
+            float(is_neutral),
         ]
+
+    def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
+        """Rolling win-over-expected for (home team, venue); regressed toward 0."""
+        if not vkey:
+            return 0.0
+        excess = self._team_venue_excess[(team_id, vkey)]
+        n = len(excess)
+        if n == 0:
+            return 0.0
+        raw = sum(excess) / n
+        # Linear shrinkage toward 0: full raw mean at n >= MIN_OBS,
+        # full zero at n == 0.
+        shrink_weight = min(n, TEAM_VENUE_MIN_OBS) / TEAM_VENUE_MIN_OBS
+        return raw * shrink_weight
+
+    def _is_neutral_venue(self, h_id: int, a_id: int, vkey: str, season: int) -> bool:
+        """True when neither team has >= NEUTRAL_VENUE_THRESHOLD games/season here."""
+        if not vkey:
+            return False
+        for team_id in (h_id, a_id):
+            for s in range(season - NEUTRAL_VENUE_SEASONS_BACK, season):
+                if self._team_venue_season_counts[(team_id, vkey, s)] >= NEUTRAL_VENUE_THRESHOLD:
+                    return False
+        return True
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
         """Return ``(composite, has_roster_data)`` for one team's current XIII.
@@ -569,9 +626,18 @@ class FeatureBuilder:
         self._last_played[a_id] = match.start_time
         self._last_venue[h_id] = match.venue
         self._last_venue[a_id] = match.venue
+        # Per-(team, venue) HGA: capture pre-update expected probability (#145).
+        # expected uses the constant home_advantage so the excess measures
+        # how much the home team over/underperforms the base Elo prediction at
+        # this venue — no circularity with the team_venue_hga_estimate feature.
+        vkey = (match.venue or "").lower()
+        if vkey:
+            expected_hw = self.elo.predict(h_id, a_id)
+            actual_hw = 1.0 if h_score > a_score else (0.5 if h_score == a_score else 0.0)
+            self._team_venue_excess[(h_id, vkey)].append(actual_hw - expected_hw)
+            self._team_venue_season_counts[(h_id, vkey, match.season)] += 1
         self.elo.update(h_id, a_id, h_score, a_score)
         # Update venue rolling stats after the match result is known.
-        vkey = (match.venue or "").lower()
         if vkey:
             self._venue_total[vkey].append(h_score + a_score)
             self._venue_home_wins[vkey].append(1 if h_score > a_score else 0)

@@ -572,7 +572,11 @@ def test_compute_contributions_enriches_key_absence_with_missing_players() -> No
     loaded = LoadedModel(pipeline=pipeline, feature_names=FEATURE_NAMES)
 
     x = np.asarray([builder.feature_row(today)], dtype=float)
-    contribs = _compute_contributions(loaded, x, builder=builder, match=today, top_k=20)
+    # Use top_k=len(FEATURE_NAMES) so the test isn't sensitive to which random
+    # coefficients happen to rank key_absence_diff above/below the cutoff.
+    contribs = _compute_contributions(
+        loaded, x, builder=builder, match=today, top_k=len(FEATURE_NAMES)
+    )
     assert contribs is not None
 
     absence = next((c for c in contribs if c.feature == "key_absence_diff"), None)

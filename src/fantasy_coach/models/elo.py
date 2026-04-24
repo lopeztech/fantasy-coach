@@ -14,12 +14,16 @@ follow-up if Elo proves competitive enough to be worth tuning.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 DEFAULT_INITIAL_RATING = 1500.0
 DEFAULT_K = 20.0
 DEFAULT_HOME_ADVANTAGE = 55.0
 DEFAULT_SEASON_REGRESSION = 0.25
+
+# Callable type: given (home_team_id, venue_name_or_None) return Elo-point bonus.
+HomeAdvantageFn = Callable[[int, str | None], float]
 
 
 @dataclass
@@ -28,12 +32,16 @@ class Elo:
 
     Teams are inserted lazily at first appearance, all starting at
     `initial_rating`. Mutating; not thread-safe.
+
+    Pass `home_advantage_fn` to replace the scalar constant with a per-(team,
+    venue) lookup. Unseen pairs should return `home_advantage` as the default.
     """
 
     k: float = DEFAULT_K
     home_advantage: float = DEFAULT_HOME_ADVANTAGE
     initial_rating: float = DEFAULT_INITIAL_RATING
     season_regression: float = DEFAULT_SEASON_REGRESSION
+    home_advantage_fn: HomeAdvantageFn | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self._ratings: dict[int, float] = {}
@@ -47,9 +55,19 @@ class Elo:
         """A defensive copy of the rating book."""
         return dict(self._ratings)
 
-    def predict(self, home_id: int, away_id: int) -> float:
+    def home_advantage_for(self, team_id: int, venue: str | None = None) -> float:
+        """Return the home-advantage Elo bonus for (team_id, venue).
+
+        Delegates to `home_advantage_fn` when set; falls back to the scalar
+        `home_advantage` constant for unseen pairs or when no fn is wired up.
+        """
+        if self.home_advantage_fn is not None:
+            return self.home_advantage_fn(team_id, venue)
+        return self.home_advantage
+
+    def predict(self, home_id: int, away_id: int, *, venue: str | None = None) -> float:
         """Return the home team's win probability (treats draws as half-wins)."""
-        home_eff = self.rating(home_id) + self.home_advantage
+        home_eff = self.rating(home_id) + self.home_advantage_for(home_id, venue)
         away_eff = self.rating(away_id)
         return _expected_score(home_eff, away_eff)
 
