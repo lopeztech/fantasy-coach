@@ -663,8 +663,7 @@ def _run_clear_commentary_cache(args: argparse.Namespace) -> int:
 
     if not args.version_mismatch and args.before_days is None:
         print(
-            "No eviction criteria specified. "
-            "Use --version-mismatch or --before-days DAYS.",
+            "No eviction criteria specified. Use --version-mismatch or --before-days DAYS.",
             file=sys.stderr,
         )
         return 1

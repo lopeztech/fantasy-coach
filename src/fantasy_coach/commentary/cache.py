@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from fantasy_coach.commentary.client import GeminiClient, GeminiResponse
 
@@ -53,10 +53,10 @@ class BudgetExceededError(RuntimeError):
 @dataclass
 class _CacheEntry:
     response: GeminiResponse
-    expires_at: float         # monotonic clock
-    created_at: float         # wall-clock (time.time())
+    expires_at: float  # monotonic clock
+    created_at: float  # wall-clock (time.time())
     cache_key_version: int
-    feature_snapshot_hash: str = ""   # SHA-8 of the MatchContext inputs
+    feature_snapshot_hash: str = ""  # SHA-8 of the MatchContext inputs
     token_count_in: int = 0
     token_count_out: int = 0
 
@@ -106,8 +106,7 @@ class ResponseCache:
         self._tokens_in_total += entry.token_count_in
         self._tokens_out_total += entry.token_count_out
         logger.info(
-            "commentary_cache_hit key_prefix=%.8s hit_rate=%.2f "
-            "hits=%d misses=%d feature_hash=%s",
+            "commentary_cache_hit key_prefix=%.8s hit_rate=%.2f hits=%d misses=%d feature_hash=%s",
             key,
             self.hit_rate,
             self._hits,
@@ -373,9 +372,7 @@ class CachingGeminiClient:
 
 def _cache_key(prompt: str, model_version: str) -> str:
     """Include CACHE_KEY_VERSION so a version bump busts all existing entries."""
-    return hashlib.sha256(
-        f"{CACHE_KEY_VERSION}:{model_version}:{prompt}".encode()
-    ).hexdigest()
+    return hashlib.sha256(f"{CACHE_KEY_VERSION}:{model_version}:{prompt}".encode()).hexdigest()
 
 
 def context_hash(data: str) -> str:

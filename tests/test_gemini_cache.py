@@ -150,17 +150,12 @@ def test_cache_clear_version_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_clear_stale_by_age() -> None:
-    cache = ResponseCache()
-    # Manually set created_at far in the past.
-    cache.set("p", MODEL, FAKE_RESPONSE)
-    for entry in cache._store.values():
-        entry.__class__ = entry.__class__  # type workaround
-        object.__setattr__(entry, "created_at", 0.0) if hasattr(entry, "__dataclass_fields__") else None
-    # Access the entry dict directly to manipulate created_at.
-    key = next(iter(cache._store))
     import dataclasses
-    old_entry = cache._store[key]
-    cache._store[key] = dataclasses.replace(old_entry, created_at=0.0)
+
+    cache = ResponseCache()
+    cache.set("p", MODEL, FAKE_RESPONSE)
+    key = next(iter(cache._store))
+    cache._store[key] = dataclasses.replace(cache._store[key], created_at=0.0)
 
     evicted = cache.clear_stale(max_age_secs=1.0)
     assert evicted == 1
