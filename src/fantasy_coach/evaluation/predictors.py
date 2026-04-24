@@ -277,13 +277,21 @@ class XGBoostPredictor:
         self._inference_builder = FeatureBuilder()
 
     def fit(self, history: Sequence[MatchRow]) -> None:
-        from fantasy_coach.models.xgboost_model import train_xgboost  # noqa: PLC0415
+        from fantasy_coach.models.xgboost_model import (  # noqa: PLC0415
+            load_best_params,
+            train_xgboost,
+        )
 
         frame = build_training_frame(history)
         if frame.X.shape[0] < 10:
             self._train_result = None
         else:
-            self._train_result = train_xgboost(frame, test_fraction=0.0)
+            # HPO (#167): if best_params.json is committed, skip the grid
+            # search and train with the tuned hyperparameters. Loaded on
+            # every fit() because walk-forward calls this per round — the
+            # JSON read is negligible compared to XGBoost training.
+            tuned = load_best_params()
+            self._train_result = train_xgboost(frame, test_fraction=0.0, best_params=tuned)
 
         self._inference_builder = FeatureBuilder()
         for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):

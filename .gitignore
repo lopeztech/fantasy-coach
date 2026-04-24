@@ -29,6 +29,11 @@ build/
 data/
 !data/venues.csv
 
+# Local training artefacts — model blobs are big + per-platform. The
+# tuned hyperparameters (best_params.json) are small + deterministic
+# and ARE committed; see artifacts/README-ish note in issue #167.
+artifacts/*.joblib
+
 # Snapshotted DB fixture is committed deliberately — see
 # tests/test_baseline_metrics.py for the regeneration recipe.
 !tests/fixtures/*.db

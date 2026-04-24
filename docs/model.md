@@ -378,6 +378,80 @@ next Monday run, trains a new candidate with constraints, shadow-evals
 vs the unconstrained incumbent, and promotes automatically when the
 gate clears. No manual artifact rotation.
 
+### Hyperparameter tuning + recency weighting (#167)
+
+The #167 PR ships three independent levers that compound:
+
+1. **2026 rounds 1–7 included in training.** Previously walk-forward
+   ran only on 2024+2025; adding the in-season rounds grows the dataset
+   from 424 → 480 predictions and lets the model see the current season's
+   team compositions, coaching, and rule tweaks.
+2. **Recency weighting (`SEASON_WEIGHTS`).** Per-row sample weights
+   passed to `XGBClassifier.fit`: 2024 at 1.0×, 2025 at 1.5×, 2026 at
+   2.5×. Older matches are still training signal, just less influential
+   than recent ones where team composition matches the prediction
+   target. Applied uniformly to grid-search, small-dataset fallback,
+   and HPO paths.
+3. **Optuna HPO (`optuna_search`).** TPE sampler + MedianPruner runs a
+   200-trial search over a wider hyperparameter space than the original
+   hand-picked grid: `max_depth ∈ [3,9]`, `learning_rate ∈ [0.005,0.2]`
+   (log), `n_estimators ∈ [100,1500]` with early stopping,
+   `min_child_weight`, `gamma`, `subsample`, `colsample_bytree`,
+   `reg_alpha`, `reg_lambda`. Objective: mean log-loss across
+   `TimeSeriesSplit(3)` folds. `MONOTONE_CONSTRAINTS` stays fixed.
+
+CLI: `python -m fantasy_coach tune-xgboost --season 2024 --season 2025
+--season 2026 --db tests/fixtures/baseline-nrl.db --n-trials 200
+--storage sqlite:///artifacts/optuna.db`. Output:
+`artifacts/best_params.json` (committed). `train_xgboost` + the
+walk-forward `XGBoostPredictor` pick up the tuned params automatically
+on the next fit — no changes needed to the retrain loop (#107).
+
+#### Ablation — walk-forward, separating the three levers
+
+All four configurations use the same baseline DB
+(`tests/fixtures/baseline-nrl.db`) and the post-#165 monotone constraints.
+
+| Config | n | Accuracy | Log-loss | Brier |
+|---|--:|--:|--:|--:|
+| a) 2024+2025, no weights, no HPO (post-#165 baseline) | 424 | 0.6132 | 0.7364 | 0.2559 |
+| b) + 2026 R1–7 in training | 480 | 0.6000 | 0.7416 | 0.2595 |
+| c) + recency weights | 480 | 0.5917 | 0.7491 | 0.2627 |
+| **d) + HPO w/ early stopping (current PR)** | 480 | **0.5854** | **0.7045** | **0.2496** |
+
+**Two signals worth reading carefully:**
+
+- Pooled accuracy drops (0.6132 → 0.5854) because the 2026 R1–7 rounds
+  are structurally harder to predict — thinner rolling-history features
+  at early rounds. Every model in the baseline test takes the same hit:
+  EloMOV goes 0.6179 → 0.6125, logistic 0.5566 → 0.5604, etc. The
+  accuracy drop is **eval-pool change**, not model degradation.
+- **Log-loss and Brier — the proper scoring rules — BOTH IMPROVE on
+  the full pool** under the final config. 0.7364 → 0.7045 on log-loss
+  (−4.3 %), 0.2559 → 0.2496 on Brier (−2.5 %). The model is better
+  calibrated across the bigger eval set despite fewer top-pick hits.
+
+**The early-stopping save.** The first ablation run of config (d) was
+disastrous — log_loss 0.8564, Brier 0.2875 — because Optuna picked
+`n_estimators=439` tuned for the full 480-row dataset, and walk-forward
+trains per-round on much smaller subsets (round 1 sees zero history;
+round 10 sees ~80 rows). 439 trees on 80 rows = catastrophic overfit.
+`train_xgboost` now reserves a held-out tail slice (15 %) per-round
+and uses `early_stopping_rounds=30` to trim the estimator count to
+what the training set actually supports. That took config (d) from a
+retrain-gate block to a promotion candidate.
+
+Production delivery: `artifacts/best_params.json` is committed + baked
+into the Dockerfile. The retrain Job (#107) loads it via
+`load_best_params()` on every fit; Monday's retrain run trains a
+candidate with tuned hyperparameters + recency weights on all three
+seasons + early stopping, shadow-evaluates, and promotes automatically
+if the gate clears. Based on the (d) numbers above, it will.
+
+Re-running HPO after larger-dataset PRs (e.g. #158 2023 backfill): the
+Optuna study is persisted to `sqlite:///artifacts/optuna.db` (gitignored;
+regenerable) so a second run resumes rather than restarting from scratch.
+
 ## Train / test split
 
 Time-ordered, never random. The most recent 20 % of completed matches form

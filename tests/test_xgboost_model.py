@@ -11,10 +11,15 @@ import pytest
 from fantasy_coach.feature_engineering import FEATURE_NAMES
 from fantasy_coach.models.xgboost_model import (
     MONOTONE_CONSTRAINTS,
+    SEASON_WEIGHTS,
     LoadedModel,
     TrainResult,
     _monotone_tuple,
+    load_best_params,
     load_model,
+    optuna_search,
+    recency_weights,
+    save_best_params,
     save_model,
     train_xgboost,
 )
@@ -48,38 +53,40 @@ def _make_frame(n: int = 80, seed: int = 42):
 
 def test_train_xgboost_returns_train_result() -> None:
     frame = _make_frame(80)
-    result = train_xgboost(frame, test_fraction=0.2)
+    result = train_xgboost(frame, test_fraction=0.2, use_hpo=False)
     assert isinstance(result, TrainResult)
     assert result.n_train == 64
     assert result.n_test == 16
 
 
 def test_train_xgboost_train_accuracy_reasonable() -> None:
-    result = train_xgboost(_make_frame(80))
+    result = train_xgboost(_make_frame(80), use_hpo=False)
     assert 0.0 <= result.train_accuracy <= 1.0
 
 
 def test_train_xgboost_test_accuracy_is_nan_when_no_test_set() -> None:
-    result = train_xgboost(_make_frame(80), test_fraction=0.0)
+    result = train_xgboost(_make_frame(80), test_fraction=0.0, use_hpo=False)
     assert np.isnan(result.test_accuracy)
     assert result.n_test == 0
     assert result.n_train == 80
 
 
 def test_train_xgboost_feature_names_preserved() -> None:
-    result = train_xgboost(_make_frame(80))
+    result = train_xgboost(_make_frame(80), use_hpo=False)
     assert result.feature_names == FEATURE_NAMES
 
 
 def test_train_xgboost_best_params_populated() -> None:
-    result = train_xgboost(_make_frame(80))
+    result = train_xgboost(_make_frame(80), use_hpo=False)
     assert "max_depth" in result.best_params
     assert "n_estimators" in result.best_params
     assert "learning_rate" in result.best_params
 
 
 def test_train_xgboost_small_dataset_uses_fixed_defaults() -> None:
-    result = train_xgboost(_make_frame(20), test_fraction=0.0)
+    # use_hpo=False forces the grid-search fallback; the small-dataset
+    # path then uses hardcoded conservative defaults.
+    result = train_xgboost(_make_frame(20), test_fraction=0.0, use_hpo=False)
     assert result.best_params["max_depth"] == 3
     assert result.best_params["n_estimators"] == 100
 
@@ -297,3 +304,101 @@ def test_train_xgboost_respects_monotone_increasing_constraint() -> None:
     assert (diffs >= -1e-9).all(), (
         f"constraint violated: probs={probs.tolist()} diffs={diffs.tolist()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Recency weighting (#167)
+# ---------------------------------------------------------------------------
+
+
+def test_recency_weights_maps_years_to_multipliers() -> None:
+    times = np.array(["2024-03-01", "2025-03-01", "2026-03-01"], dtype="datetime64[s]")
+    w = recency_weights(times)
+    assert w.tolist() == [
+        SEASON_WEIGHTS[2024],
+        SEASON_WEIGHTS[2025],
+        SEASON_WEIGHTS[2026],
+    ]
+
+
+def test_recency_weights_unknown_season_defaults_to_one() -> None:
+    times = np.array(["2019-03-01"], dtype="datetime64[s]")
+    assert recency_weights(times).tolist() == [1.0]
+
+
+def test_recency_weights_accepts_custom_mapping() -> None:
+    times = np.array(["2026-03-01"], dtype="datetime64[s]")
+    assert recency_weights(times, season_weights={2026: 7.5}).tolist() == [7.5]
+
+
+def test_recency_weights_length_matches_input() -> None:
+    times = np.array(
+        ["2024-01-01", "2024-06-01", "2025-06-01", "2026-01-01"], dtype="datetime64[s]"
+    )
+    assert recency_weights(times).shape == (4,)
+
+
+# ---------------------------------------------------------------------------
+# best_params persistence (#167)
+# ---------------------------------------------------------------------------
+
+
+def test_save_and_load_best_params_roundtrip(tmp_path: Path) -> None:
+    params = {"max_depth": 5, "learning_rate": 0.07, "n_estimators": 450}
+    target = tmp_path / "best_params.json"
+    save_best_params(params, target)
+    loaded = load_best_params(target)
+    assert loaded == params
+
+
+def test_load_best_params_missing_returns_none(tmp_path: Path) -> None:
+    assert load_best_params(tmp_path / "nope.json") is None
+
+
+def test_train_xgboost_uses_best_params_when_provided() -> None:
+    frame = _make_frame(80)
+    best = {"max_depth": 3, "n_estimators": 50, "learning_rate": 0.1}
+    result = train_xgboost(frame, test_fraction=0.0, best_params=best)
+    # best_params flows through to result.
+    assert result.best_params["max_depth"] == 3
+    assert result.best_params["n_estimators"] == 50
+    assert result.best_params["learning_rate"] == pytest.approx(0.1)
+
+
+# ---------------------------------------------------------------------------
+# Optuna search (#167) — smoke test, not a full CV run
+# ---------------------------------------------------------------------------
+
+
+def test_optuna_search_returns_best_params() -> None:
+    frame = _make_frame(80)
+    best = optuna_search(frame, n_trials=3, random_state=0)
+    # Every search-space key must appear in the output.
+    for key in (
+        "max_depth",
+        "learning_rate",
+        "n_estimators",
+        "min_child_weight",
+        "gamma",
+        "subsample",
+        "colsample_bytree",
+        "reg_alpha",
+        "reg_lambda",
+    ):
+        assert key in best
+
+
+def test_optuna_search_raises_when_dataset_too_small() -> None:
+    frame = _make_frame(20)
+    with pytest.raises(ValueError, match="at least"):
+        optuna_search(frame, n_trials=2)
+
+
+def test_optuna_search_output_trainable_back_through_train_xgboost() -> None:
+    # End-to-end — HPO → feed best back to train_xgboost → predict shape OK.
+    frame = _make_frame(80)
+    best = optuna_search(frame, n_trials=3, random_state=0)
+    result = train_xgboost(frame, test_fraction=0.2, best_params=best)
+    assert result.n_train == 64
+    probs = result.estimator.predict_proba(frame.X[:5])
+    assert probs.shape == (5, 2)

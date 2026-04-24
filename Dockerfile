@@ -16,6 +16,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --no-install-project
 
 COPY src/ ./src/
+# Tuned XGBoost hyperparameters (#167). train_xgboost +
+# XGBoostPredictor.fit both read this path via load_best_params();
+# without it, they fall back to the hand-picked grid (pre-HPO behaviour).
+# The .joblib blobs in artifacts/ are left out deliberately — model
+# artefacts are downloaded from GCS at runtime, not baked into images.
+COPY artifacts/best_params.json ./artifacts/best_params.json
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
