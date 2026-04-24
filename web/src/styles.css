@@ -1630,3 +1630,216 @@ a:focus-visible {
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* ── Leaderboard ──────────────────────────────────────────────────────────── */
+
+.lb-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.lb-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--color-border);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.lb-toggle-btn {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.lb-toggle-btn.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.lb-group-select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.lb-groups-link {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+.lb-table-wrapper {
+  overflow-x: auto;
+}
+
+.lb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.lb-table th,
+.lb-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.lb-table th {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+}
+
+.lb-col-num {
+  text-align: right;
+}
+
+.lb-col-rank {
+  width: 2.5rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.lb-row--me td {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+@media (max-width: 480px) {
+  .lb-col-hide-sm {
+    display: none;
+  }
+}
+
+/* ── Groups ──────────────────────────────────────────────────────────────── */
+
+.groups-list {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.group-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+}
+
+.group-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.group-card-name {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.group-card-members {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.group-card-code {
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.group-card-rank {
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+
+.group-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.group-card-view-btn {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.group-card-leave-btn {
+  font-size: 0.8rem;
+  background: none;
+  border-color: var(--color-error);
+  color: var(--color-error);
+  padding: 0.25rem 0.65rem;
+}
+
+.group-card-leave-btn:hover {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+}
+
+.groups-forms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.groups-form-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.groups-form-card h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.groups-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.groups-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.groups-form input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.group-invite-code {
+  font-family: monospace;
+  letter-spacing: 0.05em;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}

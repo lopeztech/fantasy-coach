@@ -28,8 +28,10 @@ loop with real outcomes.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from fantasy_coach.features import extract_match_features
 from fantasy_coach.scraper import fetch_match_from_url, fetch_round
@@ -140,3 +142,125 @@ def refresh_stale_matches(
             )
 
     return updated
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard stats sync (#173)
+# ---------------------------------------------------------------------------
+
+
+def sync_leaderboard_stats(season: int, round_id: int) -> int:
+    """Update users/{uid}/stats/<season> for every tip on a just-completed round.
+
+    Reads FullTime match results from the repo, fetches all user tips via
+    collection-group query, and atomically updates each user's stats doc.
+    Returns the number of tips scored. No-op when not running against Firestore.
+    """
+    project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        logger.debug("sync_leaderboard_stats: no Firebase project configured, skipping")
+        return 0
+
+    try:
+        from google.cloud import firestore  # noqa: PLC0415
+    except ImportError:
+        logger.warning("sync_leaderboard_stats: google-cloud-firestore not installed")
+        return 0
+
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+
+    db = firestore.Client(project=project)
+    repo = get_repository()
+
+    try:
+        matches = repo.list_matches(season, round_id)
+    except Exception as exc:
+        logger.error("sync_leaderboard_stats: could not load matches: %s", exc)
+        return 0
+
+    results: dict[int, str] = {
+        m.match_id: ("home" if m.home.score > m.away.score else "away")
+        for m in matches
+        if (
+            m.match_state in {"FullTime", "FullTimeED"}
+            and m.home.score is not None
+            and m.away.score is not None
+        )
+    }
+
+    if not results:
+        logger.info("sync_leaderboard_stats: no FullTime matches in round %d", round_id)
+        return 0
+
+    tips_by_uid: dict[str, list[dict[str, Any]]] = {}
+    for tip_doc in (
+        db.collection_group("tips")
+        .where("season", "==", season)
+        .where("round", "==", round_id)
+        .stream()
+    ):
+        match_id = int(tip_doc.id)
+        if match_id not in results:
+            continue
+        uid = tip_doc.reference.parent.parent.id
+        tips_by_uid.setdefault(uid, []).append(
+            {"match_id": match_id, "tip": tip_doc.to_dict().get("tip"), "actual": results[match_id]}
+        )
+
+    for uid, tips in tips_by_uid.items():
+        _update_user_stats(db, uid, season, tips)
+
+    total = sum(len(t) for t in tips_by_uid.values())
+    logger.info("sync_leaderboard_stats: scored %d tips for %d users", total, len(tips_by_uid))
+    return total
+
+
+def _update_user_stats(db: Any, uid: str, season: int, new_tips: list[dict[str, Any]]) -> None:
+    from google.cloud import firestore  # noqa: PLC0415
+
+    stats_ref = db.collection("users").document(uid).collection("stats").document(str(season))
+
+    @firestore.transactional
+    def run(transaction: Any, ref: Any) -> None:
+        snap = ref.get(transaction=transaction)
+        data = snap.to_dict() if snap.exists else {}
+        scored: set[int] = set(data.get("scored_matches", []))
+        wins = data.get("wins", 0)
+        losses = data.get("losses", 0)
+        total = data.get("total_tips", 0)
+        streak = data.get("current_streak", 0)
+        best = data.get("longest_streak", 0)
+
+        for tip in new_tips:
+            mid = tip["match_id"]
+            if mid in scored:
+                continue
+            scored.add(mid)
+            total += 1
+            if tip["tip"] == tip["actual"]:
+                wins += 1
+                streak += 1
+                best = max(best, streak)
+            else:
+                losses += 1
+                streak = 0
+
+        transaction.set(
+            ref,
+            {
+                "season": season,
+                "wins": wins,
+                "losses": losses,
+                "total_tips": total,
+                "accuracy": wins / total if total > 0 else 0.0,
+                "margin_points": data.get("margin_points", 0.0),
+                "current_streak": streak,
+                "longest_streak": best,
+                "scored_matches": list(scored),
+                "last_updated": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+    tx = db.transaction()
+    run(tx, stats_ref)

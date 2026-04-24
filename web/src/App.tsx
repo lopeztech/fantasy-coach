@@ -70,6 +70,12 @@ export default function App() {
           </Link>
           <div className="header-controls">
             <SearchBar />
+            <Link to="/leaderboard" className="nav-link">
+              Leaderboard
+            </Link>
+            <Link to="/groups" className="nav-link">
+              Groups
+            </Link>
             <Link to="/scoreboard" className="nav-link">
               Scoreboard
             </Link>
