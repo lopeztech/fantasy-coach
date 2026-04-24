@@ -1,4 +1,6 @@
+import csv
 import os
+import pathlib
 import time
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -39,6 +41,11 @@ class ModelVersionAccuracy(BaseModel):
 class TeamOption(BaseModel):
     id: int
     name: str
+
+
+class VenueOut(BaseModel):
+    name: str
+    city: str
 
 
 class AccuracyOut(BaseModel):
@@ -791,3 +798,56 @@ def get_dashboard(
 
     _dashboard_cache[cache_key] = (time.monotonic(), dashboard)
     return dashboard
+
+
+_VENUES_CSV = pathlib.Path(__file__).parents[3] / "data" / "venues.csv"
+
+# Lazily populated teams cache: maps season → sorted TeamOption list.
+_teams_cache: dict[int, list[TeamOption]] = {}
+
+
+@app.get(
+    "/venues",
+    response_model=list[VenueOut],
+    summary="List all known NRL venues",
+    description=(
+        "Returns venue name and city from the bundled venues.csv."
+        " Used by the client-side search index."
+    ),
+)
+def get_venues() -> list[VenueOut]:
+    if not _VENUES_CSV.exists():
+        return []
+    with _VENUES_CSV.open(newline="") as f:
+        reader = csv.DictReader(f)
+        return [VenueOut(name=row["name"], city=row["city"]) for row in reader]
+
+
+@app.get(
+    "/teams",
+    response_model=list[TeamOption],
+    summary="List all NRL teams seen in a season",
+    description=(
+        "Returns `{id, name}` for every team seen in the given season. "
+        "Derived from the match store — same data as the teams catalogue in /accuracy."
+    ),
+)
+def get_teams(
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+) -> list[TeamOption]:
+    if season in _teams_cache:
+        return _teams_cache[season]
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+    seen: dict[int, str] = {}
+    for m in all_matches:
+        seen[m.home.team_id] = m.home.name
+        seen[m.away.team_id] = m.away.name
+    teams = sorted(
+        [TeamOption(id=tid, name=name) for tid, name in seen.items()],
+        key=lambda t: t.name,
+    )
+    _teams_cache[season] = teams
+    return teams

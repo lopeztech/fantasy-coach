@@ -1,5 +1,5 @@
 import { getFirebaseAuth, API_BASE_URL } from "./firebase";
-import type { DashboardOut } from "./types";
+import type { DashboardOut, TeamOption } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -16,6 +16,16 @@ export class NotSignedInError extends Error {
     super("Sign in required");
     this.name = "NotSignedInError";
   }
+}
+
+export type VenueOption = { name: string; city: string };
+
+export async function getTeams(season: number): Promise<TeamOption[]> {
+  return apiFetch<TeamOption[]>(`/teams?season=${season}`);
+}
+
+export async function getVenues(): Promise<VenueOption[]> {
+  return apiFetch<VenueOption[]>("/venues");
 }
 
 export async function getDashboard(
