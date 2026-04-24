@@ -501,7 +501,11 @@ def get_team_profile(
         is_away = m.away.team_id == team_id
         if not (is_home or is_away):
             # Still update Elo for all teams to keep ratings accurate.
-            if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None:
+            if (
+                m.match_state == "FullTime"
+                and m.home.score is not None
+                and m.away.score is not None
+            ):
                 elo.update(m.home.team_id, m.away.team_id, m.home.score, m.away.score)
             continue
 
@@ -532,29 +536,33 @@ def get_team_profile(
             elo_after = round(elo.rating(team_id), 1)
             completed_entries.append({"elo": elo_after})
 
-            all_fixtures.append({
-                "round": m.round,
-                "matchId": m.match_id,
-                "opponent": opp_name,
-                "opponentId": opp_id,
-                "isHome": is_home,
-                "kickoff": m.start_time.isoformat(),
-                "result": form_char,
-                "score": score,
-                "opponentScore": opp_score,
-            })
+            all_fixtures.append(
+                {
+                    "round": m.round,
+                    "matchId": m.match_id,
+                    "opponent": opp_name,
+                    "opponentId": opp_id,
+                    "isHome": is_home,
+                    "kickoff": m.start_time.isoformat(),
+                    "result": form_char,
+                    "score": score,
+                    "opponentScore": opp_score,
+                }
+            )
         else:
-            all_fixtures.append({
-                "round": m.round,
-                "matchId": m.match_id,
-                "opponent": opp_name,
-                "opponentId": opp_id,
-                "isHome": is_home,
-                "kickoff": m.start_time.isoformat(),
-                "result": None,
-                "score": None,
-                "opponentScore": None,
-            })
+            all_fixtures.append(
+                {
+                    "round": m.round,
+                    "matchId": m.match_id,
+                    "opponent": opp_name,
+                    "opponentId": opp_id,
+                    "isHome": is_home,
+                    "kickoff": m.start_time.isoformat(),
+                    "result": None,
+                    "score": None,
+                    "opponentScore": None,
+                }
+            )
 
     if not team_name:
         raise HTTPException(status_code=404, detail=f"Team {team_id} not found in season {season}")
@@ -564,7 +572,9 @@ def get_team_profile(
     if len(completed_entries) >= 2:
         elo_now = completed_entries[-1]["elo"]
         elo_before = (
-            completed_entries[-3]["elo"] if len(completed_entries) >= 3 else completed_entries[-2]["elo"]
+            completed_entries[-3]["elo"]
+            if len(completed_entries) >= 3
+            else completed_entries[-2]["elo"]
         )
         if elo_now > elo_before + 1:
             elo_trend = "up"
