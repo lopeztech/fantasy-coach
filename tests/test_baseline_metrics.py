@@ -71,7 +71,11 @@ EXPECTED = {
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
     "logistic": {"n": 424, "accuracy": 0.5566, "log_loss": 0.8017, "brier": 0.2735},
-    "xgboost": {"n": 424, "accuracy": 0.5755, "log_loss": 0.7490, "brier": 0.2625},
+    # Pins refreshed in #165 — monotonic constraints on 10 direction-certain
+    # features (see MONOTONE_CONSTRAINTS) moved XGBoost from 0.5755 → 0.6132
+    # accuracy, −1.7 % log_loss, −2.5 % brier. See docs/model.md "Monotone
+    # constraints (#165)".
+    "xgboost": {"n": 424, "accuracy": 0.6132, "log_loss": 0.7364, "brier": 0.2559},
     "skellam": {"n": 424, "accuracy": 0.5778, "log_loss": 0.7051, "brier": 0.2508},
 }
 
@@ -88,10 +92,12 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # Linux + macOS, so 1e-3 catches real regressions. xgboost's
 # OMP-parallelised tree splits are *not* bit-stable across platforms —
 # a handful of close predictions flip between macOS and Ubuntu CI.
-# #27 measured ~0.005 drift, #109 measured ~0.011 drift once player_ratings
-# added variance. Widened to 1.5e-2 to swallow that; still tight enough
-# to catch a 1.5pp regression, which is well above any noise floor.
-_TOL: dict[str, float] = {"xgboost": 1.5e-2, "skellam": 5e-3}
+# #27 measured ~0.005 drift, #109 measured ~0.011, and #165 (monotone
+# constraints) widened it to ~0.0165 — the constraints push more
+# predictions into "just over the decision boundary" territory where
+# OMP-ordering flips get amplified. 2.0e-2 swallows observed drift;
+# still tight enough to catch a 2pp regression, well above noise floor.
+_TOL: dict[str, float] = {"xgboost": 2.0e-2, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 
 
