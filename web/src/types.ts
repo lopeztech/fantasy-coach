@@ -142,3 +142,24 @@ export type AccuracyOut = {
   venues: string[];
   modelVersions: string[];
 };
+
+export type DashboardOut = {
+  season: number;
+  currentRound: number | null;
+  favouriteTeamId: number | null;
+  nextFixture: {
+    matchId: number;
+    round: number;
+    opponent: string;
+    opponentId: number;
+    isHome: boolean;
+    kickoff: string;
+    predWinner: "home" | "away" | null;
+    predProb: number | null;
+    season: number;
+  } | null;
+  untippedMatchIds: number[];
+  seasonAccuracy: number | null;
+  totalTips: number;
+  correctTips: number;
+};
