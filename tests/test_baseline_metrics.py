@@ -98,14 +98,13 @@ PREDICTORS: dict[str, type[Predictor]] = {
 
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
 # Linux + macOS, so 1e-3 catches real regressions. xgboost's
-# OMP-parallelised tree splits are *not* bit-stable across platforms —
-# a handful of close predictions flip between macOS and Ubuntu CI.
-# Drift history: #27 ~0.005, #109 ~0.011, #165 (monotone constraints)
-# ~0.0165, #167 (HPO + early stopping) ~0.029 — each feature that pushes
-# predictions closer to the 0.5 decision boundary amplifies OMP-ordering
-# flips. 3.5e-2 swallows observed drift; still tight enough to catch a
-# 3.5pp regression, well above any noise floor.
-_TOL: dict[str, float] = {"xgboost": 3.5e-2, "skellam": 5e-3}
+# OMP-parallelised tree splits USED to drift cross-platform (#27 ~0.005
+# → #109 ~0.011 → #165 ~0.0165 → #167 ~0.029, each PR widening the tol)
+# until we set ``n_jobs=1`` in ``_FIXED_PARAMS`` to force single-threaded
+# training. With determinism at source the tolerance goes back to 5e-3,
+# catching a 0.5pp drift — well below anything a real regression would
+# produce but comfortably above any remaining hardware-float noise.
+_TOL: dict[str, float] = {"xgboost": 5e-3, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 
 
