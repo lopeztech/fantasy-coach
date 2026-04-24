@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { getDashboard, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
+import { NotificationPrompt } from "../components/NotificationPrompt";
 import { SignInRequired } from "../components/SignInRequired";
 import type { DashboardOut } from "../types";
 
@@ -294,6 +295,7 @@ function PersonalisedDashboard() {
         <TipRoundCard dashboard={data} />
         <AccuracyCard dashboard={data} />
       </div>
+      <NotificationPrompt tipsCount={data.totalTips} />
     </section>
   );
 }
