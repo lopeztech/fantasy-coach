@@ -116,6 +116,24 @@ jobs:
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra#65 not applied yet)."
 
+      - name: Update retrain Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-retrain
+        # Same pattern as the precompute Job above. The retrain Job is
+        # provisioned by platform-infra fantasy-coach#107 (retrain.tf); until
+        # that applies, this step logs + skips. Env vars match the TF shape
+        # (Firestore, GCS model URI) — the secret-backed GITHUB_MODEL_DRIFT_TOKEN
+        # is owned by TF and preserved by `--update-env-vars` (partial merge).
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --update-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore,FANTASY_COACH_MODEL_GCS_URI=gs://${PROJECT_ID}-models/logistic/latest.joblib" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#107 not applied yet)."
+
       # The external /healthz smoke test has been dropped: `gcloud auth
       # print-identity-token` doesn't work with WIF-federated credentials
       # (they're OAuth2 access tokens, not OIDC ID tokens), and Cloud Run's
