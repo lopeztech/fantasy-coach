@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth";
 import { AuthButton } from "./components/AuthButton";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { SearchBar } from "./components/SearchBar";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
             Fantasy Coach
           </Link>
           <div className="header-controls">
+            <SearchBar />
             <Link to="/scoreboard" className="nav-link">
               Scoreboard
             </Link>
