@@ -1118,3 +1118,265 @@ a:focus-visible {
 .match-card .consensus-badge {
   margin-top: 0.25rem;
 }
+
+/* Team name links inside MatchCard */
+.team-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.team-link:hover {
+  text-decoration-style: solid;
+}
+
+/* ── Team Profile ──────────────────────────────────────────────────────── */
+
+.team-profile {
+  max-width: 800px;
+}
+
+.team-profile-header {
+  margin-bottom: 1rem;
+}
+
+.team-profile-name {
+  margin: 0 0 0.25rem;
+}
+
+.team-profile-record {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.team-profile-elo {
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.team-profile-form h2,
+.team-profile-next h2,
+.team-profile-fixtures h2 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.team-profile-form-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.team-profile-next {
+  margin-bottom: 1.5rem;
+}
+
+.team-profile-next-card {
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.team-profile-next-card p {
+  margin: 0 0 0.4rem;
+}
+
+.team-profile-next-card p:last-child {
+  margin-bottom: 0;
+}
+
+.team-profile-prediction {
+  font-size: 0.9rem;
+}
+
+.team-profile-fixture-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.team-profile-fixture-table th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 2px solid var(--color-border);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.team-profile-fixture-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.fixture-row--win td:first-child {
+  border-left: 3px solid var(--color-win, #22c55e);
+}
+
+.fixture-row--loss td:first-child {
+  border-left: 3px solid var(--color-loss, #ef4444);
+}
+
+.fixture-row--draw td:first-child {
+  border-left: 3px solid var(--color-text-muted);
+}
+
+/* ── Dashboard (personalised home) ────────────────────────────────────── */
+
+.dashboard h1 {
+  margin-top: 0;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.dashboard-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dashboard-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.dashboard-card-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.dashboard-fixture-line {
+  margin: 0;
+}
+
+.dashboard-prediction {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.dashboard-change-team {
+  margin-top: 0.5rem;
+  background: transparent;
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.dashboard-change-team:hover {
+  background: transparent;
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.dashboard-team-picker p {
+  margin: 0 0 0.75rem;
+}
+
+.dashboard-team-picker-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.dashboard-team-picker-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.dashboard-team-picker-form input {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  width: 6rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.dashboard-round-complete {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.dashboard-view-round-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dashboard-accuracy-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* ── Landing page (signed-out) ─────────────────────────────────────────── */
+
+.landing-features {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+@media (min-width: 600px) {
+  .landing-features {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.landing-feature {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
+.landing-feature strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.landing-feature p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}

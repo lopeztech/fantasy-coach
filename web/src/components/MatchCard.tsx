@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { TeamFormSparkline } from "./TeamFormSparkline";
 import { TipEntry } from "./TipEntry";
@@ -49,6 +49,7 @@ export function MatchCard({
   homeForm?: TeamFormHistory | null;
   awayForm?: TeamFormHistory | null;
 }) {
+  const navigate = useNavigate();
   const p = prediction;
   const homePct = Math.round(p.homeWinProbability * 100);
   const awayPct = 100 - homePct;
@@ -65,9 +66,25 @@ export function MatchCard({
       <article className="match-card">
         <header className="match-card-head">
           <div className="teams">
-            <span className="team home">{p.home.name}</span>
+            <span
+              className="team home team-link"
+              role="link"
+              tabIndex={0}
+              onClick={(e) => { e.preventDefault(); navigate(`/team/${p.home.id}`); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.home.id}`); } }}
+            >
+              {p.home.name}
+            </span>
             <span className="muted"> vs </span>
-            <span className="team away">{p.away.name}</span>
+            <span
+              className="team away team-link"
+              role="link"
+              tabIndex={0}
+              onClick={(e) => { e.preventDefault(); navigate(`/team/${p.away.id}`); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.away.id}`); } }}
+            >
+              {p.away.name}
+            </span>
           </div>
           <time className="kickoff muted" dateTime={p.kickoff}>
             {formatKickoff(p.kickoff)}

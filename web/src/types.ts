@@ -94,6 +94,43 @@ export type AccuracyFilters = {
   modelVersion: string | null;
 };
 
+export type TeamFixture = {
+  round: number;
+  matchId: number;
+  opponent: string;
+  opponentId: number;
+  isHome: boolean;
+  kickoff: string;
+  result: "W" | "L" | "D" | null;
+  score: number | null;
+  opponentScore: number | null;
+  predWinner?: "home" | "away" | null;
+  predProb?: number | null;
+};
+
+export type TeamNextFixture = {
+  matchId: number;
+  round: number;
+  opponent: string;
+  opponentId: number;
+  isHome: boolean;
+  kickoff: string;
+  predWinner: "home" | "away" | null;
+  predProb: number | null;
+};
+
+export type TeamProfile = {
+  teamId: number;
+  teamName: string;
+  season: number;
+  currentRecord: { wins: number; losses: number; draws: number };
+  currentElo: number;
+  eloTrend: "up" | "down" | "flat";
+  recentForm: string[];
+  nextFixture: TeamNextFixture | null;
+  allFixtures: TeamFixture[];
+};
+
 export type AccuracyOut = {
   rounds: RoundAccuracy[];
   byModelVersion: Array<{ modelVersion: string; total: number; correct: number; accuracy: number }>;

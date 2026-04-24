@@ -1,4 +1,5 @@
 import os
+import time
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,6 +76,18 @@ class TeamFormHistory(BaseModel):
     matches: list[TeamFormEntry]
 
 
+class TeamProfile(BaseModel):
+    teamId: int
+    teamName: str
+    season: int
+    currentRecord: dict  # {"wins": n, "losses": n, "draws": n}
+    currentElo: float
+    eloTrend: str  # "up" | "down" | "flat"
+    recentForm: list[str]  # last 10 results as "W"/"L"/"D"
+    nextFixture: dict | None  # next upcoming match details
+    allFixtures: list[dict]  # all fixtures in season
+
+
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
     "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
@@ -115,6 +128,10 @@ app.add_middleware(
 # Module-level singletons — created lazily on first use.
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
+
+# In-process cache for team profile responses: key=(team_id, season), value=(timestamp, data)
+_PROFILE_CACHE_TTL = 60  # seconds
+_profile_cache: dict[tuple[int, int], tuple[float, TeamProfile]] = {}
 
 
 def _get_store() -> PredictionStore | FirestorePredictionStore:
