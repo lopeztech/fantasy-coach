@@ -414,6 +414,7 @@ dependencies = [
     { name = "httpx" },
     { name = "joblib" },
     { name = "numpy" },
+    { name = "openpyxl" },
     { name = "pydantic" },
     { name = "scikit-learn" },
     { name = "uvicorn", extra = ["standard"] },
@@ -422,7 +423,6 @@ dependencies = [
 
 [package.optional-dependencies]
 training = [
-    { name = "openpyxl" },
     { name = "optuna" },
 ]
 
@@ -445,7 +445,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "joblib", specifier = ">=1.4" },
     { name = "numpy", specifier = ">=2.0" },
-    { name = "openpyxl", marker = "extra == 'training'", specifier = ">=3.1.5" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "optuna", marker = "extra == 'training'", specifier = ">=3.5" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "scikit-learn", specifier = ">=1.5" },

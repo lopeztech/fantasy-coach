@@ -170,17 +170,17 @@ not at module scope. The same rule applies to any new module imported by
 
 ### Training extras
 
-`pyproject.toml` splits HPO and data-loading deps into an optional group:
+`pyproject.toml` splits HPO into an optional extra:
 
 ```toml
 [project.optional-dependencies]
-training = ["optuna>=3.5", "openpyxl>=3.1.5"]
+training = ["optuna>=3.5"]
 ```
 
-The runtime image (`uv sync --no-dev`) skips these. A future training image
-(for the precompute Job, once it is separated) would install `.[training]`.
-Today both the API and Job use the same image and the training extras are
-transitionally excluded from both (the Job doesn't use HPO at prediction time).
+`optuna` is only needed for `tune-xgboost` / rating-sweep — it is not
+required by the API, the precompute Job, or the CLI's `merge-closing-lines`
+command. The runtime image (`uv sync --no-dev`) skips it; local HPO runs
+use `uv sync --extra training`.
 
 ## Rolling back
 

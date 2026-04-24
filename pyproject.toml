@@ -19,6 +19,7 @@ dependencies = [
     "firebase-admin>=6.5",
     "google-auth>=2.30",
     "xgboost>=3.2.0",
+    "openpyxl>=3.1.5",
 ]
 
 [build-system]
@@ -29,12 +30,10 @@ build-backend = "hatchling.build"
 packages = ["src/fantasy_coach"]
 
 [project.optional-dependencies]
-# Training-only deps — not required to serve the API (which is a Firestore
-# cache read). The Cloud Run Job and local training scripts install .[training].
-# The runtime image (API) installs only [project.dependencies].
+# Training-only extras — not required to serve the API or run the CLI.
+# Install with: uv sync --extra training
 training = [
-    "optuna>=3.5",   # HPO — only needed for train-xgboost / rating-sweep
-    "openpyxl>=3.1.5",  # bookmaker xlsx parsing — merge-closing-lines only
+    "optuna>=3.5",   # HPO — only needed for tune-xgboost / rating-sweep
 ]
 
 [dependency-groups]
