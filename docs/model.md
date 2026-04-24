@@ -409,3 +409,111 @@ to near-0 / near-1 win probabilities for extreme feature rows.
 **Decision:** Skellam is added as a secondary model. It is not promoted to
 replace EloMOV as the ensemble's primary signal; the margin and CI outputs
 are surfaced as optional fields on `PredictionOut` for display purposes only.
+
+## Retraining cadence & drift (#107)
+
+The production XGBoost artefact at
+`gs://fantasy-coach-lcd-models/logistic/latest.joblib` is refreshed by a
+weekly Cloud Run Job (`fantasy-coach-retrain`) triggered by Cloud
+Scheduler every **Monday 10:00 AEST**, after Sunday's round is complete
+and before Tuesday's precompute run. The full pipeline lives in
+`src/fantasy_coach/retrain.py`; invoke locally with `python -m
+fantasy_coach retrain`.
+
+### Pipeline
+
+1. Load completed matches from Firestore (last ~3 seasons).
+2. Split into **training** (everything before) and a **4-round holdout**
+   (the last 4 completed rounds).
+3. Train a fresh XGBoost candidate on the training split
+   (`train_xgboost`, same hyperparameter grid as the manual CLI).
+4. Shadow-evaluate incumbent + candidate on the holdout
+   (`models.promotion.shadow_evaluate`).
+5. Gate the candidate (`models.promotion.gate_decision`).
+6. On promote: upload to the GCS URI above (overwriting `latest.joblib`;
+   bucket object versioning is the rollback path).
+7. On block: open a GitHub issue tagged `model-drift`, body = metrics
+   table + PSI warnings + rolling log-loss trend.
+8. Always: write a `DriftReport` to Firestore
+   (`model_drift_reports/{season}-{round:02d}`).
+
+### Promotion gate
+
+| Metric | Threshold | Gate behaviour |
+|---|---|---|
+| log-loss regression | > +2 % vs incumbent on holdout | **block** |
+| brier regression | > +2 % vs incumbent on holdout | **block** |
+| accuracy | any | informational only — never blocks |
+
+Calibration is what gates, not accuracy. A model that pushes probabilities
+toward 0/1 can beat the incumbent on accuracy while worsening log-loss;
+`homeWinProbability` and the contribution-list UI both need calibrated
+output, so log-loss + brier are the binding constraints.
+
+### PSI (distribution shift)
+
+Per-feature Population Stability Index between the training and holdout
+feature matrices is computed on every run. Thresholds follow Siddiqi's
+industry convention:
+
+| PSI | Interpretation |
+|---|---|
+| < 0.10 | no meaningful shift |
+| 0.10 – 0.25 | minor shift |
+| > 0.25 | **warn** — surfaced in `DriftReport.psi_warnings` |
+
+PSI **never blocks** — the AC explicitly scopes it to "warn but don't
+block". Bin count is auto-reduced at small holdout sizes so the null
+distribution doesn't trip the 0.25 threshold on pure sampling variance
+(~32 holdout predictions → ~3 bins, see `drift._effective_bins`).
+
+### Drift report schema
+
+```
+model_drift_reports/{season}-{round:02d}
+├── season                int
+├── round                 int                     latest holdout round
+├── generated_at          string                  ISO 8601 UTC
+├── model_version         string                  first 12 hex of sha256(artefact)
+├── past_round_accuracy   float | null            incumbent on latest round
+├── past_round_log_loss   float | null
+├── past_round_brier      float | null
+├── rolling_log_loss      list<map>               one per holdout round
+│   ├── season            int
+│   ├── round             int
+│   ├── n                 int
+│   ├── log_loss          float
+│   └── accuracy          float
+├── feature_psi           map<string, float>      per-feature PSI
+└── psi_warnings          list<string>            feature names with PSI > 0.25
+```
+
+### Rollback
+
+GCS object versioning is enabled on the `fantasy-coach-lcd-models`
+bucket (platform-infra `google_storage_bucket.models`). To revert to the
+prior artefact:
+
+```bash
+GENERATION=$(gsutil ls -a gs://fantasy-coach-lcd-models/logistic/latest.joblib \
+    | sed -n '2p' | cut -d'#' -f2)
+gsutil cp "gs://fantasy-coach-lcd-models/logistic/latest.joblib#${GENERATION}" \
+    gs://fantasy-coach-lcd-models/logistic/latest.joblib
+```
+
+The API reads the latest generation on cold start, so restart Cloud Run
+(roll a new revision via `deploy.yml` or `gcloud run services update`)
+and the reverted artefact is served. The precompute Job re-downloads on
+every execution so it picks the revert up on its next scheduled run.
+
+### Out of scope for #107 (tracked separately)
+
+- Logistic retraining (`train-logistic`). Logistic is a comparison
+  baseline only — the retrain loop targets the production model. File
+  a follow-up if logistic ever returns to production.
+- Email alerting on gate-block. GitHub issue is the first notification
+  channel; email can be added later by plugging into the existing budget
+  notification channel.
+- Online / per-round retraining. Weekly is sufficient at the current
+  pace of data — rounds are week-sized and there's no mid-round signal
+  that would change weights.
