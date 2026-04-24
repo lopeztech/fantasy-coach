@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class SQLiteRepository:
@@ -46,8 +46,9 @@ class SQLiteRepository:
                     home_team_id, home_name, home_nick, home_score,
                     away_team_id, away_name, away_nick, away_score,
                     referee_id, video_referee_id,
-                    home_odds, away_odds
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    home_odds, away_odds,
+                    home_odds_open, away_odds_open
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.match_id,
@@ -70,6 +71,8 @@ class SQLiteRepository:
                     row.video_referee_id,
                     row.home.odds,
                     row.away.odds,
+                    row.home.odds_open,
+                    row.away.odds_open,
                 ),
             )
             self._insert_players(row.match_id, "home", row.home.players)
@@ -150,6 +153,14 @@ class SQLiteRepository:
                     with contextlib.suppress(Exception):
                         self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
                 self._conn.execute("UPDATE schema_version SET version = 4")
+        if from_version < 5:
+            with self._conn:
+                # v4 → v5: add opening-line odds columns (#169). Populated by
+                # merge-closing-lines when the xlsx carries Home/Away Odds Open.
+                for col in ("home_odds_open REAL", "away_odds_open REAL"):
+                    with contextlib.suppress(Exception):
+                        self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
+                self._conn.execute("UPDATE schema_version SET version = 5")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
@@ -239,6 +250,7 @@ class SQLiteRepository:
                 score=match["home_score"],
                 players=home_players,
                 odds=_safe_column(match, "home_odds"),
+                odds_open=_safe_column(match, "home_odds_open"),
             ),
             away=TeamRow(
                 team_id=match["away_team_id"],
@@ -247,6 +259,7 @@ class SQLiteRepository:
                 score=match["away_score"],
                 players=away_players,
                 odds=_safe_column(match, "away_odds"),
+                odds_open=_safe_column(match, "away_odds_open"),
             ),
             team_stats=[
                 TeamStat(
