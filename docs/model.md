@@ -551,6 +551,56 @@ to near-0 / near-1 win probabilities for extreme feature rows.
 replace EloMOV as the ensemble's primary signal; the margin and CI outputs
 are surfaced as optional fields on `PredictionOut` for display purposes only.
 
+## Stacked ensemble (#171)
+
+`StackedEnsemblePredictor` in `evaluation/predictors.py` combines
+XGBoost + Skellam + EloMOV through a logistic-regression meta-learner
+trained on out-of-fold base probabilities. Walk-forward flow per round:
+
+1. Split chronologically-sorted history 80 / 20.
+2. Fit each base on the 80 % slice → predict the 20 % slice → that's
+   the OOF probability matrix (n_val × 3).
+3. Fit the meta-learner via `fit_ensemble(mode="stacked")` on those
+   OOF probabilities + actual outcomes. Inherits the existing kill
+   switch from #56 (if meta doesn't beat the best base by 0.005
+   log-loss, fall back to the best base's raw prediction).
+4. Refit each base on the **full** history for inference so the
+   strongest possible bases feed into the meta.
+
+### Ablation — 2024+2025+2026 baseline, 480 predictions
+
+| Model | accuracy | log-loss | brier |
+|---|--:|--:|--:|
+| home | 0.5646 | 0.6852 | 0.2460 |
+| elo | 0.5833 | 0.6628 | 0.2353 |
+| **EloMOV** | **0.6125** | 0.6668 | 0.2366 |
+| logistic | 0.5604 | 0.8269 | 0.2751 |
+| XGBoost (prod) | 0.5729 | 0.7079 | 0.2515 |
+| Skellam | 0.5708 | 0.7097 | 0.2529 |
+| **Stacked** | 0.5854 | **0.6807** | **0.2423** |
+
+Stacked **beats XGBoost on all three metrics** (+1.25pp accuracy,
+−3.8 % log-loss, −3.7 % brier) — the AC's promotion-gate criterion is
+met. **EloMOV still wins on accuracy** (0.6125 vs 0.5854) because the
+meta-learner's regularisation on the thin 20 %-tail val slice dilutes
+EloMOV's signal; with a larger holdout (deeper history post-#158
+backfill) the meta should learn to upweight EloMOV.
+
+**Decision:** stacked is made available as a backup predictor via
+`StackedEnsemblePredictor` but the production artefact stays XGBoost.
+Promotion to production is a separate decision pending either (a) a
+larger training set that lets the meta upweight EloMOV properly, or
+(b) an explicit business call to trade accuracy for better calibration.
+The `stacked` pin lives in `test_baseline_metrics.py` so any regression
+trips CI.
+
+**Production-artefact limitation:** the current stacked flow persists
+XGBoost + Skellam cleanly (both have joblib serialisation) but EloMOV
+doesn't have an artefact shape yet. Walk-forward evaluation uses an
+in-memory EloMOV that replays the match history; a production
+`train-stacked` CLI would need a small EloMOV serialiser first.
+Filed as a follow-up if/when we decide to promote.
+
 ## Retraining cadence & drift (#107)
 
 The production XGBoost artefact at

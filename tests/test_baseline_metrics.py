@@ -25,6 +25,7 @@ from fantasy_coach.evaluation import (
     LogisticPredictor,
     Predictor,
     SkellamPredictor,
+    StackedEnsemblePredictor,
     XGBoostPredictor,
 )
 from fantasy_coach.evaluation.harness import walk_forward_from_repo
@@ -91,6 +92,12 @@ EXPECTED = {
     "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.8269, "brier": 0.2751},
     "xgboost": {"n": 480, "accuracy": 0.5729, "log_loss": 0.7079, "brier": 0.2515},
     "skellam": {"n": 480, "accuracy": 0.5708, "log_loss": 0.7097, "brier": 0.2529},
+    # #171 stacks XGBoost + Skellam + EloMOV behind a logistic-regression
+    # meta-learner fit on out-of-fold base probabilities. Beats XGBoost on
+    # all three metrics (+1.25 pp accuracy, −3.8 % log_loss, −3.7 % brier)
+    # on this baseline. Still trails EloMOV on accuracy; meta-learner
+    # regularisation on the 20 % val slice dilutes EloMOV's lead.
+    "stacked": {"n": 480, "accuracy": 0.5854, "log_loss": 0.6807, "brier": 0.2423},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
@@ -100,6 +107,7 @@ PREDICTORS: dict[str, type[Predictor]] = {
     "logistic": LogisticPredictor,
     "xgboost": XGBoostPredictor,
     "skellam": SkellamPredictor,
+    "stacked": StackedEnsemblePredictor,
 }
 
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
@@ -124,7 +132,12 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # developer's own machine, drift between runs should be < 1e-3, so an
 # individual's test-suite runs stay tight even when cross-platform does
 # not.
-_TOL: dict[str, float] = {"xgboost": 3.5e-2, "skellam": 5e-3}
+_TOL: dict[str, float] = {
+    "xgboost": 3.5e-2,
+    # Stacked wraps XGBoost, so inherits the same cross-platform FP drift.
+    "stacked": 3.5e-2,
+    "skellam": 5e-3,
+}
 _DEFAULT_TOL = 1e-3
 
 
