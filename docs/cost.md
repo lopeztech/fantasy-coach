@@ -19,7 +19,7 @@ once it's manually enabled (see below).
 | Firestore | Free tier (1 GiB storage, 50K reads/day) | $0 |
 | Artifact Registry | One image tag per deploy, ~1 GiB total | < $0.10 |
 | Cloud Logging | Default retention; low request volume | $0 (free tier) |
-| Vertex AI (Gemini) | Not yet wired (tracked by #22) | $0 |
+| Vertex AI (Gemini) | Commentary previews; ~2K tokens in + 400 out per match | ~$0.05/month at current volume |
 | Egress | SPA bundle from Firebase Hosting; low traffic | $0 (free tier) |
 
 Refresh these numbers by querying the BigQuery billing export dataset
@@ -202,6 +202,46 @@ entry for this image is ~300–400 MB compressed; it's invalidated any time
 **Note:** `type=gha` is preferred over `type=registry` here because it carries
 no extra AR storage cost and the 10 GB free tier is ample for a single-image
 project. Switch to `type=registry` if the project ever moves off GitHub Actions.
+
+## Vertex AI Gemini (commentary previews)
+
+Gemini Flash on Vertex AI generates per-match preview text in
+`src/fantasy_coach/commentary/`. The cost model:
+
+| Metric | Value |
+|--------|-------|
+| Input cost | $0.00025 / 1K tokens |
+| Output cost | $0.0005 / 1K tokens |
+| Tokens per preview | ~2K in + ~400 out |
+| Cost per preview | ~$0.0007 |
+| Matches per year | ~8 × 2 runs × 27 rounds = ~432 (with caching) |
+| Worst-case annual cost | ~$0.30/year (0% cache hit rate) |
+| Expected annual cost at >90% hit rate | ~$0.03/year |
+
+**Cache hit rate target:** > 90%. The `ResponseCache` in
+`src/fantasy_coach/commentary/cache.py` keys on
+`CACHE_KEY_VERSION + model_version + combined_prompt`, so
+any prompt-template or feature-schema change busts the cache
+via a `CACHE_KEY_VERSION` bump. Each cache entry stores
+`feature_snapshot_hash` (SHA-8 of the MatchContext inputs)
+for auditing which input state generated a cached response.
+
+**Invalidation triggers:**
+1. Bump `CACHE_KEY_VERSION` in `cache.py` when the prompt template changes.
+2. Run `python -m fantasy_coach clear-commentary-cache --version-mismatch`
+   for eager eviction after a bad-template rollback.
+3. Run `python -m fantasy_coach clear-commentary-cache --before-days 7`
+   to evict stale past-match entries.
+
+**Monitoring:** At the end of every precompute run a one-line summary
+is emitted: `commentary summary: N requests, M cache hits (X% hit rate),
+Y tokens in, Z tokens out, est. cost $0.NN`. Set a Cloud Monitoring
+log-metric alert if hit rate drops below 70% in a single run.
+
+**Note:** Vertex AI bills per successful call only; retried-and-failed
+calls are not billed. The token budget circuit-breaker in `TokenBudget`
+(100K tokens/day, 512 tokens/request) prevents runaway spend if the
+cache layer is bypassed.
 
 ## Cloud Logging
 

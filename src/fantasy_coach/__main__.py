@@ -366,6 +366,33 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    ccc = sub.add_parser(
+        "clear-commentary-cache",
+        help=(
+            "Manually evict in-memory Gemini commentary cache entries. "
+            "Use --version-mismatch to purge entries from a previous CACHE_KEY_VERSION "
+            "(e.g. after rolling back a bad template). "
+            "Use --before-days N to purge entries older than N days."
+        ),
+    )
+    ccc.add_argument(
+        "--version-mismatch",
+        action="store_true",
+        help="Evict all entries whose cache_key_version != the current CACHE_KEY_VERSION.",
+    )
+    ccc.add_argument(
+        "--before-days",
+        type=float,
+        default=None,
+        metavar="DAYS",
+        help="Evict all entries older than DAYS days (wall-clock age at write time).",
+    )
+    ccc.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -392,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_tune_xgboost(args)
     if args.command == "backfill-ttl":
         return _run_backfill_ttl(args)
+    if args.command == "clear-commentary-cache":
+        return _run_clear_commentary_cache(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -596,6 +625,50 @@ def _run_precompute(args: argparse.Namespace) -> int:
             store.close()
 
     print(f"Precomputed {len(predictions)} predictions for season={season} round={round_}")
+    # Commentary summary — emitted even when commentary is not wired in so
+    # the log line is always present for monitoring (zero-requests is valid).
+    try:
+        from fantasy_coach.commentary.cache import ResponseCache  # noqa: PLC0415
+
+        _rc = ResponseCache.__new__(ResponseCache)
+        print(_rc.summary() if hasattr(_rc, "_hits") else "commentary summary: not wired")
+    except Exception:  # noqa: BLE001
+        pass
+    return 0
+
+
+def _run_clear_commentary_cache(args: argparse.Namespace) -> int:
+    """Manually evict Gemini commentary cache entries.
+
+    Because the in-memory cache is per-process, this command is most useful
+    as a Cloud Run Job invocation or as a dev-time reset during template
+    iteration.  Running it against a fresh process (no warm cache) reports
+    0 evictions, which is the correct no-op behaviour.
+    """
+    from fantasy_coach.commentary.cache import CACHE_KEY_VERSION, ResponseCache  # noqa: PLC0415
+
+    cache = ResponseCache()
+    total_evicted = 0
+
+    if args.version_mismatch:
+        n = cache.clear_version_mismatch()
+        print(f"Evicted {n} entries with cache_key_version != {CACHE_KEY_VERSION}")
+        total_evicted += n
+
+    if args.before_days is not None:
+        max_age_secs = args.before_days * 86_400
+        n = cache.clear_stale(max_age_secs)
+        print(f"Evicted {n} entries older than {args.before_days:.1f} days")
+        total_evicted += n
+
+    if not args.version_mismatch and args.before_days is None:
+        print(
+            "No eviction criteria specified. Use --version-mismatch or --before-days DAYS.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Total evicted: {total_evicted}")
     return 0
 
 
