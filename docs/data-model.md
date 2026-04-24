@@ -93,3 +93,44 @@ STORAGE_BACKEND=firestore # Cloud Run / production
 
 The factory `fantasy_coach.config.get_repository()` reads this variable and
 returns the appropriate `Repository` implementation.
+
+---
+
+## Firestore TTL Policies
+
+Firestore native TTL policies are configured in `lopeztech/platform-infra`
+→ `projects/fantasy-coach/firestore.tf`. Each eligible collection has a
+`ttl_timestamp` field (type: `Timestamp`) written by the application at doc
+creation time. Firestore auto-deletes expired docs asynchronously (no cost,
+best-effort, not guaranteed to be exact-to-the-second).
+
+| Collection | Retention | `ttl_timestamp` base | Writer |
+|------------|-----------|----------------------|--------|
+| `team_list_snapshots` | 80 days | `scraped_at` | `FirestoreTeamListRepository.record_snapshot()` |
+| `model_drift_reports` | 18 months (~548 days) | write time (`now()`) | `retrain.default_drift_writer()` |
+| `matches` | **Never expires** — permanent audit data | n/a | — |
+| `predictions` | **Never expires** — used by Accuracy page indefinitely | n/a | — |
+
+### Backfilling existing documents
+
+Documents written before #153 (the PR that added `ttl_timestamp`) have no TTL
+field and will not be auto-deleted by Firestore. Run the one-shot backfill
+command to retrofit them:
+
+```bash
+STORAGE_BACKEND=firestore python -m fantasy_coach backfill-ttl [--dry-run] [--collection team_list_snapshots|model_drift_reports|all]
+```
+
+This command:
+- Iterates all documents in the eligible collections.
+- Skips documents that already carry a `ttl_timestamp` (idempotent).
+- Computes `ttl_timestamp` from the doc's `scraped_at` / `created_at` field,
+  falling back to `now()` when the base field is absent.
+- `--dry-run` reports counts without writing.
+
+### TTL index requirements
+
+Firestore TTL requires a single-field index on the TTL field. This is
+created automatically when you enable TTL in the Firestore console or via
+Terraform. Ensure no composite index conflicts with the TTL field in
+existing indexes.

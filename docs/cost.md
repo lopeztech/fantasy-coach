@@ -242,3 +242,23 @@ At current volume the exclusions reduce ingestion by an estimated
 40–60% (health check + debug noise dominate the raw stream). At 2×
 traffic the project would still be within the 50 GiB free tier with
 exclusions in place.
+
+## Firestore retention (TTL policies)
+
+Firestore's free tier covers 1 GiB storage/day. TTL policies auto-delete
+ephemeral documents at no cost (TTL deletion is not billed as write operations).
+
+| Collection | Retention | Rationale |
+|------------|-----------|-----------|
+| `team_list_snapshots` | 80 days (~10 rounds) | Only the most-recent snapshot per team per round is used at prediction time |
+| `model_drift_reports` | 18 months | Long enough for season-over-season comparisons |
+| `matches` | Permanent | Audit data + feature-engineering history |
+| `predictions` | Permanent | Used by the Accuracy page indefinitely |
+
+TTL is implemented via a `ttl_timestamp` field on each eligible document.
+The Firestore TTL policy (configured in platform-infra) reads this field and
+schedules deletion. Because TTL is asynchronous and best-effort, downstream
+code must never depend on a document being gone by a specific time.
+
+To retrofit existing documents: `python -m fantasy_coach backfill-ttl --dry-run`
+(preview) then `python -m fantasy_coach backfill-ttl` (apply).

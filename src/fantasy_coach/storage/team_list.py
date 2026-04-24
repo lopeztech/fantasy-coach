@@ -10,13 +10,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from fantasy_coach.features import PlayerRow
 from fantasy_coach.team_lists import TeamListSnapshot
 
 _COLLECTION = "team_list_snapshots"
+
+# Retain team-list snapshots for 10 rounds ≈ 80 days.
+_TEAM_LIST_TTL_DAYS = 80
 
 
 class TeamListRepository(Protocol):
@@ -124,6 +127,7 @@ class FirestoreTeamListRepository:
             self._db = firestore.Client(project=project, database=database)
 
     def record_snapshot(self, snapshot: TeamListSnapshot) -> None:
+        ttl_timestamp = snapshot.scraped_at + timedelta(days=_TEAM_LIST_TTL_DAYS)
         self._col.add(
             {
                 "season": snapshot.season,
@@ -132,6 +136,7 @@ class FirestoreTeamListRepository:
                 "team_id": snapshot.team_id,
                 "scraped_at": snapshot.scraped_at.isoformat(),
                 "players": [_player_to_dict(p) for p in snapshot.players],
+                "ttl_timestamp": ttl_timestamp,
             }
         )
 

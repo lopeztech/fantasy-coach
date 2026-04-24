@@ -340,6 +340,32 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    bttl = sub.add_parser(
+        "backfill-ttl",
+        help=(
+            "One-shot: set ttl_timestamp on existing Firestore documents that "
+            "were written before TTL fields were added (#153). Idempotent — "
+            "docs already carrying ttl_timestamp are skipped. "
+            "Requires STORAGE_BACKEND=firestore."
+        ),
+    )
+    bttl.add_argument(
+        "--collection",
+        choices=["team_list_snapshots", "model_drift_reports", "all"],
+        default="all",
+        help="Which collection(s) to backfill. Default: all eligible collections.",
+    )
+    bttl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Count affected documents but do not write.",
+    )
+    bttl.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -364,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_retrain(args)
     if args.command == "tune-xgboost":
         return _run_tune_xgboost(args)
+    if args.command == "backfill-ttl":
+        return _run_backfill_ttl(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -826,6 +854,71 @@ def _run_tune_xgboost(args: argparse.Namespace) -> int:
             print(f"  {key:18s} = {value:.6g}")
         else:
             print(f"  {key:18s} = {value}")
+    return 0
+
+
+def _run_backfill_ttl(args: argparse.Namespace) -> int:
+    """Backfill ttl_timestamp on existing Firestore docs that predate #153."""
+    import os  # noqa: PLC0415
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        print(
+            "error: backfill-ttl requires STORAGE_BACKEND=firestore",
+            file=sys.stderr,
+        )
+        return 2
+
+    from google.cloud import firestore  # noqa: PLC0415
+
+    db = firestore.Client()
+    dry = args.dry_run
+    collections = (
+        ["team_list_snapshots", "model_drift_reports"]
+        if args.collection == "all"
+        else [args.collection]
+    )
+
+    # TTL config per collection: (field_with_base_date, delta_days).
+    ttl_config: dict[str, tuple[str, int]] = {
+        "team_list_snapshots": ("scraped_at", 80),
+        "model_drift_reports": ("", 548),  # "" → use now() as base
+    }
+
+    total_updated = 0
+    for col_name in collections:
+        field, delta_days = ttl_config[col_name]
+        col = db.collection(col_name)
+        updated = 0
+        skipped = 0
+        for doc in col.stream():
+            data = doc.to_dict()
+            if "ttl_timestamp" in data:
+                skipped += 1
+                continue
+            if field and field in data:
+                try:
+                    base = datetime.fromisoformat(data[field])
+                    if base.tzinfo is None:
+                        base = base.replace(tzinfo=UTC)
+                except (ValueError, TypeError):
+                    base = datetime.now(UTC)
+            else:
+                base = datetime.now(UTC)
+            ttl = base + timedelta(days=delta_days)
+            if not dry:
+                doc.reference.update({"ttl_timestamp": ttl})
+            updated += 1
+        total_updated += updated
+        print(
+            f"{col_name}: {'would update' if dry else 'updated'} {updated} docs, "
+            f"skipped {skipped} (already had ttl_timestamp)"
+        )
+
+    print(
+        f"{'Dry run — ' if dry else ''}Total: "
+        f"{'would update' if dry else 'updated'} {total_updated} documents."
+    )
     return 0
 
 
