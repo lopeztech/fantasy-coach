@@ -83,29 +83,21 @@ EXPECTED = {
     "home": {"n": 480, "accuracy": 0.5646, "log_loss": 0.6852, "brier": 0.2460},
     "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
     "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
-    # #168 adds h2h_last5_home_win_rate + h2h_last5_avg_margin + missing_h2h.
-    # Logistic regresses slightly — sparse H2H history on the 2024–2026 window
-    # adds noise for logistic regression (less robust to sparse features than
-    # tree-based models). Expected to improve once the 2023 backfill (#158) lands.
-    # XGBoost marginally regresses on this narrow window for the same reason;
-    # feature signal is expected to compound with deeper H2H history.
-    #
-    # #170 adds home_days_rest + away_days_rest + short_turnaround_diff (granular
-    # scheduling features). Logistic accuracy improves +0.83 pp (0.5604 → 0.5687)
-    # on the 2024–2026 baseline; XGBoost and Skellam gain marginally. Logistic
-    # log_loss regresses slightly — extra features add estimation variance on this
-    # narrow training window; expected to improve once the 2023 backfill (#158)
-    # provides more scheduling history.
-    "logistic": {"n": 480, "accuracy": 0.5687, "log_loss": 0.8505, "brier": 0.2780},
-    "xgboost": {"n": 480, "accuracy": 0.5792, "log_loss": 0.7104, "brier": 0.2532},
-    "skellam": {"n": 480, "accuracy": 0.5750, "log_loss": 0.7120, "brier": 0.2538},
-    # #171 stacks XGBoost + Skellam + EloMOV behind a logistic-regression
-    # meta-learner fit on out-of-fold base probabilities. Beats XGBoost on
-    # all three metrics (+1.25 pp accuracy, −3.8 % log_loss, −3.7 % brier)
-    # on this baseline. Still trails EloMOV on accuracy; meta-learner
-    # regularisation on the 20 % val slice dilutes EloMOV's lead.
-    # #170: stacked gains +0.42 pp accuracy (0.5854 → 0.5896).
-    "stacked": {"n": 480, "accuracy": 0.5896, "log_loss": 0.6767, "brier": 0.2407},
+    # #160 adds rolling_kick_metres_diff + rolling_kick_return_metres_diff +
+    # rolling_line_breaks_diff + rolling_all_runs_diff + missing_team_stats
+    # (team-stat proxies for player-level contribution signals, rolling-5).
+    # Logistic regresses slightly (same sparse-feature noise pattern as #108 /
+    # #168) — expected to improve once the 2023 backfill (#158) provides more
+    # rolling-stat history. XGBoost gains +3.54 pp accuracy, −0.017 log_loss,
+    # −0.008 brier — tree-based models extract real signal from the 2024–2026
+    # team-stat data available in the baseline DB.
+    # Skellam accuracy regresses -0.83 pp; log_loss/brier essentially unchanged.
+    # Stacked regresses modestly because it wraps logistic + skellam.
+    "logistic": {"n": 480, "accuracy": 0.5667, "log_loss": 0.8754, "brier": 0.2809},
+    "xgboost": {"n": 480, "accuracy": 0.6146, "log_loss": 0.6936, "brier": 0.2454},
+    "skellam": {"n": 480, "accuracy": 0.5667, "log_loss": 0.7119, "brier": 0.2538},
+    # #160: stacked regresses modestly alongside logistic/skellam (−0.002 acc).
+    "stacked": {"n": 480, "accuracy": 0.5875, "log_loss": 0.6845, "brier": 0.2439},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
