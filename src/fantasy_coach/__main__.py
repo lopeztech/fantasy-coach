@@ -505,6 +505,18 @@ def _run_precompute(args: argparse.Namespace) -> int:
             force=not args.no_force,
             team_list_repo=team_list_repo,
         )
+        # Refresh any previously-scraped matches whose outcomes should be
+        # known by now but weren't captured — the precompute flow only
+        # processes the *upcoming* round, so without this step rounds that
+        # kicked off and finished between Thu and the next Tue would stay
+        # stuck at ``Upcoming`` indefinitely, hiding them from /accuracy
+        # and dropping them from the retrain loop's holdout. See #107
+        # post-mortem on the round-8 Tigers/Raiders pick.
+        from fantasy_coach.match_sync import refresh_stale_matches  # noqa: PLC0415
+
+        refreshed = refresh_stale_matches(repo, season)
+        if refreshed:
+            print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
     finally:
         if hasattr(repo, "close"):
             repo.close()
@@ -671,6 +683,32 @@ def _run_retrain(args: argparse.Namespace) -> int:
 
     repo = get_repository()
     try:
+        # Pre-flight — refresh any stale match states so Sunday's matches
+        # reach the holdout with their real outcomes. Without this, the
+        # precompute Job's "current round only" scrape means matches that
+        # kicked off + finished since the last Tue scrape are still
+        # ``Upcoming`` in Firestore, and ``split_training_holdout`` drops
+        # them silently. Runs per season that the retrain actually covers.
+        from datetime import UTC as _UTC  # noqa: PLC0415
+        from datetime import datetime as _dt  # noqa: PLC0415
+
+        from fantasy_coach.match_sync import refresh_stale_matches  # noqa: PLC0415
+
+        seasons = args.season or (
+            _dt.now(_UTC).year - 2,
+            _dt.now(_UTC).year - 1,
+            _dt.now(_UTC).year,
+        )
+        for s in seasons:
+            try:
+                refreshed = refresh_stale_matches(repo, s)
+                if refreshed:
+                    print(f"Pre-flight: refreshed {refreshed} stale matches in season {s}")
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "pre-flight refresh_stale_matches failed for season %d — continuing", s
+                )
+
         result = run_retrain(
             repo,
             incumbent_path=args.incumbent_path,
