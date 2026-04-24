@@ -208,6 +208,65 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    rt = sub.add_parser(
+        "retrain",
+        help=(
+            "Weekly retrain + drift-report pipeline (#107). Trains a fresh "
+            "XGBoost candidate, shadow-evaluates incumbent vs candidate on "
+            "the last N rounds, promotes (uploads to GCS) or blocks + opens "
+            "a GitHub issue, and always writes a drift report to Firestore."
+        ),
+    )
+    rt.add_argument(
+        "--incumbent-path",
+        type=Path,
+        default=Path("artifacts/incumbent.joblib"),
+        help=(
+            "Local path to the current production artefact. If missing and "
+            "FANTASY_COACH_MODEL_GCS_URI is set, the file is downloaded on first use."
+        ),
+    )
+    rt.add_argument(
+        "--candidate-path",
+        type=Path,
+        default=Path("artifacts/candidate.joblib"),
+        help="Local path to write the freshly-trained candidate artefact.",
+    )
+    rt.add_argument(
+        "--gcs-uri",
+        type=str,
+        default=None,
+        help=(
+            "gs://bucket/blob path to upload the candidate to on promote. "
+            "Defaults to FANTASY_COACH_MODEL_GCS_URI if set, else no upload."
+        ),
+    )
+    rt.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        default=None,
+        help="Season(s) to include. Repeatable. Defaults to last 3 calendar years.",
+    )
+    rt.add_argument("--holdout-rounds", type=int, default=4)
+    rt.add_argument("--max-regression-pct", type=float, default=2.0)
+    rt.add_argument(
+        "--github-repo",
+        type=str,
+        default="lopeztech/fantasy-coach",
+        help="owner/name for the model-drift issue when the gate blocks.",
+    )
+    rt.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't upload to GCS, don't write Firestore, don't open issues.",
+    )
+    rt.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     mcl = sub.add_parser(
         "merge-closing-lines",
         help=(
@@ -259,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_copy_matches_to_firestore(args)
     if args.command == "merge-closing-lines":
         return _run_merge_closing_lines(args)
+    if args.command == "retrain":
+        return _run_retrain(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -575,6 +636,64 @@ def _run_merge_closing_lines(args: argparse.Namespace) -> int:
     finally:
         repo.close()
     return 0
+
+
+def _run_retrain(args: argparse.Namespace) -> int:
+    """Drive the weekly retrain + drift-report pipeline (#107).
+
+    Production wiring: the Cloud Run Job invokes this once a week. On a
+    cold container the incumbent artefact is downloaded from
+    ``FANTASY_COACH_MODEL_GCS_URI`` before the pipeline starts, mirroring
+    the API's cold-start pattern in ``predictions._ensure_model``.
+    """
+    import os  # noqa: PLC0415
+
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.github_issue import open_github_model_drift_issue  # noqa: PLC0415
+    from fantasy_coach.predictions import _ensure_model  # noqa: PLC0415
+    from fantasy_coach.retrain import (  # noqa: PLC0415
+        default_drift_writer,
+        default_gcs_uploader,
+        run_retrain,
+    )
+
+    _ensure_model(args.incumbent_path)
+
+    gcs_uri = args.gcs_uri or os.getenv("FANTASY_COACH_MODEL_GCS_URI")
+
+    drift_writer = None if args.dry_run else default_drift_writer
+    gcs_uploader = None if args.dry_run else default_gcs_uploader
+
+    def _issue_opener(decision, report):
+        if args.dry_run:
+            return None
+        return open_github_model_drift_issue(decision, report, repo=args.github_repo)
+
+    repo = get_repository()
+    try:
+        result = run_retrain(
+            repo,
+            incumbent_path=args.incumbent_path,
+            candidate_out_path=args.candidate_path,
+            gcs_uri=gcs_uri,
+            seasons=args.season,
+            holdout_rounds=args.holdout_rounds,
+            max_regression_pct=args.max_regression_pct,
+            drift_writer=drift_writer,
+            gcs_uploader=gcs_uploader,
+            issue_opener=_issue_opener,
+        )
+    finally:
+        if hasattr(repo, "close"):
+            repo.close()
+
+    print(
+        f"promoted={result.promoted} "
+        f"gcs_uploaded={result.gcs_uploaded} "
+        f"issue={result.issue_number} "
+        f"reason={result.decision.reason!r}"
+    )
+    return 0 if result.promoted else 1
 
 
 if __name__ == "__main__":
