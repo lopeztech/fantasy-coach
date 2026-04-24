@@ -100,12 +100,31 @@ class _FakeCollection:
         return _FakeQuery(self._store, self._name, [(field, op, value)])
 
 
+class _FakeBatch:
+    """Minimal WriteBatch shim — accumulates set() ops and flushes on commit()."""
+
+    def __init__(self, store: dict) -> None:
+        self._store = store
+        self._ops: list[tuple[tuple[str, str], dict]] = []
+
+    def set(self, doc_ref: _FakeDocument, data: dict) -> None:
+        self._ops.append((doc_ref._key, dict(data)))
+
+    def commit(self) -> None:
+        for key, data in self._ops:
+            self._store[key] = data
+        self._ops.clear()
+
+
 class _FakeFirestoreClient:
     def __init__(self) -> None:
         self._store: dict = {}
 
     def collection(self, name: str) -> _FakeCollection:
         return _FakeCollection(self._store, name)
+
+    def batch(self) -> _FakeBatch:
+        return _FakeBatch(self._store)
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +210,36 @@ def test_list_matches_by_season_and_round(repo: FirestoreRepository) -> None:
     repo.upsert_match(a)
     assert repo.list_matches(2024, round=1) == [a]
     assert repo.list_matches(2024, round=2) == []
+
+
+# ---------------------------------------------------------------------------
+# Batched writes (#181)
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_matches_batch_writes_all_docs(repo: FirestoreRepository) -> None:
+    a = _match(FULLTIME_FIXTURE)
+    b = _match(UPCOMING_FIXTURE)
+    repo.upsert_matches_batch([a, b])
+    assert repo.get_match(a.match_id) == a
+    assert repo.get_match(b.match_id) == b
+
+
+def test_upsert_matches_batch_empty_is_noop(repo: FirestoreRepository) -> None:
+    repo.upsert_matches_batch([])  # must not raise
+
+
+def test_upsert_matches_batch_is_idempotent(repo: FirestoreRepository) -> None:
+    a = _match(FULLTIME_FIXTURE)
+    repo.upsert_matches_batch([a])
+    repo.upsert_matches_batch([a])
+    assert repo.get_match(a.match_id) == a
+
+
+def test_upsert_matches_batch_chunks_large_input(repo: FirestoreRepository) -> None:
+    # Build 600 pseudo-unique matches to force two batch commits (>500 per chunk).
+    base = _match(FULLTIME_FIXTURE)
+    rows = [base.model_copy(update={"match_id": i}) for i in range(600)]
+    repo.upsert_matches_batch(rows)
+    for row in rows:
+        assert repo.get_match(row.match_id) is not None

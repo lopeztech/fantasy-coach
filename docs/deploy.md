@@ -146,6 +146,42 @@ impersonate the runtime SA at deploy time).
 
 Both SA definitions live in platform-infra and are the source of truth.
 
+## Cold-start behaviour
+
+The service runs with `--min-instances 0` (scale to zero). Cold-start latency
+is ~1–2 s target (reduced from the original ~4–6 s via lazy ML imports).
+
+### Lazy-import pattern
+
+`src/fantasy_coach/predictions.py` imports `numpy`, `scikit-learn`,
+`FeatureBuilder`, and `load_model` **inside** the functions that use them
+(`compute_predictions` and its helpers). These functions are only called by
+the precompute Cloud Run Job, never by the API endpoint (which is a Firestore
+cache read). As a result, importing `predictions.py` during API startup no
+longer pulls in the entire ML stack.
+
+`app.py` module scope only imports stdlib + `fastapi` + `pydantic` + Firebase
+auth middleware + pure-Python internal modules.
+
+**Rule for new contributors**: Any ML import (`numpy`, `sklearn`, `xgboost`,
+`joblib`) added to `predictions.py` must be inside the function that uses it,
+not at module scope. The same rule applies to any new module imported by
+`app.py` at module scope.
+
+### Training extras
+
+`pyproject.toml` splits HPO and data-loading deps into an optional group:
+
+```toml
+[project.optional-dependencies]
+training = ["optuna>=3.5", "openpyxl>=3.1.5"]
+```
+
+The runtime image (`uv sync --no-dev`) skips these. A future training image
+(for the precompute Job, once it is separated) would install `.[training]`.
+Today both the API and Job use the same image and the training extras are
+transitionally excluded from both (the Job doesn't use HPO at prediction time).
+
 ## Rolling back
 
 Cloud Run keeps every revision. To roll back:
@@ -155,6 +191,16 @@ gcloud run services update-traffic $SERVICE \
     --project $PROJECT_ID --region $REGION \
     --to-revisions $SERVICE-00042-abc=100  # the revision name from the console
 ```
+
+### Image availability window
+
+The Artifact Registry cleanup policy (Terraform-managed in
+`lopeztech/platform-infra` → `projects/fantasy-coach/artifact_registry.tf`)
+keeps the **last 10 tagged images** and deletes untagged images older than 7
+days. Practically, at a ~2/week deploy cadence this provides ~5 weeks of
+rollback targets via image tag. For older revisions, use Cloud Run's revision
+history instead — Cloud Run pins the image for as long as a revision references
+it, so the cleanup policy cannot delete images still serving traffic.
 
 ## Logs
 

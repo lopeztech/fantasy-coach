@@ -709,8 +709,7 @@ def _run_copy_matches_to_firestore(args: argparse.Namespace) -> int:
             matches = src.list_matches(season)
             print(f"Season {season}: {len(matches)} matches{' (dry-run)' if args.dry_run else ''}")
             if not args.dry_run and dst is not None:
-                for row in matches:
-                    dst.upsert_match(row)
+                dst.upsert_matches_batch(matches)
             grand_total += len(matches)
 
         verb = "Would copy" if args.dry_run else "Copied"

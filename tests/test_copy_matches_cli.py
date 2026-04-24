@@ -59,10 +59,14 @@ def test_copy_all_seasons_writes_every_match(seeded_db: Path) -> None:
 
     assert code == 0
     factory.assert_called_once()  # single Firestore client
-    assert fake_repo.upsert_match.call_count == 3
-    # All three matches should reach Firestore in season order.
-    match_ids = [c.args[0].match_id for c in fake_repo.upsert_match.call_args_list]
-    assert sorted(match_ids) == [1000, 1001, 1002]
+    # The CLI now uses upsert_matches_batch (one call per season, not per match).
+    assert fake_repo.upsert_matches_batch.call_count == 2  # two seasons
+    all_rows = [
+        row
+        for call in fake_repo.upsert_matches_batch.call_args_list
+        for row in call.args[0]
+    ]
+    assert sorted(r.match_id for r in all_rows) == [1000, 1001, 1002]
 
 
 def test_copy_filtered_by_season(seeded_db: Path) -> None:
@@ -84,8 +88,10 @@ def test_copy_filtered_by_season(seeded_db: Path) -> None:
         )
 
     assert code == 0
-    # Only the two 2024 matches should be copied.
-    assert fake_repo.upsert_match.call_count == 2
+    # Only the one batch call for 2024 (two matches inside it).
+    assert fake_repo.upsert_matches_batch.call_count == 1
+    rows = fake_repo.upsert_matches_batch.call_args.args[0]
+    assert len(rows) == 2
 
 
 def test_copy_dry_run_does_not_instantiate_firestore(seeded_db: Path) -> None:

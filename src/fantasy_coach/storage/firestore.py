@@ -46,6 +46,23 @@ class FirestoreRepository:
     def upsert_match(self, row: MatchRow) -> None:
         self._col.document(str(row.match_id)).set(_to_doc(row))
 
+    def upsert_matches_batch(self, rows: list[MatchRow]) -> None:
+        """Write *rows* to Firestore using WriteBatch (max 500 ops per commit).
+
+        Firestore's WriteBatch collapses N writes into one round-trip per chunk,
+        reducing both latency and billable write ops for bulk operations such as
+        the ``copy-matches-to-firestore`` CLI. Each batch is atomic — either all
+        docs in the chunk write or none do, which eliminates partial-write state
+        on transient failures (caller must retry the whole chunk).
+        """
+        _BATCH_SIZE = 500  # Firestore hard limit
+        for i in range(0, len(rows), _BATCH_SIZE):
+            chunk = rows[i : i + _BATCH_SIZE]
+            batch = self._db.batch()
+            for row in chunk:
+                batch.set(self._col.document(str(row.match_id)), _to_doc(row))
+            batch.commit()
+
     def get_match(self, match_id: int) -> MatchRow | None:
         snap = self._col.document(str(match_id)).get()
         return _from_doc(snap.to_dict()) if snap.exists else None
