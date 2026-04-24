@@ -1118,3 +1118,143 @@ a:focus-visible {
 .match-card .consensus-badge {
   margin-top: 0.25rem;
 }
+
+/* ── Dashboard (#148) ──────────────────────────────────────────────────── */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+@media (min-width: 600px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.dashboard-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dashboard-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.dashboard-card-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.dashboard-team-picker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dashboard-team-picker-form label {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.dashboard-team-picker-form input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.dashboard-team-picker-form button {
+  align-self: flex-start;
+  padding: 0.35rem 0.9rem;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.dashboard-team-picker-form button:hover {
+  background: var(--color-primary-hover);
+}
+
+.dashboard-change-team {
+  align-self: flex-start;
+  padding: 0.25rem 0.7rem;
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  margin-top: auto;
+}
+
+.dashboard-change-team:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.dashboard-round-complete {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.dashboard-view-round-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.dashboard-accuracy-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ── Landing page (signed-out, #148) ──────────────────────────────────── */
+
+.landing-features {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.landing-feature {
+  padding-left: 1.25rem;
+  position: relative;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.landing-feature::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  color: var(--color-text-muted);
+}

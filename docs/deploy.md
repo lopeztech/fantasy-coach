@@ -182,6 +182,32 @@ required by the API, the precompute Job, or the CLI's `merge-closing-lines`
 command. The runtime image (`uv sync --no-dev`) skips it; local HPO runs
 use `uv sync --extra training`.
 
+## Data operations
+
+### Backfilling a season
+
+`backfill_season()` is fully parameterised — any season from the NRL JSON
+API works identically to 2024 or 2025. To backfill historical data (e.g. 2023):
+
+```bash
+python -m fantasy_coach backfill --season 2023 --db data/nrl.db
+```
+
+The command is idempotent: a `*.backfill.json` sidecar records per-round state so
+interrupted runs resume cleanly. To backfill multiple seasons in sequence:
+
+```bash
+for year in 2021 2022 2023; do
+    python -m fantasy_coach backfill --season $year --db data/nrl.db
+done
+```
+
+After backfilling, copy to Firestore for production use:
+
+```bash
+python -m fantasy_coach copy-matches-to-firestore --season 2023
+```
+
 ## Rolling back
 
 Cloud Run keeps every revision. To roll back:

@@ -1,6 +1,7 @@
 import os
+import time
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -75,6 +76,17 @@ class TeamFormHistory(BaseModel):
     matches: list[TeamFormEntry]
 
 
+class DashboardOut(BaseModel):
+    season: int
+    currentRound: int | None
+    favouriteTeamId: int | None
+    nextFixture: dict | None  # {matchId, round, opponent, opponentId, isHome, kickoff, predWinner, predProb, season}
+    untippedMatchIds: list[int]
+    seasonAccuracy: float | None
+    totalTips: int
+    correctTips: int
+
+
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
     "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
@@ -115,6 +127,18 @@ app.add_middleware(
 # Module-level singletons — created lazily on first use.
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
+
+# Dashboard cache: (uid, season) → (monotonic_timestamp, DashboardOut)
+_DASHBOARD_CACHE_TTL = 60
+_dashboard_cache: dict[tuple[str, int], tuple[float, DashboardOut]] = {}
+
+
+def _require_auth(request: Request) -> str:
+    """Return the authenticated UID, or the dev sentinel when auth is disabled."""
+    uid: str | None = getattr(request.state, "uid", None)
+    if uid is None:
+        return "__dev__"
+    return uid
 
 
 def _get_store() -> PredictionStore | FirestorePredictionStore:
@@ -425,3 +449,113 @@ def get_team_form(
         season=season,
         matches=entries[-last:],
     )
+
+
+@app.get(
+    "/me/dashboard",
+    response_model=DashboardOut,
+    summary="Personalised dashboard for the signed-in user",
+    description=(
+        "Returns the current round, next fixture for the user's favourite team, "
+        "and season accuracy for the season. Results are cached in-process for "
+        f"{_DASHBOARD_CACHE_TTL}s per (uid, season) pair."
+    ),
+)
+def get_dashboard(
+    request: Request,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+    favourite_team_id: int | None = Query(
+        default=None, description="Favourite team ID stored client-side"
+    ),
+) -> DashboardOut:
+    uid = _require_auth(request)
+    cache_key = (uid, season)
+    cached = _dashboard_cache.get(cache_key)
+    if cached is not None:
+        ts, dashboard = cached
+        if time.monotonic() - ts < _DASHBOARD_CACHE_TTL:
+            # Refresh favouriteTeamId from query param even on cache hit.
+            if favourite_team_id != dashboard.favouriteTeamId:
+                dashboard = dashboard.model_copy(update={"favouriteTeamId": favourite_team_id})
+            return dashboard
+
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    # Current round: lowest round with at least one non-FullTime match.
+    # Falls back to the highest completed round if the season is over.
+    non_fulltime_rounds: set[int] = set()
+    completed_rounds: set[int] = set()
+    for m in all_matches:
+        if m.match_state != "FullTime":
+            non_fulltime_rounds.add(m.round)
+        else:
+            completed_rounds.add(m.round)
+
+    if non_fulltime_rounds:
+        current_round: int | None = min(non_fulltime_rounds)
+    elif completed_rounds:
+        current_round = max(completed_rounds)
+    else:
+        current_round = None
+
+    # Untipped match IDs: matches in the current round that are not FullTime.
+    untipped_match_ids: list[int] = []
+    if current_round is not None:
+        for m in all_matches:
+            if m.round == current_round and m.match_state != "FullTime":
+                untipped_match_ids.append(m.match_id)
+
+    fav_team_id = favourite_team_id
+
+    # Next fixture for the favourite team.
+    next_fixture: dict | None = None
+    if fav_team_id is not None:
+        sorted_matches = sorted(all_matches, key=lambda m: (m.start_time, m.match_id))
+        for m in sorted_matches:
+            is_home = m.home.team_id == fav_team_id
+            is_away = m.away.team_id == fav_team_id
+            if not (is_home or is_away):
+                continue
+            if m.match_state != "FullTime":
+                opp_id = m.away.team_id if is_home else m.home.team_id
+                opp_name = m.away.name if is_home else m.home.name
+                pred_winner = None
+                pred_prob = None
+                try:
+                    preds = _get_store().get(season, m.round)
+                    for pred in preds:
+                        if pred.matchId == m.match_id:
+                            pred_winner = pred.predictedWinner
+                            pred_prob = pred.homeWinProbability
+                            break
+                except Exception:
+                    pass
+                next_fixture = {
+                    "matchId": m.match_id,
+                    "round": m.round,
+                    "opponent": opp_name,
+                    "opponentId": opp_id,
+                    "isHome": is_home,
+                    "kickoff": m.start_time.isoformat(),
+                    "predWinner": pred_winner,
+                    "predProb": pred_prob,
+                    "season": season,
+                }
+                break
+
+    dashboard = DashboardOut(
+        season=season,
+        currentRound=current_round,
+        favouriteTeamId=fav_team_id,
+        nextFixture=next_fixture,
+        untippedMatchIds=untipped_match_ids,
+        seasonAccuracy=None,  # tip store not implemented yet
+        totalTips=0,
+        correctTips=0,
+    )
+
+    _dashboard_cache[cache_key] = (time.monotonic(), dashboard)
+    return dashboard
