@@ -23,12 +23,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from pydantic import BaseModel
 
-from fantasy_coach.feature_engineering import FEATURE_NAMES, FeatureBuilder
 from fantasy_coach.features import MatchRow, extract_match_features
-from fantasy_coach.models.loader import load_model
 from fantasy_coach.scraper import fetch_match_from_url, fetch_round
 
 logger = logging.getLogger(__name__)
@@ -354,6 +351,8 @@ def _model_version(path: Path) -> str:
 
 
 def _feature_hash() -> str:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES  # noqa: PLC0415
+
     return hashlib.sha256(",".join(sorted(FEATURE_NAMES)).encode()).hexdigest()[:12]
 
 
@@ -418,7 +417,7 @@ _SENTINEL_PREDICATES: dict[str, Callable[[float], bool]] = {
 
 def _compute_contributions(
     loaded: Any,
-    x: np.ndarray,
+    x: Any,
     *,
     top_k: int = 5,
     builder: Any = None,
@@ -450,6 +449,8 @@ def _compute_contributions(
     feature_names = getattr(loaded, "feature_names", None)
     if not feature_names:
         return None
+
+    import numpy as np  # noqa: PLC0415
 
     raw = np.asarray(x, dtype=float).reshape(-1)
     if len(raw) != len(feature_names):
@@ -485,7 +486,7 @@ def _compute_contributions(
     return picked
 
 
-def _logistic_raw_contribs(loaded: Any, raw: np.ndarray) -> np.ndarray | None:
+def _logistic_raw_contribs(loaded: Any, raw: Any) -> Any | None:
     """Compute per-feature log-odds contributions for a logistic pipeline.
 
     Returns ``None`` when ``loaded`` isn't a logistic pipeline — caller
@@ -500,6 +501,8 @@ def _logistic_raw_contribs(loaded: Any, raw: np.ndarray) -> np.ndarray | None:
     except (KeyError, AttributeError):
         return None
 
+    import numpy as np  # noqa: PLC0415
+
     mean = np.asarray(getattr(scaler, "mean_", None))
     scale = np.asarray(getattr(scaler, "scale_", None))
     coef = np.asarray(getattr(lr, "coef_", None)).reshape(-1)
@@ -512,7 +515,7 @@ def _logistic_raw_contribs(loaded: Any, raw: np.ndarray) -> np.ndarray | None:
     return coef * (raw - mean) / safe_scale
 
 
-def _xgboost_raw_contribs(loaded: Any, x: np.ndarray) -> np.ndarray | None:
+def _xgboost_raw_contribs(loaded: Any, x: Any) -> Any | None:
     """Compute per-feature margin contributions for an XGBoost estimator.
 
     Uses the booster's ``pred_contribs=True`` mode, which returns per-
@@ -539,6 +542,8 @@ def _xgboost_raw_contribs(loaded: Any, x: np.ndarray) -> np.ndarray | None:
         return None
 
     feature_names = getattr(loaded, "feature_names", None)
+    import numpy as np  # noqa: PLC0415
+
     try:
         dmatrix = xgb.DMatrix(
             np.asarray(x, dtype=float),
@@ -568,7 +573,7 @@ def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, An
     return None
 
 
-def _bookmaker_pick_summary(x: np.ndarray, feature_names: tuple[str, ...]) -> PickSummary | None:
+def _bookmaker_pick_summary(x: Any, feature_names: tuple[str, ...]) -> PickSummary | None:
     """Derive a bookmaker-implied pick from the odds_home_win_prob feature.
 
     Returns None when odds data is absent (``missing_odds`` = 1.0) or when
@@ -579,6 +584,8 @@ def _bookmaker_pick_summary(x: np.ndarray, feature_names: tuple[str, ...]) -> Pi
         missing_idx = feature_names.index("missing_odds")
     except ValueError:
         return None
+    import numpy as np  # noqa: PLC0415
+
     raw = np.asarray(x, dtype=float).reshape(-1)
     if len(raw) <= max(odds_idx, missing_idx):
         return None
@@ -617,6 +624,8 @@ def _try_load_secondary_model(path: Path, gcs_uri_env: str) -> Any | None:
             logger.info("Downloading secondary model from %s to %s", gcs_uri, path)
             client = gcs.Client()
             client.bucket(bucket_name).blob(blob_name).download_to_filename(str(path))
+        from fantasy_coach.models.loader import load_model  # noqa: PLC0415
+
         return load_model(path)
     except Exception:
         logger.debug(
@@ -625,7 +634,9 @@ def _try_load_secondary_model(path: Path, gcs_uri_env: str) -> Any | None:
         return None
 
 
-def _build_inference_state(history: list[MatchRow]) -> FeatureBuilder:
+def _build_inference_state(history: list[MatchRow]) -> Any:
+    from fantasy_coach.feature_engineering import FeatureBuilder  # noqa: PLC0415
+
     builder = FeatureBuilder()
     for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
         if match.home.score is None or match.away.score is None:
@@ -681,6 +692,8 @@ def compute_predictions(
 
     # Resolve and load the primary model — fetching from GCS on first miss if
     # FANTASY_COACH_MODEL_GCS_URI is set (production path).
+    from fantasy_coach.models.loader import load_model  # noqa: PLC0415
+
     path = model_path or Path(os.getenv(MODEL_PATH_ENV, DEFAULT_MODEL_PATH))
     _ensure_model(path)
 
@@ -736,6 +749,10 @@ def compute_predictions(
                 history.append(m)
 
     builder = _build_inference_state(history)
+
+    import numpy as np  # noqa: PLC0415
+
+    from fantasy_coach.feature_engineering import FEATURE_NAMES  # noqa: PLC0415
 
     _fn = getattr(loaded, "feature_names", None)
     feature_names: tuple[str, ...] = _fn if isinstance(_fn, tuple) else FEATURE_NAMES

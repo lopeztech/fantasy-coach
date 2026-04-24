@@ -232,7 +232,7 @@ def test_compute_cache_miss_scrapes_and_stores(
     model_path = tmp_path / "model.joblib"
     model_path.write_bytes(b"fake-model-bytes")
 
-    with patch("fantasy_coach.predictions.load_model", return_value=mock_model):
+    with patch("fantasy_coach.models.loader.load_model", return_value=mock_model):
         result = compute_predictions(
             2026,
             8,
@@ -696,7 +696,7 @@ def test_compute_returns_empty_when_no_fixtures(
     model_path.write_bytes(b"bytes")
     mock_round = MagicMock(return_value={"fixtures": []})
 
-    with patch("fantasy_coach.predictions.load_model", return_value=_make_mock_model()):
+    with patch("fantasy_coach.models.loader.load_model", return_value=_make_mock_model()):
         result = compute_predictions(
             2026,
             9,
@@ -754,7 +754,7 @@ def test_compute_force_bypasses_cache_and_rescrapes(
     model_path = tmp_path / "model.joblib"
     model_path.write_bytes(b"fake-model-bytes")
 
-    with patch("fantasy_coach.predictions.load_model", return_value=mock_model):
+    with patch("fantasy_coach.models.loader.load_model", return_value=mock_model):
         result = compute_predictions(
             2026,
             8,
@@ -1114,7 +1114,7 @@ def test_compute_populates_alternatives_when_logistic_model_provided(
     logistic_path = tmp_path / "logistic.joblib"
     save_model(logistic_result, logistic_path)
 
-    with patch("fantasy_coach.predictions.load_model", return_value=primary_model):
+    with patch("fantasy_coach.models.loader.load_model", return_value=primary_model):
         result = compute_predictions(
             2026,
             8,
@@ -1146,7 +1146,7 @@ def test_compute_alternatives_absent_when_same_path(
     same_path = tmp_path / "model.joblib"
     same_path.write_bytes(b"bytes")
 
-    with patch("fantasy_coach.predictions.load_model", return_value=mock_model):
+    with patch("fantasy_coach.models.loader.load_model", return_value=mock_model):
         result = compute_predictions(
             2026,
             8,

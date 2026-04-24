@@ -89,15 +89,23 @@ EXPECTED = {
     # tree-based models). Expected to improve once the 2023 backfill (#158) lands.
     # XGBoost marginally regresses on this narrow window for the same reason;
     # feature signal is expected to compound with deeper H2H history.
-    "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.8269, "brier": 0.2751},
-    "xgboost": {"n": 480, "accuracy": 0.5729, "log_loss": 0.7079, "brier": 0.2515},
-    "skellam": {"n": 480, "accuracy": 0.5708, "log_loss": 0.7097, "brier": 0.2529},
+    #
+    # #170 adds home_days_rest + away_days_rest + short_turnaround_diff (granular
+    # scheduling features). Logistic accuracy improves +0.83 pp (0.5604 → 0.5687)
+    # on the 2024–2026 baseline; XGBoost and Skellam gain marginally. Logistic
+    # log_loss regresses slightly — extra features add estimation variance on this
+    # narrow training window; expected to improve once the 2023 backfill (#158)
+    # provides more scheduling history.
+    "logistic": {"n": 480, "accuracy": 0.5687, "log_loss": 0.8505, "brier": 0.2780},
+    "xgboost": {"n": 480, "accuracy": 0.5792, "log_loss": 0.7104, "brier": 0.2532},
+    "skellam": {"n": 480, "accuracy": 0.5750, "log_loss": 0.7120, "brier": 0.2538},
     # #171 stacks XGBoost + Skellam + EloMOV behind a logistic-regression
     # meta-learner fit on out-of-fold base probabilities. Beats XGBoost on
     # all three metrics (+1.25 pp accuracy, −3.8 % log_loss, −3.7 % brier)
     # on this baseline. Still trails EloMOV on accuracy; meta-learner
     # regularisation on the 20 % val slice dilutes EloMOV's lead.
-    "stacked": {"n": 480, "accuracy": 0.5854, "log_loss": 0.6807, "brier": 0.2423},
+    # #170: stacked gains +0.42 pp accuracy (0.5854 → 0.5896).
+    "stacked": {"n": 480, "accuracy": 0.5896, "log_loss": 0.6767, "brier": 0.2407},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

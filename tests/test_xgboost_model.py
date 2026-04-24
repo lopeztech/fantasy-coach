@@ -371,6 +371,7 @@ def test_train_xgboost_uses_best_params_when_provided() -> None:
 
 
 def test_optuna_search_returns_best_params() -> None:
+    pytest.importorskip("optuna")
     frame = _make_frame(80)
     best = optuna_search(frame, n_trials=3, random_state=0)
     # Every search-space key must appear in the output.
@@ -389,12 +390,14 @@ def test_optuna_search_returns_best_params() -> None:
 
 
 def test_optuna_search_raises_when_dataset_too_small() -> None:
+    pytest.importorskip("optuna")
     frame = _make_frame(20)
     with pytest.raises(ValueError, match="at least"):
         optuna_search(frame, n_trials=2)
 
 
 def test_optuna_search_output_trainable_back_through_train_xgboost() -> None:
+    pytest.importorskip("optuna")
     # End-to-end — HPO → feed best back to train_xgboost → predict shape OK.
     frame = _make_frame(80)
     best = optuna_search(frame, n_trials=3, random_state=0)

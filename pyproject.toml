@@ -14,13 +14,12 @@ dependencies = [
     "numpy>=2.0",
     "scikit-learn>=1.5",
     "joblib>=1.4",
-    "openpyxl>=3.1.5",
     "google-cloud-firestore>=2.19",
     "google-cloud-storage>=2.18",
     "firebase-admin>=6.5",
     "google-auth>=2.30",
     "xgboost>=3.2.0",
-    "optuna>=3.5",
+    "openpyxl>=3.1.5",
 ]
 
 [build-system]
@@ -29,6 +28,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fantasy_coach"]
+
+[project.optional-dependencies]
+# Training-only extras — not required to serve the API or run the CLI.
+# Install with: uv sync --extra training
+training = [
+    "optuna>=3.5",   # HPO — only needed for tune-xgboost / rating-sweep
+]
 
 [dependency-groups]
 dev = [

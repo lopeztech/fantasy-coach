@@ -8,6 +8,7 @@ from fantasy_coach.travel import (
     _is_brutal,
     _travel_km,
     _tz_delta,
+    compute_rest_features,
     haversine_km,
     lookup_venue,
     travel_features,
@@ -187,3 +188,81 @@ def test_travel_features_bb_flag_asymmetric() -> None:
         7.0,  # away: long rest
     )
     assert bb == pytest.approx(1.0)  # home is suffering, away is not → +1
+
+
+# ---------------------------------------------------------------------------
+# compute_rest_features (#170)
+# ---------------------------------------------------------------------------
+
+
+def test_rest_features_round1_imputes_to_7() -> None:
+    h, a, diff = compute_rest_features(None, None)
+    assert h == pytest.approx(7.0)
+    assert a == pytest.approx(7.0)
+    assert diff == pytest.approx(0.0)  # symmetric → 0
+
+
+def test_rest_features_normal_week_passthrough() -> None:
+    h, a, diff = compute_rest_features(7.0, 7.0)
+    assert h == pytest.approx(7.0)
+    assert a == pytest.approx(7.0)
+    assert diff == pytest.approx(0.0)
+
+
+def test_rest_features_clamp_min() -> None:
+    # 1-day gap (data anomaly) → clamped to 3.
+    h, a, _ = compute_rest_features(1.0, 1.0)
+    assert h == pytest.approx(3.0)
+    assert a == pytest.approx(3.0)
+
+
+def test_rest_features_clamp_max() -> None:
+    # 21-day bye → clamped to 14.
+    h, a, _ = compute_rest_features(21.0, 21.0)
+    assert h == pytest.approx(14.0)
+    assert a == pytest.approx(14.0)
+
+
+def test_rest_features_short_turnaround_diff_away_disadvantaged() -> None:
+    # Away on 5-day (short), home on 7-day (normal) → +1 (home benefits).
+    h, a, diff = compute_rest_features(7.0, 5.0)
+    assert h == pytest.approx(7.0)
+    assert a == pytest.approx(5.0)
+    assert diff == pytest.approx(1.0)
+
+
+def test_rest_features_short_turnaround_diff_home_disadvantaged() -> None:
+    # Home on 5-day, away on 7-day → -1.
+    _, _, diff = compute_rest_features(5.0, 7.0)
+    assert diff == pytest.approx(-1.0)
+
+
+def test_rest_features_both_short_is_zero() -> None:
+    # Both on 5-day turnaround → symmetric → 0.
+    _, _, diff = compute_rest_features(5.0, 5.0)
+    assert diff == pytest.approx(0.0)
+
+
+def test_rest_features_threshold_boundary_exactly_6_is_not_short() -> None:
+    # Exactly 6 days is NOT a short turnaround (condition is strictly < 6).
+    _, _, diff = compute_rest_features(6.0, 5.0)
+    assert diff == pytest.approx(1.0)  # away (5 days) is short, home (6 days) is not
+
+    _, _, diff2 = compute_rest_features(5.0, 6.0)
+    assert diff2 == pytest.approx(-1.0)  # home (5 days) is short
+
+
+def test_rest_features_thursday_to_tuesday_five_day() -> None:
+    # Thursday night → Tuesday night is 5 days — the classic NRL short week.
+    h, a, diff = compute_rest_features(5.0, 7.0)
+    assert h == pytest.approx(5.0)
+    assert a == pytest.approx(7.0)
+    assert diff == pytest.approx(-1.0)  # home on short week, away on normal → -1
+
+
+def test_rest_features_home_round1_away_normal() -> None:
+    # Home team playing first match (imputed to 7), away has 6-day rest.
+    h, a, diff = compute_rest_features(None, 6.0)
+    assert h == pytest.approx(7.0)
+    assert a == pytest.approx(6.0)
+    assert diff == pytest.approx(0.0)  # neither is on a short turnaround

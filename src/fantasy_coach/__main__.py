@@ -709,8 +709,7 @@ def _run_copy_matches_to_firestore(args: argparse.Namespace) -> int:
             matches = src.list_matches(season)
             print(f"Season {season}: {len(matches)} matches{' (dry-run)' if args.dry_run else ''}")
             if not args.dry_run and dst is not None:
-                for row in matches:
-                    dst.upsert_match(row)
+                dst.upsert_matches_batch(matches)
             grand_total += len(matches)
 
         verb = "Would copy" if args.dry_run else "Copied"
@@ -759,24 +758,31 @@ def _run_merge_closing_lines(args: argparse.Namespace) -> int:
             ).fetchall()
             seasons = [r[0] for r in rows]
 
+        logger = logging.getLogger(__name__)
         total_updated = 0
         total_missed = 0
         for season in seasons:
             updated, missed = 0, 0
+            unmatched: list[str] = []
             for match in repo.list_matches(season):
                 home_canon = canonicalize(match.home.nick_name) or canonicalize(match.home.name)
                 away_canon = canonicalize(match.away.nick_name) or canonicalize(match.away.name)
                 if not home_canon or not away_canon:
                     missed += 1
+                    unmatched.append(
+                        f"  canon-miss: {match.home.nick_name!r}/{match.home.name!r}"
+                        f" vs {match.away.nick_name!r}/{match.away.name!r}"
+                    )
                     continue
                 center = match.start_time.astimezone(aest).date()
                 line = None
-                for delta in (-1, 0, 1):  # ±1 day to absorb DST/scheduling slop
+                for delta in (-2, -1, 0, 1, 2):  # ±2 days to absorb DST/finals scheduling slop
                     line = lines.get((center + timedelta(days=delta), home_canon, away_canon))
                     if line is not None:
                         break
                 if line is None:
                     missed += 1
+                    unmatched.append(f"  date-miss:  {home_canon} vs {away_canon} around {center}")
                     continue
                 updated_row = match.model_copy(
                     update={
@@ -797,6 +803,8 @@ def _run_merge_closing_lines(args: argparse.Namespace) -> int:
                 repo.upsert_match(updated_row)
                 updated += 1
             print(f"Season {season}: merged {updated} odds rows, {missed} unmatched")
+            if unmatched:
+                logger.debug("Unmatched rows in season %d:\n%s", season, "\n".join(unmatched))
             total_updated += updated
             total_missed += missed
         print(f"Total: {total_updated} merged, {total_missed} unmatched")

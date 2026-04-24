@@ -17,7 +17,7 @@ once it's manually enabled (see below).
 |-----------|--------|-------------------------------------------|
 | Cloud Run (API) | 0 → low; scale-to-zero; 256Mi × concurrency 80 | < $1 |
 | Firestore | Free tier (1 GiB storage, 50K reads/day) | $0 |
-| Artifact Registry | One image tag per deploy, ~1 GiB total | < $0.10 |
+| Artifact Registry | Last 10 tagged images retained; cleanup policy in platform-infra | ~$0.04 steady-state |
 | Cloud Logging | Default retention; low request volume | $0 (free tier) |
 | Vertex AI (Gemini) | Commentary previews; ~2K tokens in + 400 out per match | ~$0.05/month at current volume |
 | Egress | SPA bundle from Firebase Hosting; low traffic | $0 (free tier) |
@@ -142,12 +142,19 @@ library is present in the distroless image. Switching would require a custom
 base, which outweighs the ~10 MB saving. Revisit if `xgboost` moves to a
 training-only dependency and `grpc` is replaced by the HTTP/1.1 transport.
 
-**Artifact Registry cleanup policy** is Terraform-managed in the
-`lopeztech/platform-infra` repository (`projects/fantasy-coach/`). The desired
-policy — keep the last 10 tagged images plus any image tagged `latest` or
-referenced by a live Cloud Run revision; delete untagged and older images — is
-tracked there. At the current deploy cadence (~2/week), storage is < $0.10/month
-even without a cleanup policy, but it should be added before traffic scales.
+**Artifact Registry cleanup policy** is Terraform-managed in
+`lopeztech/platform-infra` (`projects/fantasy-coach/artifact_registry.tf`):
+
+- **Keep last 10 tagged images** — covers ~5 weeks of rollback headroom at
+  the ~2/week deploy cadence; older rollbacks use Cloud Run revision history
+  (which pins image references independently of the registry policy).
+- **Delete untagged images older than 7 days** — catches failed/cancelled
+  build fragments and cache blobs that accumulate silently.
+
+At ~350 MB per image × 10 retained images ≈ 3.5 GB → **~$0.35/month** after
+the 0.5 GB free tier.  The cleanup policy caps this at steady state; without
+it, storage grows linearly (~$0.04/month per additional build week) with no
+natural ceiling.
 
 ## CI costs (#120)
 

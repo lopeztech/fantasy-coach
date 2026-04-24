@@ -193,6 +193,53 @@ def test_canonicalize_handles_full_and_short_names() -> None:
     assert canonicalize("Mystery Team") is None
 
 
+def test_canonicalize_city_only_names() -> None:
+    assert canonicalize("Brisbane") == "broncos"
+    assert canonicalize("Canberra") == "raiders"
+    assert canonicalize("Melbourne") == "storm"
+    assert canonicalize("Newcastle") == "knights"
+    assert canonicalize("Parramatta") == "eels"
+    assert canonicalize("Penrith") == "panthers"
+    assert canonicalize("Sydney") == "roosters"
+    assert canonicalize("Cronulla") == "sharks"
+    assert canonicalize("Gold Coast") == "titans"
+    assert canonicalize("Manly") == "sea-eagles"
+    assert canonicalize("Redcliffe") == "dolphins"
+    assert canonicalize("Canterbury") == "bulldogs"
+    assert canonicalize("South Sydney") == "rabbitohs"
+    assert canonicalize("North Queensland") == "cowboys"
+
+
+def test_canonicalize_nq_cowboys_shorthands() -> None:
+    assert canonicalize("North Qld Cowboys") == "cowboys"
+    assert canonicalize("NQ Cowboys") == "cowboys"
+    assert canonicalize("North Qld") == "cowboys"
+
+
+def test_canonicalize_st_george_variants() -> None:
+    assert canonicalize("St George Illawarra Dragons") == "dragons"
+    assert canonicalize("St George Illawarra") == "dragons"
+    assert canonicalize("St George Dragons") == "dragons"
+    assert canonicalize("St. George Illawarra") == "dragons"
+
+
+def test_canonicalize_bulldogs_no_hyphen() -> None:
+    assert canonicalize("Canterbury Bankstown Bulldogs") == "bulldogs"
+    assert canonicalize("Cronulla Sutherland Sharks") == "sharks"
+
+
+def test_canonicalize_new_zealand_warriors() -> None:
+    assert canonicalize("New Zealand") == "warriors"
+    assert canonicalize("New Zealand Warriors") == "warriors"
+    assert canonicalize("NZ Warriors") == "warriors"
+
+
+def test_canonicalize_case_insensitive() -> None:
+    assert canonicalize("BRONCOS") == "broncos"
+    assert canonicalize("brisbane") == "broncos"
+    assert canonicalize("NORTH QUEENSLAND") == "cowboys"
+
+
 # ---------- predictor ----------
 
 
