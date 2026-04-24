@@ -10,8 +10,10 @@ import pytest
 
 from fantasy_coach.feature_engineering import FEATURE_NAMES
 from fantasy_coach.models.xgboost_model import (
+    MONOTONE_CONSTRAINTS,
     LoadedModel,
     TrainResult,
+    _monotone_tuple,
     load_model,
     save_model,
     train_xgboost,
@@ -217,3 +219,81 @@ def test_xgboost_predictor_fallback_with_no_history() -> None:
         team_stats=[],
     )
     assert predictor.predict_home_win_prob(match) == pytest.approx(0.55)
+
+
+# ---------------------------------------------------------------------------
+# Monotonic constraints (#165)
+# ---------------------------------------------------------------------------
+
+
+def test_monotone_tuple_length_matches_feature_names() -> None:
+    assert len(_monotone_tuple()) == len(FEATURE_NAMES)
+
+
+def test_monotone_tuple_entries_in_valid_set() -> None:
+    assert set(_monotone_tuple()).issubset({-1, 0, 1})
+
+
+def test_monotone_constraints_keys_all_exist_in_feature_names() -> None:
+    # Typo guard — a stale key would silently do nothing without this.
+    assert set(MONOTONE_CONSTRAINTS).issubset(set(FEATURE_NAMES))
+
+
+def test_monotone_tuple_aligns_to_feature_order() -> None:
+    t = _monotone_tuple()
+    for idx, name in enumerate(FEATURE_NAMES):
+        expected = MONOTONE_CONSTRAINTS.get(name, 0)
+        assert t[idx] == expected, f"{name} mismatched at index {idx}"
+
+
+def test_train_xgboost_respects_monotone_increasing_constraint() -> None:
+    """A feature declared monotone +1 should produce strictly non-decreasing
+    predictions as we sweep that feature up with others held constant.
+    """
+    from fantasy_coach.feature_engineering import TrainingFrame
+
+    # odds_home_win_prob is monotone +1 in MONOTONE_CONSTRAINTS. Build a
+    # training set where the label is strongly correlated with that feature
+    # but the model is also shown noise that *could* let it learn perverse
+    # splits. With the constraint, it cannot.
+    rng = np.random.default_rng(0)
+    n = 200
+    n_feat = len(FEATURE_NAMES)
+    odds_idx = FEATURE_NAMES.index("odds_home_win_prob")
+
+    X = rng.standard_normal((n, n_feat))
+    odds = rng.uniform(0.1, 0.9, size=n)
+    X[:, odds_idx] = odds
+    # Label = 1 roughly when odds > 0.5, with some noise.
+    y = (odds > 0.5).astype(int)
+    # Force a cluster of ``odds=0.6, label=0`` examples — the spurious
+    # pattern XGBoost learned on the R8 Tigers/Raiders match. Without
+    # the constraint the model would happily carve out a negative split
+    # around odds=0.6; with it, it cannot.
+    flip_mask = (odds > 0.55) & (odds < 0.65)
+    y[flip_mask] = 0
+
+    base = np.datetime64("2024-01-01", "s")
+    start_times = base + np.arange(n) * np.timedelta64(7 * 24 * 3600, "s")
+    frame = TrainingFrame(
+        X=X,
+        y=y,
+        match_ids=np.arange(n),
+        start_times=start_times,
+    )
+
+    result = train_xgboost(frame, test_fraction=0.0)
+    est = result.estimator
+
+    # Sweep odds_home_win_prob from 0.1 → 0.9 with everything else at 0.
+    sweep = np.linspace(0.1, 0.9, 17)
+    probe = np.zeros((len(sweep), n_feat))
+    probe[:, odds_idx] = sweep
+    probs = est.predict_proba(probe)[:, 1]
+
+    # Monotone non-decreasing — strict-enough after XGBoost rounds to
+    # same-leaf identity in flat regions, so we use <= not <.
+    diffs = np.diff(probs)
+    assert (diffs >= -1e-9).all(), (
+        f"constraint violated: probs={probs.tolist()} diffs={diffs.tolist()}"
+    )

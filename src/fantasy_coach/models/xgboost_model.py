@@ -22,6 +22,46 @@ from xgboost import XGBClassifier
 
 from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
 
+# Monotonic constraints for features whose direction is a physics-of-the-game
+# guarantee, not a thing the model should rediscover on 424 matches. Signs
+# are in the home-perspective feature frame (home − away unless noted).
+#
+# Example of why we do this: on 2026 R8 Wests Tigers v Raiders, XGBoost
+# assigned a negative home-push to ``odds_home_win_prob = 0.6135`` — a tree
+# split that directly contradicts the feature's definition. Constraints
+# prevent that class of split from being learned at all. Features not
+# listed stay unconstrained (0) because their relationship to home win is
+# genuinely ambiguous or depends on interactions.
+#
+# The #107 retrain gate catches any log-loss / brier regression, so this
+# is a bounded-downside change.
+MONOTONE_CONSTRAINTS: dict[str, int] = {
+    "elo_diff": 1,
+    "form_diff_pf": 1,
+    "form_diff_pa": -1,
+    "h2h_recent_diff": 1,
+    "venue_home_win_rate": 1,
+    "key_absence_diff": -1,
+    "form_diff_pf_adjusted": 1,
+    "form_diff_pa_adjusted": -1,
+    "player_strength_diff": 1,
+    "odds_home_win_prob": 1,
+}
+
+
+def _monotone_tuple() -> tuple[int, ...]:
+    """Build the ``monotone_constraints`` tuple aligned with ``FEATURE_NAMES``.
+
+    Unknown features default to ``0`` (unconstrained). Raises if a
+    ``MONOTONE_CONSTRAINTS`` key doesn't exist in ``FEATURE_NAMES`` — that
+    would be a typo and silently having no effect is worse than failing.
+    """
+    unknown = set(MONOTONE_CONSTRAINTS) - set(FEATURE_NAMES)
+    if unknown:
+        raise ValueError(f"MONOTONE_CONSTRAINTS has unknown features: {sorted(unknown)}")
+    return tuple(MONOTONE_CONSTRAINTS.get(name, 0) for name in FEATURE_NAMES)
+
+
 # Fixed hyperparameters not tuned (sensible defaults for small datasets).
 _FIXED_PARAMS: dict[str, object] = {
     "subsample": 0.8,
@@ -29,6 +69,7 @@ _FIXED_PARAMS: dict[str, object] = {
     "eval_metric": "logloss",
     "verbosity": 0,
     "use_label_encoder": False,
+    "monotone_constraints": _monotone_tuple(),
 }
 
 # Grid searched via TimeSeriesSplit.

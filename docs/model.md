@@ -334,6 +334,50 @@ The XGBoost model is serialised with the same joblib interface as logistic
 (`save_model` / `load_model`), keyed by `"model_type": "xgboost"`. The prediction
 API can be switched by swapping the artefact path in config.
 
+### Monotone constraints (#165)
+
+Ten features have a relationship to home-win probability that is guaranteed
+by the physics of the game and shouldn't be re-learned from ~500 matches.
+`MONOTONE_CONSTRAINTS` in `models/xgboost_model.py` pins the sign of those
+features so XGBoost can't carve perverse local splits:
+
+| Feature | Constraint |
+|---|---:|
+| `elo_diff`, `form_diff_pf`, `h2h_recent_diff`, `venue_home_win_rate`, `form_diff_pf_adjusted`, `player_strength_diff`, `odds_home_win_prob` | +1 |
+| `form_diff_pa`, `key_absence_diff`, `form_diff_pa_adjusted` | −1 |
+
+The other 15 features stay unconstrained — weather, rest, travel, and
+`missing_*` flags all have genuinely ambiguous relationships to home win
+or depend on interactions.
+
+**Trigger**: the 2026 round-8 Tigers v Raiders post-mortem. Production
+XGBoost assigned a −0.1076 contribution to `odds_home_win_prob = 0.6135`
+— a tree split saying "the market thinks home is 61%, therefore home is
+less likely to win". Categorically wrong. Constraints prevent that class
+of split from being learned at all.
+
+#### Ablation — walk-forward on 2024+2025 baseline, 424 predictions
+
+| Metric | Without | With | Δ |
+|---|--:|--:|--:|
+| accuracy | 0.5755 | **0.6132** | **+3.77pp** |
+| log_loss | 0.7490 | **0.7364** | **−1.68 %** |
+| brier | 0.2625 | **0.2559** | **−2.51 %** |
+| ece | 0.1315 | 0.1356 | +0.0041 |
+
+Large accuracy gain plus simultaneous log-loss + brier improvement. ECE
+drift is small and within expected binned-metric noise. **This is the
+single largest XGBoost ablation delta recorded to date** — larger than
+any individual feature addition. Intuition: at n=424, XGBoost was using
+a meaningful share of its capacity to chase spurious splits rather than
+the underlying signal; pinning known-direction features frees capacity
+for interaction features the model genuinely has evidence for.
+
+Production delivery: the retrain Job (#107) picks up the change on the
+next Monday run, trains a new candidate with constraints, shadow-evals
+vs the unconstrained incumbent, and promotes automatically when the
+gate clears. No manual artifact rotation.
+
 ## Train / test split
 
 Time-ordered, never random. The most recent 20 % of completed matches form

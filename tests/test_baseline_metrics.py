@@ -71,7 +71,11 @@ EXPECTED = {
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
     "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
     "logistic": {"n": 424, "accuracy": 0.5566, "log_loss": 0.8017, "brier": 0.2735},
-    "xgboost": {"n": 424, "accuracy": 0.5755, "log_loss": 0.7490, "brier": 0.2625},
+    # Pins refreshed in #165 — monotonic constraints on 10 direction-certain
+    # features (see MONOTONE_CONSTRAINTS) moved XGBoost from 0.5755 → 0.6132
+    # accuracy, −1.7 % log_loss, −2.5 % brier. See docs/model.md "Monotone
+    # constraints (#165)".
+    "xgboost": {"n": 424, "accuracy": 0.6132, "log_loss": 0.7364, "brier": 0.2559},
     "skellam": {"n": 424, "accuracy": 0.5778, "log_loss": 0.7051, "brier": 0.2508},
 }
 
