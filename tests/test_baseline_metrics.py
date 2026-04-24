@@ -91,7 +91,11 @@ EXPECTED = {
     # once #158 (2023 backfill) lands. XGBoost and EloMOV are unaffected
     # (tree-based model handles near-zero features well; Elo models unchanged
     # since home_advantage_fn defaults to None).
-    "logistic": {"n": 480, "accuracy": 0.5563, "log_loss": 0.9021, "brier": 0.2877},
+    #
+    # #203 caps |PSD| at ±1000. Logistic loses additional tail signal that
+    # XGBoost rebuilds via tree splits; pins below are post-#145 + post-#203.
+    # Refreshed by walk-forward against the same baseline-nrl.db fixture.
+    "logistic": {"n": 480, "accuracy": 0.5563, "log_loss": 0.9062, "brier": 0.2894},
     "xgboost": {"n": 480, "accuracy": 0.5979, "log_loss": 0.6984, "brier": 0.2483},
     "skellam": {"n": 480, "accuracy": 0.5688, "log_loss": 0.7148, "brier": 0.2550},
     # #145: stacked log_loss improves slightly (−0.0037) as xgboost component

@@ -94,3 +94,24 @@ Importantly, this does **not** mean PSD should be removed — the 58.3% agreemen
 4. **Market comparison**: PSD loses head-to-head in disagreement cases (43.4% vs 56.6%), confirming the market is the stronger signal when the two conflict. This is expected and consistent with `odds_home_win_prob` having the largest XGBoost coefficient in the artefact.
 
 **Follow-up filed:** Cap `|player_strength_diff|` at ±1,000 after the 2023 backfill (#158) lands and player ratings have ~3 seasons to converge. Re-run this audit and compare quintile table shape before and after capping.
+
+---
+
+## 2026-04-25 update — follow-up shipped early (#203)
+
+The "wait for #158" deferral was overtaken by live evidence. Round 8 2026 went 0/3 on the three completed Sat-morning fixtures, and one of the misses was the exact PSD-overrules-market pattern this audit flagged:
+
+| Match | PSD value | PSD contribution | Market home prob | Market contribution | Pick | Result |
+|---|--:|--:|--:|--:|---|---|
+| Tigers v Raiders | −1,232 | −0.3198 | 0.613 | −0.1076 | Raiders 54.3% | Tigers 33–14 |
+
+PSD was above the cap proposed here (1,000) and the market had Tigers as 61.3% favourites. The model picked Raiders. The market was right.
+
+The other two R8 misses (Cowboys/Sharks, Broncos/Bulldogs) had `|PSD|` *below* the cap (−701 and +168) — they're not PSD-magnitude failures, and capping doesn't change them.
+
+#203 ships the audit's own follow-up plus an output-layer market shrinkage:
+
+- `PLAYER_STRENGTH_DIFF_CAP = 1000.0` in `feature_engineering.py` — applied uniformly at training and inference, so saved artefacts and live predictions see the same distribution.
+- `MARKET_SHRINKAGE_WEIGHT = 0.3` in `predictions.py` — when `odds_home_win_prob` is present, the final home-win probability is `(1 − w)·model + w·market`. Direction is preserved on agreement (most cases); disagreement cases are pulled toward the more-accurate signal (audit Q4: 56.6% vs 43.4%).
+
+When the 2023 backfill lands, re-run `scripts/audit_player_strength_diff.py` to confirm the quintile table tightens and the Q1 anomaly attenuates as anticipated.
