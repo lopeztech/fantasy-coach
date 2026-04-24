@@ -117,7 +117,44 @@ walk-forward refits from scratch per round, so early-season rounds — when
 every team's "regular XIII" is still stabilising — noise the training
 signal. Revisit once we have a second full season of is-on-field data
 (currently 2024+2025 only; 2023 would add another 200 matches of warm-up
-history). Weight ratio tuning is filed as a follow-up.
+history). Weight ratio tuning is in #159 below.
+
+### Position-weight sweep (#159)
+
+`scripts/sweep_position_weights.py` runs a walk-forward comparison of three
+`POSITION_WEIGHTS` schemes on the 2024–2026 baseline (n=480):
+
+1. **Expert prior** — current weights (Halfback=3.0, Hooker/Fullback=2.5, …)
+2. **Flat** — all positions = 1.0 (degenerates to raw absence count)
+3. **Data-driven** — OLS regression of point margin on per-position absence
+   deltas, normalised to the same total as the expert prior
+
+| Scheme | Logistic acc | Logistic ll | Logistic brier | XGBoost acc | XGBoost ll | XGBoost brier |
+|---|--:|--:|--:|--:|--:|--:|
+| expert_prior | 0.5687 | 0.8505 | 0.2780 | 0.5792 | 0.7104 | 0.2532 |
+| flat | **0.5875** | 0.8518 | **0.2773** | **0.5896** | **0.7021** | **0.2498** |
+| data_driven | 0.5563 | 0.8520 | 0.2798 | 0.5854 | 0.7048 | 0.2500 |
+
+**Result: flat weights improve XGBoost on all three metrics** (+1.04pp accuracy,
+−0.008 log_loss, −0.003 brier vs expert prior) and also win on accuracy and
+brier for logistic. Data-driven weights underperform both on logistic and are
+mixed on XGBoost — the 2-season training window produces noisy regression
+coefficients (e.g. Centre ranked #1, Five-Eighth near 0) that don't reflect
+rugby-league domain knowledge.
+
+**Decision (per issue #159 AC):** Keep expert-prior weights despite flat
+winning on XGBoost. Rationale:
+- The expert-prior ratios embed domain knowledge that should compound with
+  longer history (#158 2023 backfill). The 2-season training window is too
+  short for data-driven weights to outperform a sensible prior.
+- Logistic log_loss is actually best under expert-prior (0.8505 vs 0.8518 flat),
+  meaning expert weights produce better-calibrated logistic probabilities.
+- The XGBoost gain from flat weights (+1.04pp) falls within the 3.5e-2
+  XGBoost cross-platform tolerance, so it is not statistically meaningful
+  on this sample.
+- Update `POSITION_WEIGHTS` and `test_baseline_metrics.py` EXPECTED values
+  if flat consistently wins after the 2023 backfill lands and the XGBoost
+  gain exceeds tolerance.
 
 ### Ablation notes — bookmaker odds feature (#26)
 
@@ -287,17 +324,67 @@ so the logistic can learn to down-weight the adjusted versions when they are noi
 
 ### What's deliberately *not* in here
 
-- **Glicko-2** — full rating + RD + volatility. More code for marginal gain
-  over MOV Elo; deferred until MOV-weighted Elo proves itself over a second
-  full season.
 - **Bookmaker odds** — high-signal but not a feature we can train on
   historically (odds drop out of the fixtures payload after kickoff). See
   issues #13 (benchmark vs closing lines) and #26 (live odds feature).
 - **Team-list / injury status** — issues #24 (parsing) and #27 (modelling).
 - **Player-level stats** — kept out of the baseline. Will come in once
   XGBoost (#25) makes nonlinear interactions worth modelling.
-- **Glicko-2** — deferred; MOV-weighted Elo (#106) captures the main gain.
-  Revisit if a second season shows MOV Elo plateauing.
+
+## Glicko-2 rating system (#162)
+
+`src/fantasy_coach/models/glicko2.py` implements a full Glicko-2 rater
+([Glickman 2012](https://www.glicko.net/glicko/glicko2.pdf)) as a drop-in
+replacement for `EloMOV`. Three state variables per team:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `mu` | 0.0 (= 1500 Glicko-1) | Rating on the Glicko-2 scale |
+| `phi` | 2.0148 (= 350 / 173.7) | Rating deviation (RD) — uncertainty |
+| `sigma` | 0.06 | Volatility — how much performance fluctuates |
+
+Scale: `r = 173.7178 × mu + 1500` (Glicko-1) ↔ `mu = (r − 1500) / 173.7178`.
+
+**MOV integration:** Margin of victory scales the mu update via the same
+formula as EloMOV (`K_eff = ln(|margin| + 1) × autocorr`). The phi (RD)
+update follows standard Glicko-2 so uncertainty always decreases after a
+game — margin affects _direction_, not uncertainty resolution.
+
+**Season regression:** `regress_to_mean()` pulls mu toward 0 by `season_regression`
+weight AND inflates phi by a fixed off-season increment (63.2 / 173.7 Glicko-2
+units ≈ 63 Glicko-1 points) to model roster and coaching changes between seasons.
+This is the key Glicko-2 advantage over Elo: the RD inflation explicitly models
+"how uncertain should we be about this team after an off-season?", rather than
+relying purely on regression to mean.
+
+**Interface compatibility:** Identical to `EloMOV` — `rating(team_id)`,
+`predict(home_id, away_id)`, `update(home_id, away_id, home_score, away_score)`,
+`regress_to_mean()`. `Glicko2Predictor` in `evaluation/predictors.py` wraps
+it for walk-forward evaluation.
+
+### Evaluation status
+
+Glicko-2 is **implemented but not in the baseline metrics test** (`test_baseline_metrics.py`).
+The 2024–2025–2026 window (480 predictions, ~26 games/team/season) is too shallow
+for Glicko-2 to meaningfully differentiate from EloMOV:
+
+- Glicko-2's RD signal converges after ~20 matches per team per season;
+  with only 2 full seasons of history the RD is often still above 1.5 (not
+  much below the initial 2.0148), meaning the system is still largely uncertain.
+- The full Glicko-2 advantage — adaptive confidence intervals on win probabilities
+  that are wider for teams with volatile form — requires the 2023 backfill (#158)
+  to give the rater sufficient history to distinguish stable vs volatile teams.
+
+**Promotion gate (pending #158):** After the 2023 backfill lands, run:
+```bash
+uv run python -m fantasy_coach evaluate \
+    --model elo_mov --model glicko2 \
+    --seasons 2023,2024,2025,2026 \
+    --db tests/fixtures/baseline-nrl.db
+```
+If Glicko-2 beats EloMOV on log_loss by ≥ 0.5% on that deeper baseline,
+add it to `test_baseline_metrics.py` EXPECTED and consider promoting to
+replace EloMOV as the `FeatureBuilder` default rater.
 
 ## XGBoost model (#25)
 

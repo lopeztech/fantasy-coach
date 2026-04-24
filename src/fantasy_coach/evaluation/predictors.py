@@ -21,6 +21,7 @@ from fantasy_coach.models.calibration import CalibrationMethod, CalibrationWrapp
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.ensemble import EnsembleMode, EnsembleModel, fit_ensemble
+from fantasy_coach.models.glicko2 import Glicko2
 from fantasy_coach.models.logistic import TrainResult, train_logistic
 
 # Import ``train_xgboost`` lazily inside the XGBoost predictors — loading
@@ -636,3 +637,64 @@ class StackedEnsemblePredictor:
         if self._ensemble is None:
             return float(probs.mean())
         return float(self._ensemble.predict_home_win_prob(probs)[0])
+
+
+class Glicko2Predictor:
+    """Walk-forward adapter for the Glicko-2 rating system (#162).
+
+    Drop-in replacement for ``EloMOVPredictor`` — identical constructor kwargs
+    and ``fit``/``predict_home_win_prob`` interface; uses ``Glicko2`` as the
+    rater. Glicko-2 tracks rating deviation (RD) and volatility alongside the
+    rating itself, giving better-calibrated win probabilities when team form
+    is uncertain (e.g. early season) or volatile (e.g. coaching change).
+
+    NOTE: meaningful evaluation requires deeper match history (#158 2023
+    backfill). The 2024–2025–2026 baseline is too shallow for Glicko-2 to
+    differentiate itself from EloMOV — the RD only fully converges after
+    ~20 matches per team per season. See docs/model.md for the promotion gate.
+    """
+
+    name = "glicko2"
+
+    def __init__(
+        self,
+        *,
+        home_advantage: float | None = None,
+        season_regression: float | None = None,
+        tau: float | None = None,
+    ) -> None:
+        kwargs: dict[str, float] = {}
+        if home_advantage is not None:
+            kwargs["home_advantage"] = home_advantage
+        if season_regression is not None:
+            kwargs["season_regression"] = season_regression
+        if tau is not None:
+            kwargs["tau"] = tau
+        self._kwargs = kwargs
+        self._glicko2 = Glicko2(**kwargs)
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        self._glicko2 = Glicko2(**self._kwargs)
+        seasons = sorted({m.season for m in history})
+        history_by_season = {s: [m for m in history if m.season == s] for s in seasons}
+        for index, season in enumerate(seasons):
+            if index > 0:
+                self._glicko2.regress_to_mean()
+            for match in sorted(
+                history_by_season[season], key=lambda m: (m.start_time, m.match_id)
+            ):
+                if match.home.score is None or match.away.score is None:
+                    continue
+                self._glicko2.update(
+                    match.home.team_id,
+                    match.away.team_id,
+                    int(match.home.score),
+                    int(match.away.score),
+                )
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        return self._glicko2.predict(match.home.team_id, match.away.team_id)
+
+    @property
+    def glicko2(self) -> Glicko2:
+        return self._glicko2
