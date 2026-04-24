@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { apiFetch, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
+import { AccuracyFilterBar } from "../components/AccuracyFilters";
+import { AccuracyTrendChart } from "../components/AccuracyTrendChart";
 import { SignInRequired } from "../components/SignInRequired";
-import type { AccuracyOut } from "../types";
+import type { AccuracyFilters, AccuracyOut } from "../types";
 
 const CURRENT_SEASON = new Date().getFullYear();
+const DEBOUNCE_MS = 200;
 
 type Status =
   | { kind: "loading" }
@@ -25,37 +29,85 @@ function AccuracyBadge({ accuracy, threshold }: { accuracy: number; threshold: n
   );
 }
 
+function buildUrl(
+  season: number,
+  lastN: number,
+  filters: AccuracyFilters,
+): string {
+  const p = new URLSearchParams({ season: String(season), last_n_rounds: String(lastN) });
+  if (filters.teamId !== null) p.set("team_id", String(filters.teamId));
+  if (filters.venue !== null) p.set("venue", filters.venue);
+  if (filters.modelVersion !== null) p.set("model_version", filters.modelVersion);
+  return `/accuracy?${p}`;
+}
+
 export default function Accuracy() {
   const { user, loading: authLoading } = useAuth();
-  const [season, setSeason] = useState(CURRENT_SEASON);
-  const [lastN, setLastN] = useState(10);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Initialise from URL search params so links are shareable.
+  const [season, setSeason] = useState(() => {
+    const s = searchParams.get("season");
+    return s ? Number(s) : CURRENT_SEASON;
+  });
+  const [lastN, setLastN] = useState(() => {
+    const n = searchParams.get("last_n_rounds");
+    return n ? Math.max(1, Math.min(27, Number(n))) : 10;
+  });
+  const [filters, setFilters] = useState<AccuracyFilters>(() => ({
+    teamId: searchParams.get("team_id") ? Number(searchParams.get("team_id")) : null,
+    venue: searchParams.get("venue") ?? null,
+    modelVersion: searchParams.get("model_version") ?? null,
+  }));
+
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (authLoading || !user) return;
-    let cancelled = false;
-    setStatus({ kind: "loading" });
-    apiFetch<AccuracyOut>(`/accuracy?season=${season}&last_n_rounds=${lastN}`)
-      .then((data) => {
-        if (!cancelled) setStatus({ kind: "ok", data });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (err instanceof NotSignedInError) {
-          setStatus({ kind: "error", message: "Sign in required." });
-        } else if (err instanceof ApiError) {
-          setStatus({ kind: "error", message: err.message });
-        } else {
-          setStatus({ kind: "error", message: "Couldn't load accuracy data." });
-        }
-      });
+
+    // Sync filter state back into the URL so links are shareable.
+    const p: Record<string, string> = { season: String(season), last_n_rounds: String(lastN) };
+    if (filters.teamId !== null) p.team_id = String(filters.teamId);
+    if (filters.venue !== null) p.venue = filters.venue;
+    if (filters.modelVersion !== null) p.model_version = filters.modelVersion;
+    setSearchParams(p, { replace: true });
+
+    // Debounce fetches to avoid stampeding the API on rapid filter changes.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      let cancelled = false;
+      setStatus({ kind: "loading" });
+      apiFetch<AccuracyOut>(buildUrl(season, lastN, filters))
+        .then((data) => {
+          if (!cancelled) setStatus({ kind: "ok", data });
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          if (err instanceof NotSignedInError) {
+            setStatus({ kind: "error", message: "Sign in required." });
+          } else if (err instanceof ApiError) {
+            setStatus({ kind: "error", message: err.message });
+          } else {
+            setStatus({ kind: "error", message: "Couldn't load accuracy data." });
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, DEBOUNCE_MS);
+
     return () => {
-      cancelled = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [authLoading, user, season, lastN]);
+  }, [authLoading, user, season, lastN, filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <p>Loading…</p>;
   if (!user) return <SignInRequired message="Sign in to view model accuracy." />;
+
+  const catalogueTeams = status.kind === "ok" ? status.data.teams : [];
+  const catalogueVenues = status.kind === "ok" ? status.data.venues : [];
+  const catalogueMvs = status.kind === "ok" ? status.data.modelVersions : [];
 
   return (
     <section className="accuracy-page">
@@ -84,6 +136,14 @@ export default function Accuracy() {
         </label>
       </div>
 
+      <AccuracyFilterBar
+        filters={filters}
+        teams={catalogueTeams}
+        venues={catalogueVenues}
+        modelVersions={catalogueMvs}
+        onChange={setFilters}
+      />
+
       {status.kind === "loading" && <p role="status">Loading accuracy data…</p>}
 
       {status.kind === "error" && (
@@ -93,7 +153,7 @@ export default function Accuracy() {
       )}
 
       {status.kind === "ok" && status.data.scoredMatches === 0 && (
-        <p className="muted">No scored matches found for this season and range yet.</p>
+        <p className="muted">No scored matches found for this selection.</p>
       )}
 
       {status.kind === "ok" && status.data.scoredMatches > 0 && (
@@ -128,6 +188,14 @@ export default function Accuracy() {
             </div>
           )}
 
+          {/* Rolling accuracy trend chart */}
+          {status.data.rounds.length >= 2 && (
+            <>
+              <h2 className="accuracy-section-title">Accuracy trend</h2>
+              <AccuracyTrendChart rounds={status.data.rounds} />
+            </>
+          )}
+
           {/* Round-by-round table */}
           <h2 className="accuracy-section-title">By round</h2>
           <div className="accuracy-table-wrap">
@@ -144,9 +212,7 @@ export default function Accuracy() {
               <tbody>
                 {[...status.data.rounds].reverse().map((r) => (
                   <tr key={`${r.season}-${r.round}`}>
-                    <td>
-                      Rd {r.round}
-                    </td>
+                    <td>Rd {r.round}</td>
                     <td>
                       <code className="model-version">{r.modelVersion.slice(0, 8)}</code>
                     </td>

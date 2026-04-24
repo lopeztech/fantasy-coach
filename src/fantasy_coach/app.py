@@ -35,6 +35,11 @@ class ModelVersionAccuracy(BaseModel):
     accuracy: float
 
 
+class TeamOption(BaseModel):
+    id: int
+    name: str
+
+
 class AccuracyOut(BaseModel):
     rounds: list[RoundAccuracy]
     byModelVersion: list[ModelVersionAccuracy]
@@ -42,6 +47,11 @@ class AccuracyOut(BaseModel):
     belowThreshold: bool
     threshold: float
     scoredMatches: int
+    # Filter-option catalogues — always reflects the full season (unfiltered)
+    # so the frontend can populate dropdowns without a separate API call.
+    teams: list[TeamOption]
+    venues: list[str]
+    modelVersions: list[str]
 
 
 class TeamFormEntry(BaseModel):
@@ -193,16 +203,46 @@ def get_accuracy(
     last_n_rounds: int = Query(
         default=10, ge=1, le=27, description="How many recent completed rounds to include"
     ),
+    team_id: int | None = Query(
+        default=None, description="Filter to matches involving this team ID"
+    ),
+    venue: str | None = Query(
+        default=None, description="Filter to matches at this venue (case-insensitive substring)"
+    ),
+    model_version: str | None = Query(
+        default=None,
+        description="Filter predictions by model version prefix (first 8+ hex chars)",
+    ),
 ) -> AccuracyOut:
     try:
         matches = _get_repo().list_matches(season)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
 
-    # Actual winner per match_id (FullTime only)
+    # Collect filter-option catalogues from all season matches (unfiltered).
+    teams_seen: dict[int, str] = {}
+    venues_seen: set[str] = set()
+    for m in matches:
+        teams_seen[m.home.team_id] = m.home.name
+        teams_seen[m.away.team_id] = m.away.name
+        if m.venue:
+            venues_seen.add(m.venue)
+
+    teams_catalogue = sorted(
+        [TeamOption(id=tid, name=name) for tid, name in teams_seen.items()],
+        key=lambda t: t.name,
+    )
+    venues_catalogue = sorted(venues_seen)
+
+    # Build result set respecting team/venue filters.
+    venue_lower = venue.lower() if venue else None
     results: dict[int, str] = {}
     completed_match_ids_by_round: dict[int, list[int]] = {}
     for m in matches:
+        if team_id is not None and m.home.team_id != team_id and m.away.team_id != team_id:
+            continue
+        if venue_lower is not None and (m.venue is None or venue_lower not in m.venue.lower()):
+            continue
         if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None:
             winner = "home" if m.home.score > m.away.score else "away"
             results[m.match_id] = winner
@@ -214,6 +254,7 @@ def get_accuracy(
 
     round_accuracy_list: list[RoundAccuracy] = []
     mv_stats: dict[str, dict[str, int]] = {}
+    mv_catalogue: set[str] = set()
     total_correct = 0
     total_scored = 0
 
@@ -222,22 +263,34 @@ def get_accuracy(
         if not preds:
             continue
 
+        # Collect all model versions seen (pre-filter) for the catalogue.
+        for p in preds:
+            mv_catalogue.add(p.modelVersion)
+
+        # Apply model-version filter if specified.
+        if model_version is not None:
+            preds = [p for p in preds if p.modelVersion.startswith(model_version)]
+
         # Dominant model version for this round (by plurality of predictions)
         mv_counts: dict[str, int] = {}
         for p in preds:
             mv_counts[p.modelVersion] = mv_counts.get(p.modelVersion, 0) + 1
-        model_version = max(mv_counts, key=lambda k: mv_counts[k])
+        if not mv_counts:
+            continue
+        dominant_mv = max(mv_counts, key=lambda k: mv_counts[k])
 
         scored = [(p, results[p.matchId]) for p in preds if p.matchId in results]
         n_total = len(scored)
+        if n_total == 0:
+            continue
         n_correct = sum(1 for p, actual in scored if p.predictedWinner == actual)
-        accuracy = n_correct / n_total if n_total > 0 else 0.0
+        accuracy = n_correct / n_total
 
         round_accuracy_list.append(
             RoundAccuracy(
                 season=season,
                 round=round_,
-                modelVersion=model_version,
+                modelVersion=dominant_mv,
                 total=n_total,
                 correct=n_correct,
                 accuracy=accuracy,
@@ -274,6 +327,9 @@ def get_accuracy(
         belowThreshold=(overall_accuracy is not None and overall_accuracy < _ACCURACY_THRESHOLD),
         threshold=_ACCURACY_THRESHOLD,
         scoredMatches=total_scored,
+        teams=teams_catalogue,
+        venues=venues_catalogue,
+        modelVersions=sorted(mv_catalogue),
     )
 
 

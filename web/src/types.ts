@@ -83,6 +83,17 @@ export type TeamFormHistory = {
   matches: TeamFormEntry[];
 };
 
+export type TeamOption = {
+  id: number;
+  name: string;
+};
+
+export type AccuracyFilters = {
+  teamId: number | null;
+  venue: string | null;
+  modelVersion: string | null;
+};
+
 export type AccuracyOut = {
   rounds: RoundAccuracy[];
   byModelVersion: Array<{ modelVersion: string; total: number; correct: number; accuracy: number }>;
@@ -90,4 +101,7 @@ export type AccuracyOut = {
   belowThreshold: boolean;
   threshold: number;
   scoredMatches: number;
+  teams: TeamOption[];
+  venues: string[];
+  modelVersions: string[];
 };
