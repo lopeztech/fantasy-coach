@@ -83,7 +83,9 @@ EXPECTED = {
     "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
     "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
     "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.7911, "brier": 0.2713},
-    "xgboost": {"n": 480, "accuracy": 0.5854, "log_loss": 0.7045, "brier": 0.2496},
+    # ``tree_method="exact"`` shifts XGBoost metrics (different splits →
+    # different model); pins refreshed on macOS after that change.
+    "xgboost": {"n": 480, "accuracy": 0.6021, "log_loss": 0.7109, "brier": 0.2507},
     "skellam": {"n": 480, "accuracy": 0.5667, "log_loss": 0.7130, "brier": 0.2548},
 }
 

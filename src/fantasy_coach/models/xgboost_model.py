@@ -91,6 +91,13 @@ _FIXED_PARAMS: dict[str, object] = {
     "use_label_encoder": False,
     "monotone_constraints": _monotone_tuple(),
     "n_jobs": 1,
+    # ``tree_method="exact"`` uses exact split enumeration instead of the
+    # default histogram-based splits. Slower (quadratic vs linear in feature
+    # count) but deterministic across CPU architectures — histogram
+    # binning uses float quantiles that drift between Apple Silicon and
+    # x86 AVX paths. The first diagnostic (``n_jobs=1`` alone) left the
+    # macOS↔Ubuntu drift unchanged at 0.029; ``exact`` is the next lever.
+    "tree_method": "exact",
 }
 
 # Defaults for the grid-search / small-dataset fallback paths only. Not
