@@ -92,10 +92,12 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # Linux + macOS, so 1e-3 catches real regressions. xgboost's
 # OMP-parallelised tree splits are *not* bit-stable across platforms —
 # a handful of close predictions flip between macOS and Ubuntu CI.
-# #27 measured ~0.005 drift, #109 measured ~0.011 drift once player_ratings
-# added variance. Widened to 1.5e-2 to swallow that; still tight enough
-# to catch a 1.5pp regression, which is well above any noise floor.
-_TOL: dict[str, float] = {"xgboost": 1.5e-2, "skellam": 5e-3}
+# #27 measured ~0.005 drift, #109 measured ~0.011, and #165 (monotone
+# constraints) widened it to ~0.0165 — the constraints push more
+# predictions into "just over the decision boundary" territory where
+# OMP-ordering flips get amplified. 2.0e-2 swallows observed drift;
+# still tight enough to catch a 2pp regression, well above noise floor.
+_TOL: dict[str, float] = {"xgboost": 2.0e-2, "skellam": 5e-3}
 _DEFAULT_TOL = 1e-3
 
 
