@@ -41,6 +41,9 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `h2h_last5_home_win_rate` | Home team's win rate across the last 5 head-to-head encounters (either venue), computed strictly before kickoff. Neutral 0.5 when < 3 prior meetings. | Captures structural mismatches that persist regardless of current form — e.g. a forward-dominant team that routinely beats a pace-and-space team even when Elo is close. |
 | `h2h_last5_avg_margin` | Average (home score − away score) over the last 5 H2H encounters, clipped to ±30 points, from the current home team's perspective. Neutral 0.0 when < 3 prior meetings. | Margin separates "narrow structural winner" from "blowout winner", encoding information that win-rate alone misses. |
 | `missing_h2h` | `1.0` when fewer than 3 prior encounters exist between these two clubs. | Explicit missing-data flag so the model learns a distinct intercept for "new matchup" rows rather than treating neutral H2H values as real signal. |
+| `odds_line_move_home_prob` | Closing implied home-win probability minus opening implied home-win probability (both de-vigged). Positive = market moved toward home between open and close. 0.0 when opening odds are unavailable. | Sharp-money signal — line movement against public perception is one of the most-studied predictors in sports modelling. Not strongly correlated with closing prob, so additive rather than redundant. |
+| `odds_line_move_magnitude` | `abs(odds_line_move_home_prob)`. | Captures "any informed movement" regardless of direction; lets the model learn that large moves (either way) signal informed activity. |
+| `missing_line_move` | `1.0` when opening odds are absent (either side). | Distinguishes no-open-data rows from genuine 0-movement rows; model learns a separate intercept for rows without line-move signal. |
 
 ### Position weighting (#27)
 
@@ -154,7 +157,24 @@ market" — we now confirm that empirically.
 Historical coverage of 77% (373 of 484 completed 2024+2025 matches);
 unmatched rows tend to be pre-season, finals, or scheduling date slips
 that `canonicalize()` couldn't resolve. Remaining slips are a clean-up
-target if we revisit.
+target if we revisit (#163).
+
+### Ablation notes — bookmaker line-movement feature (#169)
+
+Adds `odds_line_move_home_prob`, `odds_line_move_magnitude`, and
+`missing_line_move`. Opening-line decimal odds are parsed from the same
+aussportsbetting.com xlsx via the extended `merge-closing-lines` CLI
+(xlsx already carries `Home/Away Odds Open` columns). Line move =
+`closing_prob − opening_prob`; both values default to 0.0 when opening
+odds are unavailable, with `missing_line_move = 1.0` so the model learns
+a distinct intercept for those rows.
+
+Opening odds are sparse on the 2024+2025 training baseline (the xlsx
+started tracking opens mid-season), so the features carry near-zero
+effective weight in the current artefact and the walk-forward metrics are
+unchanged from #168. Impact will grow as more historical rows accumulate
+opening odds — literature suggests +0.4 to +1.1 pp accuracy on
+comparable datasets where opening odds coverage reaches 70%+.
 
 ### Ablation notes — player strength feature (#109)
 

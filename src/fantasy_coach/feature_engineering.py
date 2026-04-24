@@ -107,6 +107,18 @@ FEATURE_NAMES = (
     "h2h_last5_home_win_rate",
     "h2h_last5_avg_margin",
     "missing_h2h",
+    # Bookmaker line-movement features (#169). The difference between the
+    # closing and opening implied home-win probabilities captures sharp-money
+    # signal — large moves against public opinion are one of the most
+    # studied predictive signals in sports modelling.
+    # ``odds_line_move_home_prob`` is signed (positive = market moved toward
+    # home); ``odds_line_move_magnitude`` = abs() so the model learns
+    # "any movement = informed money" separately from direction.
+    # Both default to 0.0 when opening odds are unavailable; ``missing_line_move``
+    # is 1.0 in that case so the model learns a separate intercept.
+    "odds_line_move_home_prob",
+    "odds_line_move_magnitude",
+    "missing_line_move",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -271,6 +283,12 @@ class FeatureBuilder:
         strength_a, has_away_roster = self._player_strength(match.away.players)
         missing_strength = 0.0 if (has_home_roster and has_away_roster) else 1.0
         odds_prob, missing_odds = _odds_home_win_prob(match.home.odds, match.away.odds)
+        line_move, line_magnitude, missing_line_move = _line_move_features(
+            match.home.odds_open,
+            match.away.odds_open,
+            match.home.odds,
+            match.away.odds,
+        )
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -300,6 +318,9 @@ class FeatureBuilder:
             h2h_last5_win_rate,
             h2h_last5_margin,
             missing_h2h,
+            line_move,
+            line_magnitude,
+            missing_line_move,
         ]
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
@@ -592,6 +613,33 @@ def _odds_home_win_prob(home_odds: float | None, away_odds: float | None) -> tup
         return devig_two_way(float(home_odds), float(away_odds)), 0.0
     except ValueError:
         return 0.5, 1.0
+
+
+def _line_move_features(
+    home_open: float | None,
+    away_open: float | None,
+    home_close: float | None,
+    away_close: float | None,
+) -> tuple[float, float, float]:
+    """Return ``(line_move, magnitude, missing_flag)`` for the line-movement feature (#169).
+
+    Line move = closing implied home-win prob − opening implied home-win prob.
+    Positive means the market moved *toward* the home team (e.g. sharp money
+    backing home after the open). Both values default to 0.0 when opening
+    odds are unavailable; ``missing_flag`` is 1.0 in that case.
+
+    Closing odds can also be absent (no market data at all), in which case
+    the feature is missing for the same reason as ``missing_odds``.
+    """
+    if home_open is None or away_open is None or home_close is None or away_close is None:
+        return 0.0, 0.0, 1.0
+    try:
+        p_open = devig_two_way(float(home_open), float(away_open))
+        p_close = devig_two_way(float(home_close), float(away_close))
+    except ValueError:
+        return 0.0, 0.0, 1.0
+    move = p_close - p_open
+    return move, abs(move), 0.0
 
 
 def _starters_info(players: list[PlayerRow]) -> dict[int, tuple[str, str]]:

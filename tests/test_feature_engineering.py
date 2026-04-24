@@ -335,3 +335,76 @@ def test_h2h_last5_margin_clipped_to_30() -> None:
     last = dict(zip(FEATURE_NAMES, frame.X[-1], strict=True))
     assert last["missing_h2h"] == 0.0
     assert last["h2h_last5_avg_margin"] == pytest.approx(30.0)  # clipped from 60
+
+
+# ---------- line-move features (#169) ----------
+
+
+def test_line_move_missing_when_no_opening_odds() -> None:
+    """Without opening odds, line-move is zero and missing flag is 1."""
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    match = _match(match_id=1, home_id=10, away_id=20, home_score=24, away_score=18, when=base)
+    # No odds at all → missing_odds=1 AND missing_line_move=1
+    frame = build_training_frame([match])
+    row = dict(zip(FEATURE_NAMES, frame.X[0], strict=True))
+    assert row["missing_line_move"] == 1.0
+    assert row["odds_line_move_home_prob"] == pytest.approx(0.0)
+    assert row["odds_line_move_magnitude"] == pytest.approx(0.0)
+
+
+def test_line_move_missing_when_only_closing_odds() -> None:
+    """Closing odds present but no opening odds → still missing."""
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    match = MatchRow(
+        match_id=1,
+        season=2024,
+        round=1,
+        start_time=base,
+        match_state="FullTime",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(team_id=10, name="H", nick_name="H", score=24, players=[], odds=1.83),
+        away=TeamRow(team_id=20, name="A", nick_name="A", score=18, players=[], odds=2.10),
+        team_stats=[],
+    )
+    frame = build_training_frame([match])
+    row = dict(zip(FEATURE_NAMES, frame.X[0], strict=True))
+    assert row["missing_line_move"] == 1.0
+    assert row["odds_line_move_home_prob"] == pytest.approx(0.0)
+
+
+def test_line_move_computed_when_opening_odds_present() -> None:
+    """With both open and close odds, line-move = close_prob − open_prob."""
+    from fantasy_coach.bookmaker.lines import devig_two_way
+
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    match = MatchRow(
+        match_id=1,
+        season=2024,
+        round=1,
+        start_time=base,
+        match_state="FullTime",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(
+            team_id=10, name="H", nick_name="H", score=24, players=[], odds=1.70, odds_open=1.80
+        ),
+        away=TeamRow(
+            team_id=20, name="A", nick_name="A", score=18, players=[], odds=2.30, odds_open=2.25
+        ),
+        team_stats=[],
+    )
+    frame = build_training_frame([match])
+    row = dict(zip(FEATURE_NAMES, frame.X[0], strict=True))
+
+    p_open = devig_two_way(1.80, 2.25)
+    p_close = devig_two_way(1.70, 2.30)
+    expected_move = p_close - p_open
+
+    assert row["missing_line_move"] == pytest.approx(0.0)
+    assert row["odds_line_move_home_prob"] == pytest.approx(expected_move, rel=1e-6)
+    assert row["odds_line_move_magnitude"] == pytest.approx(abs(expected_move), rel=1e-6)
+    # Market moved toward home (shorter close price) → positive move.
+    assert row["odds_line_move_home_prob"] > 0

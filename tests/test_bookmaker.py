@@ -117,6 +117,32 @@ def _write_test_xlsx(path: Path) -> None:
             1.85,
         ]
     )
+    # Third row: match with both opening AND closing odds (line moved toward home).
+    ws.append(
+        [
+            datetime(2024, 3, 10),
+            None,
+            "Brisbane Broncos",
+            "Parramatta Eels",
+            "venue",
+            22,
+            12,
+            None,
+            None,
+            1.75,
+            None,
+            2.20,
+            None,
+            1.80,  # Home Odds Open (home was shorter at open)
+            None,
+            None,
+            1.70,  # Home Odds Close (market moved further toward home)
+            2.25,  # Away Odds Open
+            None,
+            None,
+            2.30,  # Away Odds Close
+        ]
+    )
     wb.save(path)
 
 
@@ -126,13 +152,35 @@ def test_load_closing_lines_parses_and_dedupes(tmp_path: Path) -> None:
 
     lines = load_closing_lines(path)
 
-    assert len(lines) == 1  # second row dropped (un-mappable home team)
-    [(key, line)] = lines.items()
-    assert key == (date(2024, 3, 3), "sea-eagles", "rabbitohs")
+    # Second row dropped (un-mappable home team); three valid rows remain.
+    assert len(lines) == 2
+    sea_key = (date(2024, 3, 3), "sea-eagles", "rabbitohs")
+    assert sea_key in lines
+    line = lines[sea_key]
     assert line.home_odds_close == 1.83
     assert line.away_odds_close == 2.10
     expected = devig_two_way(1.83, 2.10)
     assert math.isclose(line.p_home_devigged, expected, rel_tol=1e-9)
+    # First row has no opening odds in the fixture.
+    assert line.home_odds_open is None
+    assert line.p_home_open_devigged is None
+
+
+def test_load_closing_lines_opening_odds(tmp_path: Path) -> None:
+    path = tmp_path / "lines.xlsx"
+    _write_test_xlsx(path)
+
+    lines = load_closing_lines(path)
+
+    broncos_key = (date(2024, 3, 10), "broncos", "eels")
+    assert broncos_key in lines
+    line = lines[broncos_key]
+    assert line.home_odds_open == 1.80
+    assert line.away_odds_open == 2.25
+    p_open = devig_two_way(1.80, 2.25)
+    assert math.isclose(line.p_home_open_devigged, p_open, rel_tol=1e-9)
+    # Market moved toward home between open and close (shorter home price at close).
+    assert line.p_home_devigged > line.p_home_open_devigged
 
 
 # ---------- team-name canonicalizer ----------

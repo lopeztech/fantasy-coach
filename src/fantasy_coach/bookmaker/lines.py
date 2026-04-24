@@ -34,6 +34,10 @@ class ClosingLine:
     home_odds_close: float
     away_odds_close: float
     p_home_devigged: float
+    # Opening odds — None when the xlsx row pre-dates the source tracking opens.
+    home_odds_open: float | None = None
+    away_odds_open: float | None = None
+    p_home_open_devigged: float | None = None
 
     @property
     def key(self) -> tuple[date, str, str]:
@@ -49,6 +53,8 @@ _REQUIRED_HEADERS = (
     "Home Odds",
     "Away Odds",
 )
+
+_OPEN_HEADERS = ("Home Odds Open", "Away Odds Open")
 
 
 def devig_two_way(home_odds: float, away_odds: float) -> float:
@@ -81,6 +87,10 @@ def load_closing_lines(path: Path | str) -> dict[tuple[date, str, str], ClosingL
     if not header or not all(h in header for h in _REQUIRED_HEADERS):
         raise ValueError(f"xlsx is missing required columns; saw header={header!r}")
     cols = {name: header.index(name) for name in _REQUIRED_HEADERS}
+    # Opening-odds columns are optional — older xlsx files omit them.
+    for h in _OPEN_HEADERS:
+        if h in header:
+            cols[h] = header.index(h)
 
     out: dict[tuple[date, str, str], ClosingLine] = {}
     for row in rows:
@@ -119,6 +129,20 @@ def _row_to_line(row: tuple, cols: dict[str, int]) -> ClosingLine:
     except ValueError as exc:
         raise _SkipRowError from exc
 
+    # Opening odds — present only when both columns exist in the header and are non-null.
+    home_open_raw = row[cols["Home Odds Open"]] if "Home Odds Open" in cols else None
+    away_open_raw = row[cols["Away Odds Open"]] if "Away Odds Open" in cols else None
+    home_odds_open: float | None = None
+    away_odds_open: float | None = None
+    p_home_open: float | None = None
+    if home_open_raw is not None and away_open_raw is not None:
+        try:
+            home_odds_open = float(home_open_raw)
+            away_odds_open = float(away_open_raw)
+            p_home_open = devig_two_way(home_odds_open, away_odds_open)
+        except (ValueError, TypeError):
+            home_odds_open = away_odds_open = p_home_open = None
+
     return ClosingLine(
         match_date=match_date,
         home_canonical=home_canonical,
@@ -126,4 +150,7 @@ def _row_to_line(row: tuple, cols: dict[str, int]) -> ClosingLine:
         home_odds_close=float(home_odds),
         away_odds_close=float(away_odds),
         p_home_devigged=p_home,
+        home_odds_open=home_odds_open,
+        away_odds_open=away_odds_open,
+        p_home_open_devigged=p_home_open,
     )

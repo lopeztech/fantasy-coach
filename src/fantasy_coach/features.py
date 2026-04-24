@@ -104,6 +104,10 @@ class TeamRow(BaseModel):
     # time; the ``merge-closing-lines`` CLI (#26) backfills from the
     # aussportsbetting.com xlsx so the training frame has real signal.
     odds: float | None = None
+    # Opening-line decimal odds (#169). None for live matches (NRL feed only
+    # carries current odds) and historical rows where the xlsx pre-dates the
+    # source tracking opening lines.
+    odds_open: float | None = None
 
 
 class TeamStat(BaseModel):

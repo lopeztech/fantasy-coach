@@ -1,4 +1,4 @@
--- Schema version 4.
+-- Schema version 5.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
@@ -6,6 +6,7 @@
 -- v2 adds referee_id and video_referee_id columns to matches (NRL officials block).
 -- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
+-- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -31,7 +32,9 @@ CREATE TABLE IF NOT EXISTS matches (
     referee_id       INTEGER,   -- NRL profileId for position="Referee"
     video_referee_id INTEGER,   -- NRL profileId for position="Senior Review Official"
     home_odds        REAL,      -- decimal odds from scrape OR merged closing lines
-    away_odds        REAL
+    away_odds        REAL,
+    home_odds_open   REAL,      -- opening-line decimal odds from xlsx (#169)
+    away_odds_open   REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_season_round

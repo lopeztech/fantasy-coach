@@ -780,8 +780,18 @@ def _run_merge_closing_lines(args: argparse.Namespace) -> int:
                     continue
                 updated_row = match.model_copy(
                     update={
-                        "home": match.home.model_copy(update={"odds": line.home_odds_close}),
-                        "away": match.away.model_copy(update={"odds": line.away_odds_close}),
+                        "home": match.home.model_copy(
+                            update={
+                                "odds": line.home_odds_close,
+                                "odds_open": line.home_odds_open,
+                            }
+                        ),
+                        "away": match.away.model_copy(
+                            update={
+                                "odds": line.away_odds_close,
+                                "odds_open": line.away_odds_open,
+                            }
+                        ),
                     }
                 )
                 repo.upsert_match(updated_row)
