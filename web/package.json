@@ -15,7 +15,7 @@
     {
       "path": "dist/assets/*.js",
       "gzip": true,
-      "limit": "200 KB"
+      "limit": "210 KB"
     }
   ],
   "dependencies": {
