@@ -304,9 +304,7 @@ def test_dashboard_season_accuracy_and_tips_default_to_zero(
     assert body["correctTips"] == 0
 
 
-def test_dashboard_attaches_prediction_to_next_fixture(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_dashboard_attaches_prediction_to_next_fixture(client: TestClient, tmp_path: Path) -> None:
     matches = [
         _make_match(
             50,
@@ -378,9 +376,7 @@ def test_dashboard_season_value_matches_request(client: TestClient, tmp_path: Pa
     assert resp.json()["season"] == 2025
 
 
-def test_dashboard_current_round_none_when_no_matches(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_dashboard_current_round_none_when_no_matches(client: TestClient, tmp_path: Path) -> None:
     mock_repo = MagicMock()
     mock_repo.list_matches.return_value = []
     store = PredictionStore(path=tmp_path / "p.db")

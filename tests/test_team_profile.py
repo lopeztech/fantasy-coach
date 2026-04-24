@@ -125,9 +125,7 @@ def test_recent_form_returns_correct_letters(client: TestClient) -> None:
 
 def test_recent_form_capped_at_10(client: TestClient) -> None:
     matches = [
-        _make_match(
-            i, i, home_id=10, away_id=20, home_score=20, away_score=10, offset_seconds=i
-        )
+        _make_match(i, i, home_id=10, away_id=20, home_score=20, away_score=10, offset_seconds=i)
         for i in range(1, 16)
     ]
     with patch("fantasy_coach.app._get_repo", return_value=_mock_repo(matches)):
@@ -140,9 +138,14 @@ def test_next_fixture_is_first_upcoming(client: TestClient) -> None:
     matches = [
         _make_match(1, 1, home_id=10, away_id=20, home_score=20, away_score=10, offset_seconds=0),
         _make_match(
-            2, 2, home_id=10, away_id=20,
-            home_score=None, away_score=None,
-            match_state="Upcoming", offset_seconds=1,
+            2,
+            2,
+            home_id=10,
+            away_id=20,
+            home_score=None,
+            away_score=None,
+            match_state="Upcoming",
+            offset_seconds=1,
         ),
     ]
     with patch("fantasy_coach.app._get_repo", return_value=_mock_repo(matches)):
@@ -168,9 +171,14 @@ def test_all_fixtures_contains_all_matches(client: TestClient) -> None:
     matches = [
         _make_match(1, 1, home_id=10, away_id=20, home_score=20, away_score=10, offset_seconds=0),
         _make_match(
-            2, 2, home_id=10, away_id=20,
-            home_score=None, away_score=None,
-            match_state="Upcoming", offset_seconds=1,
+            2,
+            2,
+            home_id=10,
+            away_id=20,
+            home_score=None,
+            away_score=None,
+            match_state="Upcoming",
+            offset_seconds=1,
         ),
     ]
     with patch("fantasy_coach.app._get_repo", return_value=_mock_repo(matches)):
@@ -193,9 +201,7 @@ def test_returns_404_when_team_not_in_season(client: TestClient) -> None:
 def test_elo_trend_up_after_wins(client: TestClient) -> None:
     # Team wins 3 in a row — Elo should trend up.
     matches = [
-        _make_match(
-            i, i, home_id=10, away_id=20, home_score=30, away_score=10, offset_seconds=i
-        )
+        _make_match(i, i, home_id=10, away_id=20, home_score=30, away_score=10, offset_seconds=i)
         for i in range(1, 4)
     ]
     with patch("fantasy_coach.app._get_repo", return_value=_mock_repo(matches)):
@@ -207,9 +213,7 @@ def test_elo_trend_up_after_wins(client: TestClient) -> None:
 def test_elo_trend_down_after_losses(client: TestClient) -> None:
     # Team loses 3 in a row — Elo should trend down.
     matches = [
-        _make_match(
-            i, i, home_id=10, away_id=20, home_score=10, away_score=30, offset_seconds=i
-        )
+        _make_match(i, i, home_id=10, away_id=20, home_score=10, away_score=30, offset_seconds=i)
         for i in range(1, 4)
     ]
     with patch("fantasy_coach.app._get_repo", return_value=_mock_repo(matches)):
