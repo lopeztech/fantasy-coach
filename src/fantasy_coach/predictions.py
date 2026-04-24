@@ -39,6 +39,16 @@ DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
 DEFAULT_LOGISTIC_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
 
+# Market-anchored shrinkage applied to the final home-win probability when the
+# bookmaker's de-vigged line is available for the match. Justification: the
+# #166 audit (docs/audits/player_strength_diff.md) measured 152 cases where
+# `player_strength_diff` and `odds_home_win_prob` disagreed on direction —
+# market won 56.6% vs PSD 43.4%. Anchoring the model 30% toward the market on
+# every priced match preserves direction on agreement (most common case) and
+# pulls disagreement cases toward the more-accurate signal. Tunable; raise if
+# we see persistent model-overrules-market regressions in production.
+MARKET_SHRINKAGE_WEIGHT = 0.3
+
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS predictions (
     season           INTEGER NOT NULL,
@@ -575,6 +585,37 @@ def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, An
     return None
 
 
+def _apply_market_shrinkage(
+    prob: float, x: Any, feature_names: tuple[str, ...]
+) -> tuple[float, float | None]:
+    """Blend the model's home-win probability with the bookmaker's implied prob.
+
+    Returns ``(final_prob, market_prob)`` where ``market_prob`` is None when
+    odds are unavailable for this match (in which case ``final_prob == prob``
+    and no shrinkage is applied). When odds are present, the blend is
+
+        final_prob = (1 - w) * prob + w * odds_home_win_prob
+
+    with ``w = MARKET_SHRINKAGE_WEIGHT``. See the constant's docstring for
+    why this exists.
+    """
+    try:
+        odds_idx = feature_names.index("odds_home_win_prob")
+        missing_idx = feature_names.index("missing_odds")
+    except ValueError:
+        return prob, None
+    import numpy as np  # noqa: PLC0415
+
+    raw = np.asarray(x, dtype=float).reshape(-1)
+    if len(raw) <= max(odds_idx, missing_idx):
+        return prob, None
+    if raw[missing_idx] > 0.5:
+        return prob, None
+    market = float(raw[odds_idx])
+    blended = (1.0 - MARKET_SHRINKAGE_WEIGHT) * prob + MARKET_SHRINKAGE_WEIGHT * market
+    return round(blended, 4), market
+
+
 def _bookmaker_pick_summary(x: Any, feature_names: tuple[str, ...]) -> PickSummary | None:
     """Derive a bookmaker-implied pick from the odds_home_win_prob feature.
 
@@ -761,7 +802,8 @@ def compute_predictions(
     predictions: list[PredictionOut] = []
     for match in sorted(round_matches, key=lambda m: (m.start_time, m.match_id)):
         x = np.asarray([builder.feature_row(match)], dtype=float)
-        prob = round(float(loaded.predict_home_win_prob(x)[0]), 4)
+        raw_prob = round(float(loaded.predict_home_win_prob(x)[0]), 4)
+        prob, _ = _apply_market_shrinkage(raw_prob, x, feature_names)
 
         # Build the three-way consensus alternatives (#140).
         logistic_pick: PickSummary | None = None

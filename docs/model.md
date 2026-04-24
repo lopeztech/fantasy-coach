@@ -738,6 +738,44 @@ in-memory EloMOV that replays the match history; a production
 `train-stacked` CLI would need a small EloMOV serialiser first.
 Filed as a follow-up if/when we decide to promote.
 
+## Player-strength cap + market shrinkage (#203)
+
+Two production-layer guards added after R8 2026 went 0/3, one of which
+(Tigers v Raiders) was the exact PSD-overrules-market failure mode flagged
+in #166. Both are off-the-shelf safety nets, not modelling changes — they
+sit at the feature-input and prediction-output boundaries respectively, so
+the underlying XGBoost / stacked / logistic model code is untouched.
+
+1. **`PLAYER_STRENGTH_DIFF_CAP = 1000.0`** in
+   `src/fantasy_coach/feature_engineering.py`. The audit measured
+   `std≈1988` and 82.5 % of holdout rows with `|PSD| > 500`. Capping at
+   `±1000` (~½σ) bounds extreme-value leverage without losing direction.
+   Applied uniformly at training and inference, so saved artefacts and
+   live predictions see the same distribution. The cap only affects the
+   long tails (~20 % of rows in the audit's holdout); most predictions are
+   unchanged.
+
+2. **`MARKET_SHRINKAGE_WEIGHT = 0.3`** in
+   `src/fantasy_coach/predictions.py`. After the model emits its raw
+   home-win probability, when `odds_home_win_prob` is present (i.e.
+   `missing_odds == 0.0`), the final probability is
+
+       final_prob = 0.7 · model_prob + 0.3 · odds_home_win_prob
+
+   `w = 0.3` is justified by the audit's Q4 result: in the 152 cases where
+   PSD and the market disagreed on direction, the market won 56.6 % vs
+   PSD's 43.4 %. Anchoring 30 % toward the market preserves direction on
+   agreement (the common case) and pulls disagreement cases toward the
+   more-accurate signal. Live R8 example: model = 0.457, market = 0.613,
+   blended = 0.504 — flips Tigers/Raiders from away to home, the correct
+   side. Tunable; raise if persistent model-overrules-market regressions
+   re-appear in production.
+
+The shrinkage is intentionally output-layer rather than baked into the
+model so the stored `contributions` array still reflects what the model
+itself "thought" — the UI shows the raw model attribution, with the blend
+documented as a separate post-processing step in this section.
+
 ## Retraining cadence & drift (#107)
 
 The production XGBoost artefact at

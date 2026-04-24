@@ -161,6 +161,14 @@ FEATURE_NAMES = (
 # matter because they're what changes the feature's signed direction across
 # matches. See the "Ablation notes — key-absence feature" in docs/model.md
 # for the flat-weights comparison.
+# Cap on |player_strength_diff| applied uniformly at training and inference.
+# The audit in docs/audits/player_strength_diff.md (#166) measured std≈1988 and
+# 82.5% of holdout rows with |PSD|>500 — extreme outliers (e.g. R8 2026
+# Tigers/Raiders at −1232) pulled XGBoost picks against the bookmaker, which
+# the same audit showed loses head-to-head with the market 43.4% vs 56.6%.
+# 1000 ≈ ½σ; preserves the directional signal while bounding leverage.
+PLAYER_STRENGTH_DIFF_CAP = 1000.0
+
 POSITION_WEIGHTS: dict[str, float] = {
     "Halfback": 3.0,
     "Hooker": 2.5,
@@ -390,7 +398,7 @@ class FeatureBuilder:
             key_abs_h - key_abs_a,
             adj_pf_h - adj_pf_a,
             adj_pa_h - adj_pa_a,
-            strength_h - strength_a,
+            max(-PLAYER_STRENGTH_DIFF_CAP, min(PLAYER_STRENGTH_DIFF_CAP, strength_h - strength_a)),
             missing_strength,
             odds_prob,
             missing_odds,
