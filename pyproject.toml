@@ -20,6 +20,7 @@ dependencies = [
     "firebase-admin>=6.5",
     "google-auth>=2.30",
     "xgboost>=3.2.0",
+    "optuna>=3.5",
 ]
 
 [build-system]

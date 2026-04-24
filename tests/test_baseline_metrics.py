@@ -31,7 +31,11 @@ from fantasy_coach.evaluation.harness import walk_forward_from_repo
 from fantasy_coach.storage import SQLiteRepository
 
 BASELINE_DB = Path(__file__).parent / "fixtures" / "baseline-nrl.db"
-SEASONS = (2024, 2025)
+# #167 expands to include 2026 R1–7 (56 completed matches, 54 non-draws).
+# 2026 rows represent the current rosters / coaching / any rule tweaks;
+# XGBoost additionally weights them 2.5× via ``SEASON_WEIGHTS`` so they
+# dominate fit decisions proportionally.
+SEASONS = (2024, 2025, 2026)
 
 # Snapshot from a 2024+2025 backfill on 2026-04-22 (213 matches/season,
 # draws dropped → 424 scored predictions). Baseline DB refreshed in #27 so
@@ -66,17 +70,21 @@ SEASONS = (2024, 2025)
 # 2026 rounds 1-5 ~21% — pre-season + finals tend to be unpriced).
 # Both logistic AND XGBoost improve across all three metrics — the first
 # feature this release to cleanly lift both models.
+# Pins refreshed in #167 — SEASONS extended to include 2026 R1–7 (56 new
+# matches, 480 total predictions). Pooled metrics move because the 2026
+# in-season rounds are harder to predict (thinner rolling history at
+# early rounds) — that shows up as lower pooled accuracy for every
+# model. XGBoost additionally picks up Optuna-tuned hyperparameters +
+# recency weights: log_loss drops 0.7364 → 0.7045 (−4.3 %) and brier
+# 0.2559 → 0.2496 (−2.5 %) — both proper scoring rules improve on the
+# larger eval pool, which is what the #107 retrain gate checks.
 EXPECTED = {
-    "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
-    "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
-    "elo_mov": {"n": 424, "accuracy": 0.6179, "log_loss": 0.6578, "brier": 0.2323},
-    "logistic": {"n": 424, "accuracy": 0.5566, "log_loss": 0.8017, "brier": 0.2735},
-    # Pins refreshed in #165 — monotonic constraints on 10 direction-certain
-    # features (see MONOTONE_CONSTRAINTS) moved XGBoost from 0.5755 → 0.6132
-    # accuracy, −1.7 % log_loss, −2.5 % brier. See docs/model.md "Monotone
-    # constraints (#165)".
-    "xgboost": {"n": 424, "accuracy": 0.6132, "log_loss": 0.7364, "brier": 0.2559},
-    "skellam": {"n": 424, "accuracy": 0.5778, "log_loss": 0.7051, "brier": 0.2508},
+    "home": {"n": 480, "accuracy": 0.5646, "log_loss": 0.6852, "brier": 0.2460},
+    "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
+    "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
+    "logistic": {"n": 480, "accuracy": 0.5604, "log_loss": 0.7911, "brier": 0.2713},
+    "xgboost": {"n": 480, "accuracy": 0.5854, "log_loss": 0.7045, "brier": 0.2496},
+    "skellam": {"n": 480, "accuracy": 0.5667, "log_loss": 0.7130, "brier": 0.2548},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

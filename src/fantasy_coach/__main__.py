@@ -93,6 +93,48 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    tu = sub.add_parser(
+        "tune-xgboost",
+        help=(
+            "Run Optuna (TPE) hyperparameter search over XGBoost (#167). "
+            "Writes the best parameters to artifacts/best_params.json which "
+            "train_xgboost + the walk-forward predictor both pick up "
+            "automatically on the next fit. --storage gives a SQLite URL "
+            "for resumable studies."
+        ),
+    )
+    tu.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        required=True,
+        help="Season(s) to include in training. Repeatable.",
+    )
+    tu.add_argument("--db", type=Path, default=Path("data/nrl.db"))
+    tu.add_argument("--n-trials", type=int, default=200)
+    tu.add_argument(
+        "--storage",
+        type=str,
+        default=None,
+        help="Optuna storage URL (e.g. sqlite:///artifacts/optuna.db). In-memory if omitted.",
+    )
+    tu.add_argument(
+        "--study-name",
+        type=str,
+        default="xgboost-hpo",
+    )
+    tu.add_argument(
+        "--out",
+        type=Path,
+        default=Path("artifacts/best_params.json"),
+        help="Where to write the tuned best-params JSON blob.",
+    )
+    tu.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     ev = sub.add_parser(
         "evaluate",
         help="Walk-forward evaluation across one or more models.",
@@ -320,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_merge_closing_lines(args)
     if args.command == "retrain":
         return _run_retrain(args)
+    if args.command == "tune-xgboost":
+        return _run_tune_xgboost(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -732,6 +776,57 @@ def _run_retrain(args: argparse.Namespace) -> int:
         f"reason={result.decision.reason!r}"
     )
     return 0 if result.promoted else 1
+
+
+def _run_tune_xgboost(args: argparse.Namespace) -> int:
+    """Walk-forward Optuna search over XGBoost hyperparameters (#167).
+
+    Training set = union of every ``--season`` arg from the provided DB.
+    Writes ``best_params.json`` so ``train_xgboost`` and ``XGBoostPredictor``
+    pick up the tuned config on the next fit — no other code changes
+    required for the retrain Job to benefit on its next Monday run.
+    """
+    from fantasy_coach.feature_engineering import build_training_frame  # noqa: PLC0415
+    from fantasy_coach.models.xgboost_model import (  # noqa: PLC0415
+        optuna_search,
+        save_best_params,
+    )
+
+    repo = SQLiteRepository(args.db)
+    try:
+        matches = []
+        for season in args.season:
+            matches.extend(repo.list_matches(season))
+    finally:
+        repo.close()
+
+    frame = build_training_frame(matches)
+    if frame.X.shape[0] == 0:
+        print(
+            f"error: no completed matches found in {args.db} for seasons {args.season}",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(
+        f"Tuning XGBoost on {frame.X.shape[0]} matches across seasons "
+        f"{sorted(args.season)} ({args.n_trials} trials, "
+        f"storage={args.storage or 'in-memory'})"
+    )
+    best = optuna_search(
+        frame,
+        n_trials=args.n_trials,
+        storage=args.storage,
+        study_name=args.study_name,
+    )
+    path = save_best_params(best, args.out)
+    print(f"Saved tuned parameters to {path}")
+    for key, value in sorted(best.items()):
+        if isinstance(value, float):
+            print(f"  {key:18s} = {value:.6g}")
+        else:
+            print(f"  {key:18s} = {value}")
+    return 0
 
 
 if __name__ == "__main__":
