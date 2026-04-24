@@ -12,10 +12,11 @@ Budget: 150 output tokens per match ≈ 2–3 sentences.  Eight matches/round ×
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from fantasy_coach.commentary.cache import CachingGeminiClient
+from fantasy_coach.commentary.cache import CachingGeminiClient, context_hash
 from fantasy_coach.feature_engineering import FEATURE_NAMES
 
 _SYSTEM = (
@@ -100,11 +101,13 @@ class PreviewGenerator:
     def generate(self, ctx: MatchContext) -> str:
         """Return a preview string; result is cached by matchId + modelVersion."""
         prompt = _build_prompt(ctx)
+        feature_hash = _context_hash(ctx)
         response = self._client.generate(
             prompt,
             system=_SYSTEM,
             max_output_tokens=self._max_output_tokens,
             ttl=self._ttl,
+            feature_snapshot_hash=feature_hash,
         )
         return response.text.strip()
 
@@ -162,3 +165,21 @@ def _top_drivers(ctx: MatchContext, n: int = 3) -> list[str]:
 
     scored.sort(reverse=True)
     return [label for _, label in scored[:n]]
+
+
+def _context_hash(ctx: MatchContext) -> str:
+    """SHA-8 fingerprint of MatchContext inputs for cache-entry auditing."""
+    payload = json.dumps(
+        {
+            "match_id": ctx.match_id,
+            "home": ctx.home_name,
+            "away": ctx.away_name,
+            "predicted_winner": ctx.predicted_winner,
+            "home_win_prob": round(ctx.home_win_prob, 4),
+            "model_version": ctx.model_version,
+            "venue": ctx.venue,
+            "feature_row": list(ctx.feature_row) if ctx.feature_row else None,
+        },
+        sort_keys=True,
+    )
+    return context_hash(payload)

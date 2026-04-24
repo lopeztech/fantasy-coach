@@ -116,8 +116,8 @@ def test_cache_hit_logs_hit_rate(caplog: pytest.LogCaptureFixture) -> None:
     cache.set("p", MODEL, FAKE_RESPONSE)
     with caplog.at_level(logging.INFO, logger="fantasy_coach.commentary.cache"):
         cache.get("p", MODEL)
-    assert "gemini_cache" in caplog.text
-    assert "status=hit" in caplog.text
+    assert "commentary_cache_hit" in caplog.text
+    assert "hit_rate=" in caplog.text
 
 
 def test_cache_invalidate_removes_entry() -> None:
@@ -125,6 +125,91 @@ def test_cache_invalidate_removes_entry() -> None:
     cache.set("p", MODEL, FAKE_RESPONSE)
     cache.invalidate("p", MODEL)
     assert cache.get("p", MODEL) is None
+
+
+def test_cache_version_mismatch_is_a_miss(monkeypatch: pytest.MonkeyPatch) -> None:
+    import fantasy_coach.commentary.cache as _mod
+
+    cache = ResponseCache()
+    cache.set("p", MODEL, FAKE_RESPONSE)
+    # Simulate a version bump — existing entry should be treated as a miss.
+    monkeypatch.setattr(_mod, "CACHE_KEY_VERSION", _mod.CACHE_KEY_VERSION + 1)
+    assert cache.get("p", MODEL) is None
+    assert cache.misses == 1
+
+
+def test_cache_clear_version_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    import fantasy_coach.commentary.cache as _mod
+
+    cache = ResponseCache()
+    cache.set("p", MODEL, FAKE_RESPONSE)
+    monkeypatch.setattr(_mod, "CACHE_KEY_VERSION", _mod.CACHE_KEY_VERSION + 1)
+    evicted = cache.clear_version_mismatch()
+    assert evicted == 1
+    assert len(cache._store) == 0
+
+
+def test_cache_clear_stale_by_age() -> None:
+    cache = ResponseCache()
+    # Manually set created_at far in the past.
+    cache.set("p", MODEL, FAKE_RESPONSE)
+    for entry in cache._store.values():
+        entry.__class__ = entry.__class__  # type workaround
+        object.__setattr__(entry, "created_at", 0.0) if hasattr(entry, "__dataclass_fields__") else None
+    # Access the entry dict directly to manipulate created_at.
+    key = next(iter(cache._store))
+    import dataclasses
+    old_entry = cache._store[key]
+    cache._store[key] = dataclasses.replace(old_entry, created_at=0.0)
+
+    evicted = cache.clear_stale(max_age_secs=1.0)
+    assert evicted == 1
+
+
+def test_cache_token_tracking() -> None:
+    cache = ResponseCache()
+    resp = GeminiResponse(text="test", input_tokens=100, output_tokens=50)
+    cache.set("p", MODEL, resp)
+    # Tokens counted on set.
+    assert cache.tokens_in_total == 100
+    assert cache.tokens_out_total == 50
+    # Tokens also counted on cache hit.
+    cache.get("p", MODEL)
+    assert cache.tokens_in_total == 200
+    assert cache.tokens_out_total == 100
+
+
+def test_cache_estimated_cost_usd() -> None:
+    cache = ResponseCache()
+    # 1000 input + 1000 output tokens.
+    resp = GeminiResponse(text="x", input_tokens=1000, output_tokens=1000)
+    cache.set("p", MODEL, resp)
+    cost = cache.estimated_cost_usd()
+    # $0.00025 in + $0.0005 out per 1K = $0.00075 total.
+    assert cost == pytest.approx(0.00075)
+
+
+def test_cache_summary_format() -> None:
+    cache = ResponseCache()
+    resp = GeminiResponse(text="x", input_tokens=50, output_tokens=10)
+    cache.set("p", MODEL, resp)
+    cache.get("p", MODEL)  # hit
+    cache.get("q", MODEL)  # miss
+    summary = cache.summary()
+    assert "commentary summary:" in summary
+    assert "2 requests" in summary
+    assert "1 cache hits" in summary
+    assert "est. cost" in summary
+
+
+def test_caching_client_passes_feature_hash() -> None:
+    calls: list[int] = []
+    client = _make_client(calls)
+    caching = CachingGeminiClient(client)
+    caching.generate("Who wins?", feature_snapshot_hash="abc12345")
+    # Verify entry stores the hash.
+    key = next(iter(caching.cache._store))
+    assert caching.cache._store[key].feature_snapshot_hash == "abc12345"
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +246,7 @@ def test_budget_logs_usage(caplog: pytest.LogCaptureFixture) -> None:
     budget = TokenBudget(daily_limit=1000)
     with caplog.at_level(logging.INFO, logger="fantasy_coach.commentary.cache"):
         budget.record_usage(100)
-    assert "gemini_budget" in caplog.text
+    assert "commentary_budget" in caplog.text
     assert "used=100" in caplog.text
 
 
