@@ -810,7 +810,10 @@ _teams_cache: dict[int, list[TeamOption]] = {}
     "/venues",
     response_model=list[VenueOut],
     summary="List all known NRL venues",
-    description="Returns venue name and city from the bundled venues.csv. Used by the client-side search index.",
+    description=(
+        "Returns venue name and city from the bundled venues.csv."
+        " Used by the client-side search index."
+    ),
 )
 def get_venues() -> list[VenueOut]:
     if not _VENUES_CSV.exists():
@@ -842,6 +845,9 @@ def get_teams(
     for m in all_matches:
         seen[m.home.team_id] = m.home.name
         seen[m.away.team_id] = m.away.name
-    teams = sorted([TeamOption(id=tid, name=name) for tid, name in seen.items()], key=lambda t: t.name)
+    teams = sorted(
+        [TeamOption(id=tid, name=name) for tid, name in seen.items()],
+        key=lambda t: t.name,
+    )
     _teams_cache[season] = teams
     return teams
