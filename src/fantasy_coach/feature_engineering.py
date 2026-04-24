@@ -98,6 +98,15 @@ FEATURE_NAMES = (
     # hadn't published a line yet). Lets the model learn a separate
     # intercept for "no market signal" rather than anchoring to 0.5.
     "missing_odds",
+    # Head-to-head matchup features (#168). Rolling last-5 encounters between
+    # these two clubs computed strictly before ``start_time`` (no leakage).
+    # Both expressed from the *current* home team's perspective.
+    # Neutral values (0.5 / 0.0) are emitted when fewer than
+    # H2H_MIN_ENCOUNTERS (3) prior meetings exist; ``missing_h2h`` flags
+    # those rows so the model can learn a distinct intercept.
+    "h2h_last5_home_win_rate",
+    "h2h_last5_avg_margin",
+    "missing_h2h",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -133,6 +142,9 @@ VENUE_WIN_WINDOW = 20
 ROLLING_WINDOW = 5
 ADJ_OPP_WINDOW = 10  # opponent's rolling window for adjusted-form baselines
 H2H_WINDOW = 3
+H2H_WINDOW_5 = 5  # wider window for win-rate + clipped-margin features
+H2H_MIN_ENCOUNTERS = 3  # fewer than this → emit neutral values + missing_h2h=1
+H2H_MARGIN_CLIP = 30  # clip h2h_last5_avg_margin to ±30 points
 DEFAULT_DAYS_REST = 14
 
 REF_WINDOW = 20  # rolling window for referee stats
@@ -178,6 +190,9 @@ class FeatureBuilder:
             lambda: deque(maxlen=ROLLING_WINDOW)
         )
         self._h2h: dict[tuple[int, int], deque[int]] = defaultdict(lambda: deque(maxlen=H2H_WINDOW))
+        self._h2h5: dict[tuple[int, int], deque[int]] = defaultdict(
+            lambda: deque(maxlen=H2H_WINDOW_5)
+        )
         self._current_season: int | None = None
         # Venue-level rolling stats (keyed by lower-cased venue name).
         self._venue_total: dict[str, deque[int]] = defaultdict(
@@ -228,6 +243,9 @@ class FeatureBuilder:
         rest_a = _days_since(self._last_played.get(a_id), match.start_time)
         h2h_avg = _avg(self._h2h[_h2h_key(h_id, a_id)])
         h2h_recent = h2h_avg if h_id <= a_id else -h2h_avg
+        h2h_last5_win_rate, h2h_last5_margin, missing_h2h = _h2h_last5_features(
+            self._h2h5[_h2h_key(h_id, a_id)], h_id, a_id
+        )
         tkm, ttz, tbb = travel_features(
             self._last_venue.get(h_id),
             self._last_venue.get(a_id),
@@ -279,6 +297,9 @@ class FeatureBuilder:
             missing_strength,
             odds_prob,
             missing_odds,
+            h2h_last5_win_rate,
+            h2h_last5_margin,
+            missing_h2h,
         ]
 
     def _player_strength(self, players: list[PlayerRow]) -> tuple[float, bool]:
@@ -464,7 +485,9 @@ class FeatureBuilder:
         self._points_for[a_id].append(a_score)
         self._points_against[h_id].append(a_score)
         self._points_against[a_id].append(h_score)
-        self._h2h[_h2h_key(h_id, a_id)].append(_signed_h2h(h_id, a_id, h_score, a_score))
+        _signed = _signed_h2h(h_id, a_id, h_score, a_score)
+        self._h2h[_h2h_key(h_id, a_id)].append(_signed)
+        self._h2h5[_h2h_key(h_id, a_id)].append(_signed)
         self._last_played[h_id] = match.start_time
         self._last_played[a_id] = match.start_time
         self._last_venue[h_id] = match.venue
@@ -625,6 +648,31 @@ def _signed_h2h(home_id: int, away_id: int, home_score: int, away_score: int) ->
     if home_id <= away_id:
         return home_score - away_score
     return away_score - home_score
+
+
+def _h2h_last5_features(
+    h2h5: deque[int],
+    home_id: int,
+    away_id: int,
+) -> tuple[float, float, float]:
+    """Return (win_rate, avg_margin, missing_flag) for H2H last-5 encounters.
+
+    Values stored in h2h5 are from the lower-team-id's perspective.
+    We flip the sign when the current home team has the higher team_id so that
+    both outputs are always from the *current* home team's perspective.
+
+    Neutral values (0.5 / 0.0) are returned and missing_flag=1.0 when fewer
+    than H2H_MIN_ENCOUNTERS entries exist.
+    """
+    entries = list(h2h5)
+    if len(entries) < H2H_MIN_ENCOUNTERS:
+        return 0.5, 0.0, 1.0
+    sign = 1 if home_id <= away_id else -1
+    margins = [sign * e for e in entries]
+    win_rate = sum(1 for m in margins if m > 0) / len(margins)
+    avg_margin = float(sum(margins)) / len(margins)
+    avg_margin = max(-H2H_MARGIN_CLIP, min(H2H_MARGIN_CLIP, avg_margin))
+    return win_rate, avg_margin, 0.0
 
 
 def _penalty_diff(match: MatchRow) -> float | None:

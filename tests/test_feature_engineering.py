@@ -4,6 +4,7 @@ import random
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+import pytest
 
 from fantasy_coach.feature_engineering import (
     FEATURE_NAMES,
@@ -196,3 +197,141 @@ def test_unfinished_matches_are_excluded() -> None:
         ]
     )
     assert frame.X.shape == (0, len(FEATURE_NAMES))
+
+
+# ---------------------------------------------------------------------------
+# H2H last-5 features (#168)
+# ---------------------------------------------------------------------------
+
+
+def test_h2h_last5_neutral_on_first_meeting() -> None:
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    frame = build_training_frame(
+        [_match(match_id=1, home_id=10, away_id=20, home_score=24, away_score=18, when=base)]
+    )
+    row = dict(zip(FEATURE_NAMES, frame.X[0], strict=True))
+    assert row["h2h_last5_home_win_rate"] == 0.5
+    assert row["h2h_last5_avg_margin"] == 0.0
+    assert row["missing_h2h"] == 1.0
+
+
+def test_h2h_last5_neutral_when_fewer_than_3_encounters() -> None:
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    matches = [
+        _match(match_id=1, home_id=10, away_id=20, home_score=24, away_score=18, when=base),
+        _match(
+            match_id=2,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=14,
+            when=base + timedelta(days=7),
+        ),
+        # Third meeting — should still be missing since we need >= 3 PRIOR encounters.
+        _match(
+            match_id=3,
+            home_id=10,
+            away_id=20,
+            home_score=30,
+            away_score=10,
+            when=base + timedelta(days=14),
+        ),
+    ]
+    frame = build_training_frame(matches)
+    rows = [dict(zip(FEATURE_NAMES, frame.X[i], strict=True)) for i in range(3)]
+    # First two meetings: 0 and 1 prior encounters → missing.
+    assert rows[0]["missing_h2h"] == 1.0
+    assert rows[1]["missing_h2h"] == 1.0
+    # Third meeting: 2 prior encounters → still below H2H_MIN_ENCOUNTERS=3 → missing.
+    assert rows[2]["missing_h2h"] == 1.0
+
+
+def test_h2h_last5_populated_after_3_encounters() -> None:
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    # Build up 3 prior meetings, then check the 4th.
+    matches = [
+        _match(match_id=1, home_id=10, away_id=20, home_score=30, away_score=10, when=base),
+        _match(
+            match_id=2,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=20,  # draw → dropped from training frame, still recorded
+            when=base + timedelta(days=7),
+        ),
+        _match(
+            match_id=3,
+            home_id=10,
+            away_id=20,
+            home_score=18,
+            away_score=16,
+            when=base + timedelta(days=14),
+        ),
+        _match(
+            match_id=4,
+            home_id=10,
+            away_id=20,
+            home_score=26,
+            away_score=12,
+            when=base + timedelta(days=21),
+        ),
+    ]
+    frame = build_training_frame(matches)
+    # frame has 3 rows (draw is dropped).  The last row corresponds to match 4.
+    last = dict(zip(FEATURE_NAMES, frame.X[-1], strict=True))
+    assert last["missing_h2h"] == 0.0
+    # 3 prior encounters (margins from home's perspective: +20, 0, +2).
+    # win_rate = 2/3 (drew counts as non-win), avg_margin = (20+0+2)/3 = 7.33
+    assert last["h2h_last5_home_win_rate"] == pytest.approx(2 / 3)
+    assert last["h2h_last5_avg_margin"] == pytest.approx(22 / 3, abs=0.01)
+
+
+def test_h2h_last5_home_perspective_swaps_with_venue() -> None:
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    # Build 5 meetings where team 10 always beats team 20 by 20 at home.
+    prior = [
+        _match(
+            match_id=i,
+            home_id=10,
+            away_id=20,
+            home_score=30,
+            away_score=10,
+            when=base + timedelta(days=(i - 1) * 7),
+        )
+        for i in range(1, 6)
+    ]
+    # 6th meeting: 20 is now home. All 5 prior meetings were wins for 10 (away).
+    sixth = _match(
+        match_id=6,
+        home_id=20,
+        away_id=10,
+        home_score=16,
+        away_score=24,
+        when=base + timedelta(days=35),
+    )
+    frame = build_training_frame([*prior, sixth])
+    last = dict(zip(FEATURE_NAMES, frame.X[-1], strict=True))
+    assert last["missing_h2h"] == 0.0
+    # From team 20's (home) perspective, every prior meeting was a -20 loss.
+    assert last["h2h_last5_home_win_rate"] == pytest.approx(0.0)
+    assert last["h2h_last5_avg_margin"] == pytest.approx(-20.0)
+
+
+def test_h2h_last5_margin_clipped_to_30() -> None:
+    base = datetime(2024, 3, 1, tzinfo=UTC)
+    # 5 blowout wins by home team: margin = 60.
+    matches = [
+        _match(
+            match_id=i,
+            home_id=10,
+            away_id=20,
+            home_score=70,
+            away_score=10,
+            when=base + timedelta(days=(i - 1) * 7),
+        )
+        for i in range(1, 7)
+    ]
+    frame = build_training_frame(matches)
+    last = dict(zip(FEATURE_NAMES, frame.X[-1], strict=True))
+    assert last["missing_h2h"] == 0.0
+    assert last["h2h_last5_avg_margin"] == pytest.approx(30.0)  # clipped from 60
