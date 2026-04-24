@@ -1,4 +1,5 @@
 import { getFirebaseAuth, API_BASE_URL } from "./firebase";
+import type { DashboardOut } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -15,6 +16,17 @@ export class NotSignedInError extends Error {
     super("Sign in required");
     this.name = "NotSignedInError";
   }
+}
+
+export async function getDashboard(
+  season: number,
+  favouriteTeamId?: number | null,
+): Promise<DashboardOut> {
+  const params = new URLSearchParams({ season: String(season) });
+  if (favouriteTeamId != null) {
+    params.set("favourite_team_id", String(favouriteTeamId));
+  }
+  return apiFetch<DashboardOut>(`/me/dashboard?${params.toString()}`);
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

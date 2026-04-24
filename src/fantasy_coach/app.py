@@ -1,6 +1,7 @@
 import os
+import time
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -75,6 +76,29 @@ class TeamFormHistory(BaseModel):
     matches: list[TeamFormEntry]
 
 
+class TeamProfile(BaseModel):
+    teamId: int
+    teamName: str
+    season: int
+    currentRecord: dict  # {"wins": n, "losses": n, "draws": n}
+    currentElo: float
+    eloTrend: str  # "up" | "down" | "flat"
+    recentForm: list[str]  # last 10 results as "W"/"L"/"D"
+    nextFixture: dict | None  # next upcoming match details
+    allFixtures: list[dict]  # all fixtures in season
+
+
+class DashboardOut(BaseModel):
+    season: int
+    currentRound: int | None
+    favouriteTeamId: int | None
+    nextFixture: dict | None
+    untippedMatchIds: list[int]
+    seasonAccuracy: float | None
+    totalTips: int
+    correctTips: int
+
+
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
     "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
@@ -115,6 +139,14 @@ app.add_middleware(
 # Module-level singletons — created lazily on first use.
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
+
+# In-process cache for team profile responses: key=(team_id, season), value=(timestamp, data)
+_PROFILE_CACHE_TTL = 60  # seconds
+_profile_cache: dict[tuple[int, int], tuple[float, TeamProfile]] = {}
+
+# In-process cache for dashboard responses: key=(uid, season), value=(timestamp, data)
+_DASHBOARD_CACHE_TTL = 60  # seconds
+_dashboard_cache: dict[tuple[str, int], tuple[float, DashboardOut]] = {}
 
 
 def _get_store() -> PredictionStore | FirestorePredictionStore:
@@ -425,3 +457,337 @@ def get_team_form(
         season=season,
         matches=entries[-last:],
     )
+
+
+@app.get(
+    "/teams/{team_id}/profile",
+    response_model=TeamProfile,
+    summary="Team profile: record, Elo trend, recent form, and fixtures",
+    description=(
+        "Returns a team's season record, current Elo rating with trend, "
+        "last-10-match form string, next upcoming fixture (with prediction if cached), "
+        "and a full list of season fixtures."
+    ),
+)
+def get_team_profile(
+    team_id: int,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+) -> TeamProfile:
+    # Serve from in-process cache if still fresh.
+    cache_key = (team_id, season)
+    cached_entry = _profile_cache.get(cache_key)
+    if cached_entry is not None:
+        ts, cached_profile = cached_entry
+        if time.monotonic() - ts < _PROFILE_CACHE_TTL:
+            return cached_profile
+
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    # Sort chronologically to walk forward for Elo computation.
+    sorted_matches = sorted(all_matches, key=lambda m: (m.start_time, m.match_id))
+
+    elo = EloMOV()
+    team_name = ""
+    wins = losses = draws = 0
+    form_entries: list[str] = []  # "W"/"L"/"D" for completed matches
+    all_fixtures: list[dict] = []
+    completed_entries: list[dict] = []  # for Elo trend (last 3)
+
+    for m in sorted_matches:
+        is_home = m.home.team_id == team_id
+        is_away = m.away.team_id == team_id
+        if not (is_home or is_away):
+            # Still update Elo for all teams to keep ratings accurate.
+            if (
+                m.match_state == "FullTime"
+                and m.home.score is not None
+                and m.away.score is not None
+            ):
+                elo.update(m.home.team_id, m.away.team_id, m.home.score, m.away.score)
+            continue
+
+        # Resolve team name on first encounter.
+        if not team_name:
+            team_name = m.home.name if is_home else m.away.name
+
+        opp_id = m.away.team_id if is_home else m.home.team_id
+        opp_name = m.away.name if is_home else m.home.name
+
+        if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None:
+            elo.update(m.home.team_id, m.away.team_id, m.home.score, m.away.score)
+
+            score = m.home.score if is_home else m.away.score
+            opp_score = m.away.score if is_home else m.home.score
+
+            if score > opp_score:
+                wins += 1
+                form_char = "W"
+            elif score < opp_score:
+                losses += 1
+                form_char = "L"
+            else:
+                draws += 1
+                form_char = "D"
+
+            form_entries.append(form_char)
+            elo_after = round(elo.rating(team_id), 1)
+            completed_entries.append({"elo": elo_after})
+
+            all_fixtures.append(
+                {
+                    "round": m.round,
+                    "matchId": m.match_id,
+                    "opponent": opp_name,
+                    "opponentId": opp_id,
+                    "isHome": is_home,
+                    "kickoff": m.start_time.isoformat(),
+                    "result": form_char,
+                    "score": score,
+                    "opponentScore": opp_score,
+                }
+            )
+        else:
+            all_fixtures.append(
+                {
+                    "round": m.round,
+                    "matchId": m.match_id,
+                    "opponent": opp_name,
+                    "opponentId": opp_id,
+                    "isHome": is_home,
+                    "kickoff": m.start_time.isoformat(),
+                    "result": None,
+                    "score": None,
+                    "opponentScore": None,
+                }
+            )
+
+    if not team_name:
+        raise HTTPException(status_code=404, detail=f"Team {team_id} not found in season {season}")
+
+    # Elo trend based on last 3 completed matches.
+    current_elo = round(elo.rating(team_id), 1)
+    if len(completed_entries) >= 2:
+        elo_now = completed_entries[-1]["elo"]
+        elo_before = (
+            completed_entries[-3]["elo"]
+            if len(completed_entries) >= 3
+            else completed_entries[-2]["elo"]
+        )
+        if elo_now > elo_before + 1:
+            elo_trend = "up"
+        elif elo_now < elo_before - 1:
+            elo_trend = "down"
+        else:
+            elo_trend = "flat"
+    else:
+        elo_trend = "flat"
+
+    # Last 10 results as form pills.
+    recent_form = form_entries[-10:]
+
+    # Next fixture: first match not yet FullTime for this team.
+    next_fixture: dict | None = None
+    for fixture in all_fixtures:
+        if fixture["result"] is None:
+            pred_winner = None
+            pred_prob = None
+            try:
+                preds = _get_store().get(season, fixture["round"])
+                for pred in preds:
+                    if pred.matchId == fixture["matchId"]:
+                        pred_winner = pred.predictedWinner
+                        pred_prob = pred.homeWinProbability
+                        break
+            except Exception:
+                pass
+            next_fixture = {
+                "matchId": fixture["matchId"],
+                "round": fixture["round"],
+                "opponent": fixture["opponent"],
+                "opponentId": fixture["opponentId"],
+                "isHome": fixture["isHome"],
+                "kickoff": fixture["kickoff"],
+                "predWinner": pred_winner,
+                "predProb": pred_prob,
+            }
+            break
+
+    # Enrich upcoming fixtures in allFixtures with predictions.
+    try:
+        upcoming_rounds: dict[int, list[dict]] = {}
+        for fixture in all_fixtures:
+            if fixture["result"] is None:
+                upcoming_rounds.setdefault(fixture["round"], []).append(fixture)
+        for round_num, fixtures_in_round in upcoming_rounds.items():
+            try:
+                preds = _get_store().get(season, round_num)
+                pred_map = {p.matchId: p for p in preds}
+                for fixture in fixtures_in_round:
+                    pred = pred_map.get(fixture["matchId"])
+                    if pred:
+                        fixture["predWinner"] = pred.predictedWinner
+                        fixture["predProb"] = pred.homeWinProbability
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    profile = TeamProfile(
+        teamId=team_id,
+        teamName=team_name,
+        season=season,
+        currentRecord={"wins": wins, "losses": losses, "draws": draws},
+        currentElo=current_elo,
+        eloTrend=elo_trend,
+        recentForm=recent_form,
+        nextFixture=next_fixture,
+        allFixtures=all_fixtures,
+    )
+
+    _profile_cache[cache_key] = (time.monotonic(), profile)
+    return profile
+
+
+def _require_auth(request: Request) -> str:
+    uid: str | None = getattr(request.state, "uid", None)
+    return uid if uid is not None else "__dev__"
+
+
+@app.get(
+    "/me/dashboard",
+    response_model=DashboardOut,
+    summary="Personalised dashboard for the authenticated user",
+    description=(
+        "Returns the current round, upcoming untipped matches, next fixture "
+        "for the user's favourite team, and season-to-date tipping accuracy."
+    ),
+)
+def get_dashboard(
+    request: Request,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+    favourite_team_id: int | None = Query(
+        default=None, description="Team ID to use for next-fixture lookup"
+    ),
+) -> DashboardOut:
+    uid = _require_auth(request)
+    cache_key = (uid, season)
+    cached_entry = _dashboard_cache.get(cache_key)
+    if cached_entry is not None:
+        ts, cached_dash = cached_entry
+        if time.monotonic() - ts < _DASHBOARD_CACHE_TTL:
+            return cached_dash
+
+    try:
+        matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    # Determine current round: lowest round with at least one non-FullTime match,
+    # falling back to the highest round seen when all matches are complete.
+    rounds_with_upcoming: list[int] = []
+    all_rounds: list[int] = []
+    for m in matches:
+        all_rounds.append(m.round)
+        if m.match_state != "FullTime":
+            rounds_with_upcoming.append(m.round)
+
+    if rounds_with_upcoming:
+        current_round: int | None = min(rounds_with_upcoming)
+    elif all_rounds:
+        current_round = max(all_rounds)
+    else:
+        current_round = None
+
+    # Untipped = current-round matches that have no stored prediction.
+    untipped_match_ids: list[int] = []
+    if current_round is not None:
+        current_round_matches = [m for m in matches if m.round == current_round]
+        try:
+            preds = _get_store().get(season, current_round)
+            tipped_ids = {p.matchId for p in preds}
+        except Exception:
+            tipped_ids = set()
+        untipped_match_ids = [
+            m.match_id for m in current_round_matches if m.match_id not in tipped_ids
+        ]
+
+    # Season-to-date tipping accuracy: compare stored predictions to FullTime results.
+    total_tips = 0
+    correct_tips = 0
+    completed = [
+        m
+        for m in matches
+        if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None
+    ]
+    completed_rounds = {m.round for m in completed}
+    for rnd in completed_rounds:
+        try:
+            preds = _get_store().get(season, rnd)
+        except Exception:
+            continue
+        result_map = {
+            m.match_id: ("home" if m.home.score > m.away.score else "away")  # type: ignore[operator]
+            for m in completed
+            if m.round == rnd
+        }
+        for p in preds:
+            if p.matchId in result_map:
+                total_tips += 1
+                if p.predictedWinner == result_map[p.matchId]:
+                    correct_tips += 1
+
+    season_accuracy = correct_tips / total_tips if total_tips > 0 else None
+
+    # Next fixture for favourite team.
+    next_fixture: dict | None = None
+    if favourite_team_id is not None:
+        sorted_matches = sorted(matches, key=lambda m: (m.start_time, m.match_id))
+        for m in sorted_matches:
+            is_home = m.home.team_id == favourite_team_id
+            is_away = m.away.team_id == favourite_team_id
+            if not (is_home or is_away):
+                continue
+            if m.match_state == "FullTime":
+                continue
+            opp_name = m.away.name if is_home else m.home.name
+            opp_id = m.away.team_id if is_home else m.home.team_id
+            pred_winner = None
+            pred_prob = None
+            try:
+                preds = _get_store().get(season, m.round)
+                for pred in preds:
+                    if pred.matchId == m.match_id:
+                        pred_winner = pred.predictedWinner
+                        pred_prob = pred.homeWinProbability
+                        break
+            except Exception:
+                pass
+            next_fixture = {
+                "matchId": m.match_id,
+                "round": m.round,
+                "season": season,
+                "opponent": opp_name,
+                "opponentId": opp_id,
+                "isHome": is_home,
+                "kickoff": m.start_time.isoformat(),
+                "predWinner": pred_winner,
+                "predProb": pred_prob,
+            }
+            break
+
+    dashboard = DashboardOut(
+        season=season,
+        currentRound=current_round,
+        favouriteTeamId=favourite_team_id,
+        nextFixture=next_fixture,
+        untippedMatchIds=untipped_match_ids,
+        seasonAccuracy=season_accuracy,
+        totalTips=total_tips,
+        correctTips=correct_tips,
+    )
+
+    _dashboard_cache[cache_key] = (time.monotonic(), dashboard)
+    return dashboard
