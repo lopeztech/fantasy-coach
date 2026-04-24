@@ -262,8 +262,7 @@ greatly exceeds the other. Values > 500 Elo points are extreme and worth checkin
             )
         else:
             print(
-                f"\n✓ Only {extreme_frac:.1%} of rows have |PSD| > 500"
-                " — feature scale is healthy."
+                f"\n✓ Only {extreme_frac:.1%} of rows have |PSD| > 500 — feature scale is healthy."
             )
 
     # -----------------------------------------------------------------------
