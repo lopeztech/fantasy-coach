@@ -4,7 +4,10 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import Accuracy from "./routes/Accuracy";
 import App from "./App";
+import GroupDetail from "./routes/GroupDetail";
+import Groups from "./routes/Groups";
 import Home from "./routes/Home";
+import Leaderboard from "./routes/Leaderboard";
 import MatchDetail from "./routes/MatchDetail";
 import Round from "./routes/Round";
 import Scoreboard from "./routes/Scoreboard";
@@ -22,6 +25,9 @@ const router = createBrowserRouter([
       { path: "scoreboard", element: <Scoreboard /> },
       { path: "accuracy", element: <Accuracy /> },
       { path: "team/:teamId", element: <Team /> },
+      { path: "leaderboard", element: <Leaderboard /> },
+      { path: "groups", element: <Groups /> },
+      { path: "groups/:gid", element: <GroupDetail /> },
     ],
   },
 ]);

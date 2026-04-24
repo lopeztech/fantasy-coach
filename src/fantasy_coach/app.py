@@ -138,7 +138,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
     max_age=600,
 )
@@ -669,6 +669,47 @@ class NotificationSubscribeIn(BaseModel):
     timezone: str | None = None  # IANA timezone string, e.g. "Australia/Sydney"
 
 
+# ---------------------------------------------------------------------------
+# Groups / Leaderboard models
+# ---------------------------------------------------------------------------
+
+
+class GroupIn(BaseModel):
+    name: str
+
+
+class GroupOut(BaseModel):
+    gid: str
+    name: str
+    inviteCode: str
+    ownerUid: str
+    memberCount: int
+    createdAt: str | None = None
+
+
+class JoinGroupIn(BaseModel):
+    inviteCode: str
+
+
+class LeaderboardEntry(BaseModel):
+    rank: int
+    uid: str
+    displayName: str
+    wins: int
+    losses: int
+    totalTips: int
+    accuracy: float
+    marginPoints: float
+    currentStreak: int
+    longestStreak: int
+
+
+class LeaderboardOut(BaseModel):
+    season: int
+    groupId: str | None
+    entries: list[LeaderboardEntry]
+
+
 @app.get(
     "/me/dashboard",
     response_model=DashboardOut,
@@ -897,3 +938,217 @@ def notifications_subscribe(
         },
         merge=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Groups + Leaderboard endpoints (#173)
+# ---------------------------------------------------------------------------
+
+_GROUP_MAX_SIZE = 100
+
+
+def _require_firestore(operation: str):
+    """Raise 503 if not running against Firestore."""
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        raise HTTPException(
+            status_code=503,
+            detail=f"{operation} requires STORAGE_BACKEND=firestore",
+        )
+
+
+def _get_firestore_client():
+    try:
+        from google.cloud import firestore  # noqa: PLC0415
+
+        project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        return firestore.Client(project=project)
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="Firestore SDK not available") from exc
+
+
+def _make_invite_code() -> str:
+    import random  # noqa: PLC0415
+    import string  # noqa: PLC0415
+
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+@app.post(
+    "/groups",
+    response_model=GroupOut,
+    summary="Create a new tipping group",
+    status_code=201,
+)
+def create_group(request: Request, body: GroupIn) -> GroupOut:
+    _require_firestore("create_group")
+    uid = _require_auth(request)
+    db = _get_firestore_client()
+    invite_code = _make_invite_code()
+    from google.cloud import firestore as _fs  # noqa: PLC0415
+
+    _, ref = db.collection("groups").add(
+        {
+            "name": body.name,
+            "owner_uid": uid,
+            "invite_code": invite_code,
+            "member_count": 1,
+            "created_at": _fs.SERVER_TIMESTAMP,
+        }
+    )
+    gid = ref.id
+    # Add owner as first member.
+    ref.collection("members").document(uid).set(
+        {"joined_at": _fs.SERVER_TIMESTAMP, "display_name_snapshot": ""}
+    )
+    # Mirror to user's groups sub-collection.
+    db.collection("users").document(uid).collection("groups").document(gid).set(
+        {"name": body.name, "joined_at": _fs.SERVER_TIMESTAMP}
+    )
+    return GroupOut(
+        gid=gid,
+        name=body.name,
+        inviteCode=invite_code,
+        ownerUid=uid,
+        memberCount=1,
+    )
+
+
+@app.post(
+    "/groups/{gid}/join",
+    response_model=GroupOut,
+    summary="Join a group by invite code",
+)
+def join_group(request: Request, gid: str, body: JoinGroupIn) -> GroupOut:
+    _require_firestore("join_group")
+    uid = _require_auth(request)
+    db = _get_firestore_client()
+    from google.cloud import firestore as _fs  # noqa: PLC0415
+
+    group_ref = db.collection("groups").document(gid)
+    group_snap = group_ref.get()
+    if not group_snap.exists:
+        raise HTTPException(status_code=404, detail="Group not found")
+    data = group_snap.to_dict()
+    if data.get("invite_code") != body.inviteCode:
+        raise HTTPException(status_code=403, detail="Invalid invite code")
+    if data.get("member_count", 0) >= _GROUP_MAX_SIZE:
+        raise HTTPException(status_code=422, detail="Group is full (max 100 members)")
+    member_ref = group_ref.collection("members").document(uid)
+    if member_ref.get().exists:
+        # Already a member — idempotent.
+        return GroupOut(
+            gid=gid,
+            name=data["name"],
+            inviteCode=data["invite_code"],
+            ownerUid=data["owner_uid"],
+            memberCount=data.get("member_count", 1),
+        )
+    member_ref.set({"joined_at": _fs.SERVER_TIMESTAMP, "display_name_snapshot": ""})
+    group_ref.update({"member_count": _fs.Increment(1)})
+    db.collection("users").document(uid).collection("groups").document(gid).set(
+        {"name": data["name"], "joined_at": _fs.SERVER_TIMESTAMP}
+    )
+    return GroupOut(
+        gid=gid,
+        name=data["name"],
+        inviteCode=data["invite_code"],
+        ownerUid=data["owner_uid"],
+        memberCount=data.get("member_count", 1) + 1,
+    )
+
+
+@app.post(
+    "/groups/{gid}/leave",
+    summary="Leave a group",
+    status_code=204,
+)
+def leave_group(request: Request, gid: str) -> None:
+    _require_firestore("leave_group")
+    uid = _require_auth(request)
+    db = _get_firestore_client()
+    from google.cloud import firestore as _fs  # noqa: PLC0415
+
+    group_ref = db.collection("groups").document(gid)
+    group_snap = group_ref.get()
+    if not group_snap.exists:
+        raise HTTPException(status_code=404, detail="Group not found")
+    member_ref = group_ref.collection("members").document(uid)
+    if member_ref.get().exists:
+        member_ref.delete()
+        group_ref.update({"member_count": _fs.Increment(-1)})
+    db.collection("users").document(uid).collection("groups").document(gid).delete()
+
+
+@app.get(
+    "/leaderboard",
+    response_model=LeaderboardOut,
+    summary="Tipping leaderboard",
+    description=(
+        "Returns the top 50 tippers for the season ordered by accuracy (tiebreak: "
+        "margin_points ascending, then display name). Reads from pre-aggregated "
+        "`users/{uid}/stats` documents written by match_sync when results land. "
+        "Optionally filter to a group via `group_id`."
+    ),
+)
+def get_leaderboard(
+    request: Request,
+    season: int = Query(..., description="NRL season year"),
+    group_id: str | None = Query(default=None),
+) -> LeaderboardOut:
+    _require_firestore("get_leaderboard")
+    _require_auth(request)
+    db = _get_firestore_client()
+
+    if group_id:
+        # Collect UIDs in this group, then look up their stats.
+        member_docs = db.collection("groups").document(group_id).collection("members").stream()
+        member_uids = [d.id for d in member_docs]
+        if not member_uids:
+            return LeaderboardOut(season=season, groupId=group_id, entries=[])
+        stats_docs = []
+        # Firestore `in` operator supports up to 30 values; chunk if needed.
+        for i in range(0, len(member_uids), 30):
+            chunk = member_uids[i : i + 30]
+            q = (
+                db.collection_group("stats")
+                .where("season", "==", season)
+                .where("__name__", "in", chunk)
+            )
+            stats_docs.extend(q.stream())
+    else:
+        # Global top-50.
+        stats_docs = list(
+            db.collection_group("stats")
+            .where("season", "==", season)
+            .order_by("accuracy", direction="DESCENDING")
+            .limit(50)
+            .stream()
+        )
+
+    entries: list[LeaderboardEntry] = []
+    for doc in stats_docs:
+        d = doc.to_dict()
+        total = d.get("total_tips", 0)
+        wins = d.get("wins", 0)
+        acc = wins / total if total > 0 else 0.0
+        entries.append(
+            LeaderboardEntry(
+                rank=0,  # assigned after sort
+                uid=doc.reference.parent.parent.id,
+                displayName=d.get("display_name", "Tipster"),
+                wins=wins,
+                losses=d.get("losses", 0),
+                totalTips=total,
+                accuracy=acc,
+                marginPoints=d.get("margin_points", 0.0),
+                currentStreak=d.get("current_streak", 0),
+                longestStreak=d.get("longest_streak", 0),
+            )
+        )
+
+    entries.sort(key=lambda e: (-e.accuracy, e.marginPoints, e.displayName))
+    for i, entry in enumerate(entries[:50], start=1):
+        entry = entry.model_copy(update={"rank": i})
+        entries[i - 1] = entry
+
+    return LeaderboardOut(season=season, groupId=group_id, entries=entries[:50])
