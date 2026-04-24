@@ -83,21 +83,20 @@ EXPECTED = {
     "home": {"n": 480, "accuracy": 0.5646, "log_loss": 0.6852, "brier": 0.2460},
     "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
     "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
-    # #160 adds rolling_kick_metres_diff + rolling_kick_return_metres_diff +
-    # rolling_line_breaks_diff + rolling_all_runs_diff + missing_team_stats
-    # (team-stat proxies for player-level contribution signals, rolling-5).
-    # Logistic regresses slightly (same sparse-feature noise pattern as #108 /
-    # #168) — expected to improve once the 2023 backfill (#158) provides more
-    # rolling-stat history. XGBoost gains +3.54 pp accuracy, −0.017 log_loss,
-    # −0.008 brier — tree-based models extract real signal from the 2024–2026
-    # team-stat data available in the baseline DB.
-    # Skellam accuracy regresses -0.83 pp; log_loss/brier essentially unchanged.
-    # Stacked regresses modestly because it wraps logistic + skellam.
-    "logistic": {"n": 480, "accuracy": 0.5667, "log_loss": 0.8754, "brier": 0.2809},
-    "xgboost": {"n": 480, "accuracy": 0.6146, "log_loss": 0.6936, "brier": 0.2454},
-    "skellam": {"n": 480, "accuracy": 0.5667, "log_loss": 0.7119, "brier": 0.2538},
-    # #160: stacked regresses modestly alongside logistic/skellam (−0.002 acc).
-    "stacked": {"n": 480, "accuracy": 0.5875, "log_loss": 0.6845, "brier": 0.2439},
+    # #145 adds team_venue_hga_estimate + is_neutral_venue.
+    # Logistic regresses (same sparse-feature noise pattern as #108 / #160 /
+    # #168) — the new features are near-zero for most of the baseline DB window
+    # because only 2024–2026 data is present and many (team, venue) pairs have
+    # fewer than TEAM_VENUE_MIN_OBS observations. Signal is expected to grow
+    # once #158 (2023 backfill) lands. XGBoost and EloMOV are unaffected
+    # (tree-based model handles near-zero features well; Elo models unchanged
+    # since home_advantage_fn defaults to None).
+    "logistic": {"n": 480, "accuracy": 0.5563, "log_loss": 0.9021, "brier": 0.2877},
+    "xgboost": {"n": 480, "accuracy": 0.5979, "log_loss": 0.6984, "brier": 0.2483},
+    "skellam": {"n": 480, "accuracy": 0.5688, "log_loss": 0.7148, "brier": 0.2550},
+    # #145: stacked log_loss improves slightly (−0.0037) as xgboost component
+    # adjusts; accuracy flat.
+    "stacked": {"n": 480, "accuracy": 0.5875, "log_loss": 0.6808, "brier": 0.2424},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

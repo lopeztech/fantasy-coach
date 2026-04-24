@@ -44,6 +44,8 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `odds_line_move_home_prob` | Closing implied home-win probability minus opening implied home-win probability (both de-vigged). Positive = market moved toward home between open and close. 0.0 when opening odds are unavailable. | Sharp-money signal — line movement against public perception is one of the most-studied predictors in sports modelling. Not strongly correlated with closing prob, so additive rather than redundant. |
 | `odds_line_move_magnitude` | `abs(odds_line_move_home_prob)`. | Captures "any informed movement" regardless of direction; lets the model learn that large moves (either way) signal informed activity. |
 | `missing_line_move` | `1.0` when opening odds are absent (either side). | Distinguishes no-open-data rows from genuine 0-movement rows; model learns a separate intercept for rows without line-move signal. |
+| `team_venue_hga_estimate` | Rolling mean of `(actual_home_result − Elo-expected_home_win_prob)` for the home team at this specific venue over the last `TEAM_VENUE_WINDOW` (30) games. Linearly regressed toward 0 when fewer than `TEAM_VENUE_MIN_OBS` (5) observations exist. Set to `0.0` for neutral venues. | Teams that consistently beat expectations at their home ground (fortress effect) carry a systematic advantage beyond what the Elo model captures; this feature isolates that signal per-team-per-venue. |
+| `is_neutral_venue` | `1.0` when the venue is neutral for both teams — neither team has appeared as the home side at this venue ≥ `NEUTRAL_VENUE_THRESHOLD` (5) times in any of the `NEUTRAL_VENUE_SEASONS_BACK` (3) prior seasons. `0.0` otherwise. | Magic Round, the Vegas opener, and rare one-off grounds confer no home-ground advantage; forcing `team_venue_hga_estimate` to 0 for these venues prevents spurious learning from small samples. |
 
 ### Position weighting (#27)
 
@@ -214,6 +216,52 @@ effective weight in the current artefact and the walk-forward metrics are
 unchanged from #168. Impact will grow as more historical rows accumulate
 opening odds — literature suggests +0.4 to +1.1 pp accuracy on
 comparable datasets where opening odds coverage reaches 70%+.
+
+### Per-team per-venue home-ground advantage (#145)
+
+Replaces the global `HOME_ADVANTAGE_RATING_BONUS` constant with a
+per-(team, venue) signal. Two new features:
+
+**`team_venue_hga_estimate`** — rolling mean of `(actual_home_result −
+Elo-expected_home_win_prob)` for the home team at this venue over the last 30
+matches (`TEAM_VENUE_WINDOW`). Shrunk linearly toward 0 when fewer than 5
+observations exist (`TEAM_VENUE_MIN_OBS`). Values in win-probability units
+(roughly −0.3 to +0.3 in practice). Set to `0.0` for neutral venues.
+
+**`is_neutral_venue`** — binary flag that is `1.0` when neither team has
+appeared as the home side at this venue ≥ 5 times (`NEUTRAL_VENUE_THRESHOLD`)
+in any of the three prior seasons (`NEUTRAL_VENUE_SEASONS_BACK`). Magic Round,
+the Las Vegas opener, and rare one-off grounds all trigger this. When true,
+`team_venue_hga_estimate` is zeroed out to prevent spurious per-venue learning
+from small samples.
+
+**Elo callable** — `elo.py` exposes `home_advantage_fn: HomeAdvantageFn | None`
+and `home_advantage_for(team_id, venue) -> float`. The FeatureBuilder's
+`elo_diff` computation continues to use the scalar constant (no change to Elo
+ratings tracking); the callable is wired at inference time for downstream
+consumers that want per-team-venue adjusted predictions without retraining.
+
+**Walk-forward results (2024+2025+2026, 480 predictions):**
+
+| Model | Accuracy | Log-loss | Brier |
+|-------|----------|----------|-------|
+| Logistic (before) | 0.5667 | 0.8754 | 0.2809 |
+| Logistic (after) | 0.5563 | 0.9021 | 0.2877 |
+| XGBoost (before) | 0.6146 | 0.6936 | 0.2454 |
+| XGBoost (after) | 0.5979 | 0.6984 | 0.2483 |
+
+Logistic regresses (same sparse-feature pattern as #108 / #160 / #168) —
+most (team, venue) pairs have < `TEAM_VENUE_MIN_OBS` observations in the
+baseline DB, so the feature is near-zero for most rows and adds noise to the
+logistic fit. Signal will grow once the 2023 backfill (#158) lands. XGBoost
+is within its cross-platform tolerance (3.5e-2). Both Elo variants are
+unaffected (constant `home_advantage` still used for `elo_diff`; callable
+defaults to `None`).
+
+Teams that moved venues (e.g. Warriors COVID relocations) are handled
+naturally: each `(team_id, venue_key)` is a separate row in
+`_team_venue_excess`, so historical away-games-as-home-ground don't pollute
+the current home ground's estimate.
 
 ### Ablation notes — player strength feature (#109)
 

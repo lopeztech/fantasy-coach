@@ -43,12 +43,13 @@ class EloMOV(Elo):
             k_eff = self.k
         else:
             # Elo difference from the winner's perspective (pre-update).
+            hga = self.home_advantage_for(home_id)
             if home_score > away_score:
-                winner_eff = self.rating(home_id) + self.home_advantage
+                winner_eff = self.rating(home_id) + hga
                 loser_eff = self.rating(away_id)
             else:
                 winner_eff = self.rating(away_id)
-                loser_eff = self.rating(home_id) + self.home_advantage
+                loser_eff = self.rating(home_id) + hga
 
             elo_diff = max(winner_eff - loser_eff, 0.0)
             autocorr = 2.2 / (elo_diff * 0.001 + 2.2)
