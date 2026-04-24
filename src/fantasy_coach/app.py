@@ -75,6 +75,36 @@ class TeamFormHistory(BaseModel):
     matches: list[TeamFormEntry]
 
 
+class TeamScheduleEntry(BaseModel):
+    round: int
+    matchId: int
+    kickoff: str  # ISO 8601 UTC
+    isHome: bool
+    opponentId: int
+    opponentName: str
+    matchState: str
+    score: int | None
+    opponentScore: int | None
+    result: str | None  # "win" | "loss" | "draw" | None (upcoming)
+    eloAfter: float | None
+    eloDelta: float | None
+    modelPredictedWinner: str | None  # "home" | "away"
+    modelCorrect: bool | None  # None when match not yet FullTime
+
+
+class TeamProfile(BaseModel):
+    teamId: int
+    teamName: str
+    season: int
+    wins: int
+    losses: int
+    draws: int
+    currentElo: float | None
+    eloTrend: float | None  # current Elo minus first-match Elo; positive = rising
+    schedule: list[TeamScheduleEntry]  # full season, chronological
+    rivals: list[TeamOption]  # opponents this team faces this season
+
+
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
     "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
@@ -424,4 +454,154 @@ def get_team_form(
         teamName=team_name,
         season=season,
         matches=entries[-last:],
+    )
+
+
+@app.get(
+    "/teams/{team_id}",
+    response_model=TeamProfile,
+    summary="Team season profile: record, Elo, full schedule with prediction accuracy",
+    description=(
+        "Returns the full season profile for a team including W/L/D record, "
+        "current Elo rating and trend, and a chronological schedule of all "
+        "matches (completed + upcoming) with prediction accuracy where available."
+    ),
+)
+def get_team_profile(
+    team_id: int,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+) -> TeamProfile:
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    # All matches this season involving this team, in chronological order.
+    team_matches = sorted(
+        [m for m in all_matches if m.home.team_id == team_id or m.away.team_id == team_id],
+        key=lambda m: (m.start_time, m.match_id),
+    )
+    if not team_matches:
+        raise HTTPException(status_code=404, detail=f"Team {team_id} not found in season {season}")
+
+    # Replay Elo across ALL completed matches this season (for accurate ratings).
+    completed_all = sorted(
+        [
+            m
+            for m in all_matches
+            if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None
+        ],
+        key=lambda m: (m.start_time, m.match_id),
+    )
+    elo = EloMOV()
+    elo_after: dict[int, float] = {}  # match_id → team's Elo after that match
+    elo_delta: dict[int, float] = {}
+    for m in completed_all:
+        home_delta, away_delta = elo.update(
+            m.home.team_id,
+            m.away.team_id,
+            m.home.score,
+            m.away.score,  # type: ignore[arg-type]
+        )
+        if m.home.team_id == team_id:
+            elo_after[m.match_id] = round(elo.rating(team_id), 1)
+            elo_delta[m.match_id] = round(home_delta, 1)
+        elif m.away.team_id == team_id:
+            elo_after[m.match_id] = round(elo.rating(team_id), 1)
+            elo_delta[m.match_id] = round(away_delta, 1)
+
+    # Fetch predictions for each round the team plays (best-effort).
+    rounds_played = sorted({m.round for m in team_matches})
+    preds_by_match: dict[int, str] = {}  # match_id → predictedWinner
+    for rnd in rounds_played:
+        try:
+            preds = _get_store().get(season, rnd) or []
+        except Exception:
+            preds = []
+        for p in preds:
+            preds_by_match[p.matchId] = p.predictedWinner
+
+    # Build schedule entries and W/L/D counters.
+    team_name = ""
+    rivals: dict[int, str] = {}
+    wins = losses = draws = 0
+    schedule: list[TeamScheduleEntry] = []
+
+    for m in team_matches:
+        is_home = m.home.team_id == team_id
+        if is_home:
+            opp_id, opp_name = m.away.team_id, m.away.name
+            if not team_name:
+                team_name = m.home.name
+        else:
+            opp_id, opp_name = m.home.team_id, m.home.name
+            if not team_name:
+                team_name = m.away.name
+        rivals[opp_id] = opp_name
+
+        score = opp_score = result = None
+        if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None:
+            score = m.home.score if is_home else m.away.score
+            opp_score = m.away.score if is_home else m.home.score
+            if score > opp_score:
+                result = "win"
+                wins += 1
+            elif score < opp_score:
+                result = "loss"
+                losses += 1
+            else:
+                result = "draw"
+                draws += 1
+
+        predicted_winner = preds_by_match.get(m.match_id)
+        model_correct: bool | None = None
+        if predicted_winner and result and score is not None and opp_score is not None:
+            if score > opp_score:
+                actual_winner = "home" if is_home else "away"
+            elif score < opp_score:
+                actual_winner = "away" if is_home else "home"
+            else:
+                actual_winner = None
+            if actual_winner:
+                model_correct = predicted_winner == actual_winner
+
+        schedule.append(
+            TeamScheduleEntry(
+                round=m.round,
+                matchId=m.match_id,
+                kickoff=m.start_time.isoformat(),
+                isHome=is_home,
+                opponentId=opp_id,
+                opponentName=opp_name,
+                matchState=m.match_state,
+                score=score,
+                opponentScore=opp_score,
+                result=result,
+                eloAfter=elo_after.get(m.match_id),
+                eloDelta=elo_delta.get(m.match_id),
+                modelPredictedWinner=predicted_winner,
+                modelCorrect=model_correct,
+            )
+        )
+
+    current_elo = round(elo.rating(team_id), 1) if elo_after else None
+    elo_values = [elo_after[m.match_id] for m in team_matches if m.match_id in elo_after]
+    elo_trend = round(elo_values[-1] - elo_values[0], 1) if len(elo_values) >= 2 else None
+
+    rivals_list = sorted(
+        [TeamOption(id=tid, name=name) for tid, name in rivals.items()],
+        key=lambda t: t.name,
+    )
+
+    return TeamProfile(
+        teamId=team_id,
+        teamName=team_name,
+        season=season,
+        wins=wins,
+        losses=losses,
+        draws=draws,
+        currentElo=current_elo,
+        eloTrend=elo_trend,
+        schedule=schedule,
+        rivals=rivals_list,
     )

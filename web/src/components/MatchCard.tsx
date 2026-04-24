@@ -57,92 +57,109 @@ export function MatchCard({
   const isKickedOff = new Date(p.kickoff) <= new Date();
 
   return (
-    <Link
-      to={`/round/${season}/${round}/${p.matchId}`}
-      className="match-card-link"
-      aria-label={`${p.home.name} vs ${p.away.name} — view why`}
-    >
-      <article className="match-card">
-        <header className="match-card-head">
-          <div className="teams">
-            <span className="team home">{p.home.name}</span>
-            <span className="muted"> vs </span>
-            <span className="team away">{p.away.name}</span>
-          </div>
-          <time className="kickoff muted" dateTime={p.kickoff}>
-            {formatKickoff(p.kickoff)}
-          </time>
-        </header>
+    <article className="match-card">
+      {/*
+       * Stretched link covers the full card so clicking anywhere navigates to match detail.
+       * Team-name links have position: relative; z-index: 2 so they sit above this overlay.
+       */}
+      <Link
+        to={`/round/${season}/${round}/${p.matchId}`}
+        className="match-card-link"
+        aria-label={`${p.home.name} vs ${p.away.name} — view match detail`}
+      />
 
-        {(homeForm || awayForm) && (
-          <div className="form-sparklines" aria-hidden="false">
-            <TeamFormSparkline
-              matches={homeForm?.matches ?? []}
-              teamName={p.home.name}
-            />
-            <TeamFormSparkline
-              matches={awayForm?.matches ?? []}
-              teamName={p.away.name}
-            />
-          </div>
-        )}
+      <header className="match-card-head">
+        <div className="teams">
+          <Link
+            to={`/team/${p.home.id}?season=${season}`}
+            className="team home team-profile-link"
+            aria-label={`View ${p.home.name} team profile`}
+          >
+            {p.home.name}
+          </Link>
+          <span className="muted"> vs </span>
+          <Link
+            to={`/team/${p.away.id}?season=${season}`}
+            className="team away team-profile-link"
+            aria-label={`View ${p.away.name} team profile`}
+          >
+            {p.away.name}
+          </Link>
+        </div>
+        <time className="kickoff muted" dateTime={p.kickoff}>
+          {formatKickoff(p.kickoff)}
+        </time>
+      </header>
 
-        <div className="prob-bar" role="img" aria-label={`Home win probability ${homePct}%`}>
-          <span
-            className="prob-bar-home"
-            style={{ width: `${homePct}%` }}
-            aria-hidden="true"
+      {(homeForm || awayForm) && (
+        <div className="form-sparklines" aria-hidden="false">
+          <TeamFormSparkline
+            matches={homeForm?.matches ?? []}
+            teamName={p.home.name}
+          />
+          <TeamFormSparkline
+            matches={awayForm?.matches ?? []}
+            teamName={p.away.name}
           />
         </div>
-        <div className="prob-labels">
-          <span>
-            <strong>{p.home.name}</strong> {homePct}%
-          </span>
-          <span>
-            {awayPct}% <strong>{p.away.name}</strong>
-          </span>
-        </div>
+      )}
 
-        <p className="pick">
-          Pick: <strong>{winnerName}</strong> ({winnerPct}%)
-        </p>
+      <div className="prob-bar" role="img" aria-label={`Home win probability ${homePct}%`}>
+        <span
+          className="prob-bar-home"
+          style={{ width: `${homePct}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <div className="prob-labels">
+        <span>
+          <strong>{p.home.name}</strong> {homePct}%
+        </span>
+        <span>
+          {awayPct}% <strong>{p.away.name}</strong>
+        </span>
+      </div>
 
-        {(() => {
-          const status = consensusStatus(p.predictedWinner, p.alternatives);
-          if (!status) return null;
-          return (
-            <span
-              className={`consensus-badge consensus-badge--${status}`}
-              aria-label={
-                status === "unanimous"
-                  ? "All sources agree on this pick"
-                  : "Sources disagree on this pick"
-              }
-            >
-              {status === "unanimous" ? "Consensus" : "Split pick"}
-            </span>
-          );
-        })()}
+      <p className="pick">
+        Pick: <strong>{winnerName}</strong> ({winnerPct}%)
+      </p>
 
-        {preview ? <p className="preview">{preview}</p> : null}
-
-        {onTip != null && (
-          <div
-            onClick={(e) => e.preventDefault()}
-            onKeyDown={(e) => e.preventDefault()}
-            role="none"
+      {(() => {
+        const status = consensusStatus(p.predictedWinner, p.alternatives);
+        if (!status) return null;
+        return (
+          <span
+            className={`consensus-badge consensus-badge--${status}`}
+            aria-label={
+              status === "unanimous"
+                ? "All sources agree on this pick"
+                : "Sources disagree on this pick"
+            }
           >
-            <TipEntry
-              homeTeam={p.home.name}
-              awayTeam={p.away.name}
-              value={tip ?? null}
-              locked={isKickedOff}
-              saving={savingTip ?? false}
-              onTip={onTip}
-            />
-          </div>
-        )}
-      </article>
-    </Link>
+            {status === "unanimous" ? "Consensus" : "Split pick"}
+          </span>
+        );
+      })()}
+
+      {preview ? <p className="preview">{preview}</p> : null}
+
+      {onTip != null && (
+        <div
+          className="tip-entry-wrap"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="none"
+        >
+          <TipEntry
+            homeTeam={p.home.name}
+            awayTeam={p.away.name}
+            value={tip ?? null}
+            locked={isKickedOff}
+            saving={savingTip ?? false}
+            onTip={onTip}
+          />
+        </div>
+      )}
+    </article>
   );
 }

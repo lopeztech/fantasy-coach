@@ -88,6 +88,36 @@ export type TeamOption = {
   name: string;
 };
 
+export type TeamScheduleEntry = {
+  round: number;
+  matchId: number;
+  kickoff: string;
+  isHome: boolean;
+  opponentId: number;
+  opponentName: string;
+  matchState: string;
+  score: number | null;
+  opponentScore: number | null;
+  result: "win" | "loss" | "draw" | null;
+  eloAfter: number | null;
+  eloDelta: number | null;
+  modelPredictedWinner: "home" | "away" | null;
+  modelCorrect: boolean | null;
+};
+
+export type TeamProfile = {
+  teamId: number;
+  teamName: string;
+  season: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  currentElo: number | null;
+  eloTrend: number | null;
+  schedule: TeamScheduleEntry[];
+  rivals: TeamOption[];
+};
+
 export type AccuracyFilters = {
   teamId: number | null;
   venue: string | null;

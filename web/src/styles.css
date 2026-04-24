@@ -15,6 +15,8 @@
   --color-error:           #c0392b;
   --color-error-bg:        #fdecea;
   --color-error-text:      #5a1a13;
+  --color-success:         #27ae60;
+  --color-muted:           #666666;
   --color-track:           #e0e0e0;
 
   /* Elevation */
@@ -44,6 +46,8 @@
   --color-error:           #e97070;
   --color-error-bg:        #291616;
   --color-error-text:      #fbc9c9;
+  --color-success:         #68d391;
+  --color-muted:           #9a9a9a;
   --color-track:           #2e2e2e;
   --shadow-card:           0 2px 6px rgba(0, 0, 0, 0.4);
 }
@@ -63,6 +67,8 @@
     --color-error:           #e97070;
     --color-error-bg:        #291616;
     --color-error-text:      #fbc9c9;
+    --color-success:         #68d391;
+    --color-muted:           #9a9a9a;
     --color-track:           #2e2e2e;
     --shadow-card:           0 2px 6px rgba(0, 0, 0, 0.4);
   }
@@ -404,6 +410,7 @@ a:focus-visible {
 /* ── Match card ────────────────────────────────────────────────────────── */
 
 .match-card {
+  position: relative;
   padding: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -411,6 +418,15 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.match-card:has(.match-card-link:hover),
+.match-card:has(.match-card-link:focus-visible) {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card);
 }
 
 .match-card-head {
@@ -468,20 +484,23 @@ a:focus-visible {
 
 /* ── Match card link wrapper ───────────────────────────────────────────── */
 
+/* Stretched-link overlay: covers the full card so clicking anywhere navigates
+ * to the match detail. Team-name links (.team-profile-link) sit above it
+ * via z-index: 2.  Using ::after keeps the <a> in normal flow (no position
+ * tricks on the host element) and avoids nested-<a> invalidity. */
 .match-card-link {
-  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
   color: inherit;
   text-decoration: none;
-  border-radius: var(--radius-lg);
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease;
 }
 
-.match-card-link:hover .match-card,
-.match-card-link:focus-visible .match-card {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-card);
+.match-card-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 
 .match-card-link:focus-visible {
@@ -489,9 +508,21 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Team-profile links float above the card stretched-link */
+.team-profile-link {
+  position: relative;
+  z-index: 2;
+  color: inherit;
+  text-decoration: none;
+}
+
+.team-profile-link:hover {
+  text-decoration: underline;
+}
+
 /* ── Reduced-motion override ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .match-card-link {
+  .match-card {
     transition: none;
   }
 }
@@ -1117,4 +1148,116 @@ a:focus-visible {
 /* Inline badge on MatchCard */
 .match-card .consensus-badge {
   margin-top: 0.25rem;
+}
+
+/* ── Team profile page (#147) ──────────────────────────────────────────── */
+
+.team-profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.team-profile-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.team-profile-name {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.team-profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.team-record {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.team-elo {
+  font-size: 1rem;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.elo-trend {
+  font-size: 1.1rem;
+}
+
+.elo-trend--up {
+  color: var(--color-success);
+}
+
+.elo-trend--down {
+  color: var(--color-error-text);
+}
+
+.elo-trend--flat {
+  color: var(--color-muted);
+}
+
+.team-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Recent form strip — horizontal W/L/D pills */
+.form-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.result-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.result-pill--win {
+  background: var(--color-success);
+}
+
+.result-pill--loss {
+  background: var(--color-error-text);
+}
+
+.result-pill--draw {
+  background: var(--color-muted);
+}
+
+/* Model correct/wrong badge */
+.model-badge {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.model-badge--correct {
+  color: var(--color-success);
+}
+
+.model-badge--wrong {
+  color: var(--color-error-text);
+}
+
+/* Upcoming match rows in schedule table */
+.schedule-upcoming {
+  opacity: 0.65;
+  font-style: italic;
 }
