@@ -32,10 +32,14 @@ SEASONS = (2024, 2025)
 
 # Snapshot from a 2024+2025 backfill on 2026-04-21 (213 matches/season,
 # draws dropped → 424 scored predictions).
+# Updated in #160: 5 team-stat rolling features added to FEATURE_NAMES
+# (rolling_kick_metres_diff, rolling_kick_return_metres_diff,
+# rolling_line_breaks_diff, rolling_all_runs_diff, missing_team_stats).
+# Logistic accuracy improved 0.5755 → 0.5896 with the new features.
 EXPECTED = {
     "home": {"n": 424, "accuracy": 0.5731, "log_loss": 0.6835, "brier": 0.2452},
     "elo": {"n": 424, "accuracy": 0.5943, "log_loss": 0.6570, "brier": 0.2325},
-    "logistic": {"n": 424, "accuracy": 0.5755, "log_loss": 0.6994, "brier": 0.2477},
+    "logistic": {"n": 424, "accuracy": 0.5896, "log_loss": 0.7143, "brier": 0.2501},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

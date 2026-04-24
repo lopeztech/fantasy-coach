@@ -22,6 +22,16 @@ Features (all home-minus-away unless noted):
   meetings (so a team that's beaten its opponent badly recently scores high).
 - `is_home_field`: always 1 (home perspective). Constant; included so the
   intercept absorbs it cleanly when fitting.
+- `rolling_kick_metres_diff`: rolling-5 kicking metres, home minus away.
+  Proxy for halfback kicking game / field-position dominance.
+- `rolling_kick_return_metres_diff`: rolling-5 kick return metres, home minus
+  away. Proxy for fullback counter-attack effectiveness.
+- `rolling_line_breaks_diff`: rolling-5 line breaks, home minus away.
+  Measures attack incisiveness.
+- `rolling_all_runs_diff`: rolling-5 all runs (hit-ups), home minus away.
+  Proxy for forward pack workload.
+- `missing_team_stats`: 1.0 when the home team has no entries in any rolling
+  team-stat deque (historical gap or upcoming match). 0.0 otherwise.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ from datetime import datetime
 
 import numpy as np
 
-from fantasy_coach.features import MatchRow
+from fantasy_coach.features import MatchRow, TeamStat
 from fantasy_coach.models.elo import Elo
 
 FEATURE_NAMES = (
@@ -43,11 +53,18 @@ FEATURE_NAMES = (
     "days_rest_diff",
     "h2h_recent_diff",
     "is_home_field",
+    # Team-stat rolling features added in #160 (player-level proxies)
+    "rolling_kick_metres_diff",
+    "rolling_kick_return_metres_diff",
+    "rolling_line_breaks_diff",
+    "rolling_all_runs_diff",
+    "missing_team_stats",
 )
 
 ROLLING_WINDOW = 5
 H2H_WINDOW = 3
 DEFAULT_DAYS_REST = 14
+_TEAM_STATS_WINDOW = 5
 
 
 @dataclass(frozen=True)
@@ -78,6 +95,19 @@ class FeatureBuilder:
         )
         self._h2h: dict[tuple[int, int], deque[int]] = defaultdict(lambda: deque(maxlen=H2H_WINDOW))
         self._current_season: int | None = None
+        # Team-stat rolling deques (updated in record() after each completed match)
+        self._team_kick_metres: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_kick_return_metres: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_line_breaks: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
+        self._team_all_runs: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_TEAM_STATS_WINDOW)
+        )
 
     def feature_row(self, match: MatchRow) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
@@ -90,6 +120,21 @@ class FeatureBuilder:
         rest_a = _days_since(self._last_played.get(a_id), match.start_time)
         h2h_avg = _avg(self._h2h[_h2h_key(h_id, a_id)])
         h2h_recent = h2h_avg if h_id <= a_id else -h2h_avg
+
+        # Team-stat rolling features (from record() state, no leakage)
+        kick_m_h = _avg(self._team_kick_metres[h_id])
+        kick_m_a = _avg(self._team_kick_metres[a_id])
+        kick_ret_h = _avg(self._team_kick_return_metres[h_id])
+        kick_ret_a = _avg(self._team_kick_return_metres[a_id])
+        lb_h = _avg(self._team_line_breaks[h_id])
+        lb_a = _avg(self._team_line_breaks[a_id])
+        runs_h = _avg(self._team_all_runs[h_id])
+        runs_a = _avg(self._team_all_runs[a_id])
+
+        # missing_team_stats = 1.0 when the home team has no entries in any
+        # rolling team-stat deque (data gap for historical/upcoming matches).
+        missing = 1.0 if len(self._team_kick_metres[h_id]) == 0 else 0.0
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -97,6 +142,11 @@ class FeatureBuilder:
             rest_h - rest_a,
             h2h_recent,
             1.0,
+            kick_m_h - kick_m_a,
+            kick_ret_h - kick_ret_a,
+            lb_h - lb_a,
+            runs_h - runs_a,
+            missing,
         ]
 
     def advance_season_if_needed(self, match: MatchRow) -> None:
@@ -122,6 +172,33 @@ class FeatureBuilder:
         self._last_played[h_id] = match.start_time
         self._last_played[a_id] = match.start_time
         self.elo.update(h_id, a_id, h_score, a_score)
+
+        # Update team-stat rolling deques (only when team_stats are present)
+        kick_m_h = _extract_stat(match.team_stats, "Kicking Metres", "home")
+        kick_m_a = _extract_stat(match.team_stats, "Kicking Metres", "away")
+        kick_ret_h = _extract_stat(match.team_stats, "Kick Return Metres", "home")
+        kick_ret_a = _extract_stat(match.team_stats, "Kick Return Metres", "away")
+        lb_h = _extract_stat(match.team_stats, "Line Breaks", "home")
+        lb_a = _extract_stat(match.team_stats, "Line Breaks", "away")
+        runs_h = _extract_stat(match.team_stats, "All Runs", "home")
+        runs_a = _extract_stat(match.team_stats, "All Runs", "away")
+
+        if kick_m_h is not None:
+            self._team_kick_metres[h_id].append(kick_m_h)
+        if kick_m_a is not None:
+            self._team_kick_metres[a_id].append(kick_m_a)
+        if kick_ret_h is not None:
+            self._team_kick_return_metres[h_id].append(kick_ret_h)
+        if kick_ret_a is not None:
+            self._team_kick_return_metres[a_id].append(kick_ret_a)
+        if lb_h is not None:
+            self._team_line_breaks[h_id].append(lb_h)
+        if lb_a is not None:
+            self._team_line_breaks[a_id].append(lb_a)
+        if runs_h is not None:
+            self._team_all_runs[h_id].append(runs_h)
+        if runs_a is not None:
+            self._team_all_runs[a_id].append(runs_a)
 
 
 def build_training_frame(
@@ -185,6 +262,14 @@ def _is_complete(match: MatchRow) -> bool:
         and match.home.score is not None
         and match.away.score is not None
     )
+
+
+def _extract_stat(team_stats: list[TeamStat], title: str, side: str) -> float | None:
+    """Return the home or away value for a named team stat, or None if absent."""
+    for stat in team_stats:
+        if stat.title == title:
+            return stat.home_value if side == "home" else stat.away_value
+    return None
 
 
 def _avg(values: Iterable[int | float]) -> float:
