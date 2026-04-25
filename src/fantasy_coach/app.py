@@ -1,16 +1,17 @@
 import csv
+import html as _html
+import logging
 import os
 import pathlib
 import time
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from fantasy_coach import __version__
-from fantasy_coach.auth import FirebaseAuthMiddleware
 from fantasy_coach.config import get_repository
-from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
@@ -18,6 +19,8 @@ from fantasy_coach.predictions import (
     get_prediction_store,
 )
 from fantasy_coach.storage.repository import Repository
+
+logger = logging.getLogger(__name__)
 
 _ACCURACY_THRESHOLD = 0.55
 
@@ -132,6 +135,10 @@ app = FastAPI(
 # sees it — auth middleware only understands Bearer tokens and would 401 the
 # preflight otherwise.
 if os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT"):
+    # Lazy import: firebase_admin (~85 ms) is only needed when auth is enabled.
+    # This keeps /healthz cold-start below 100 ms in environments without auth.
+    from fantasy_coach.auth import FirebaseAuthMiddleware  # noqa: PLC0415
+
     app.add_middleware(FirebaseAuthMiddleware)
 
 app.add_middleware(
@@ -401,6 +408,8 @@ def get_team_form(
         key=lambda m: (m.start_time, m.match_id),
     )
 
+    from fantasy_coach.models.elo_mov import EloMOV  # noqa: PLC0415
+
     elo = EloMOV()
     entries: list[TeamFormEntry] = []
     team_name = ""
@@ -495,6 +504,8 @@ def get_team_profile(
 
     # Sort chronologically to walk forward for Elo computation.
     sorted_matches = sorted(all_matches, key=lambda m: (m.start_time, m.match_id))
+
+    from fantasy_coach.models.elo_mov import EloMOV  # noqa: PLC0415
 
     elo = EloMOV()
     team_name = ""
@@ -1152,3 +1163,131 @@ def get_leaderboard(
         entries[i - 1] = entry
 
     return LeaderboardOut(season=season, groupId=group_id, entries=entries[:50])
+
+
+# ---------------------------------------------------------------------------
+# Social sharing: OG image card + HTML shell (#175)
+# ---------------------------------------------------------------------------
+
+# In-process cache for rendered OG PNG bytes: key=(match_id, season, round_num).
+_og_png_cache: dict[tuple[int, int, int], bytes] = {}
+_OG_PNG_CACHE_MAX = 50
+
+_SHARE_BASE_URL_ENV = "FANTASY_COACH_PUBLIC_BASE_URL"
+_DEFAULT_SHARE_BASE = "https://fantasy.lopezcloud.dev"
+
+
+def _share_base_url() -> str:
+    return os.getenv(_SHARE_BASE_URL_ENV, _DEFAULT_SHARE_BASE)
+
+
+@app.get("/og/match/{match_id}.png", include_in_schema=False)
+def get_og_image(
+    match_id: int,
+    season: int = Query(..., description="Season year, e.g. 2026"),
+    round: int = Query(..., description="Round number, e.g. 7", alias="round"),
+) -> Response:
+    """Render a 1200x630 OG image card for the match. Public — no auth required."""
+    cache_key = (match_id, season, round)
+    if cache_key in _og_png_cache:
+        return Response(
+            content=_og_png_cache[cache_key],
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400, immutable"},
+        )
+
+    preds = _get_store().get(season, round)
+    pred = next((p for p in preds if p.matchId == match_id), None)
+    if not pred:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    try:
+        from fantasy_coach.og_image import render_card  # noqa: PLC0415
+
+        png = render_card(
+            home_name=pred.home.name,
+            away_name=pred.away.name,
+            home_win_prob=pred.homeWinProbability,
+            kickoff_iso=pred.kickoff,
+            round_label=f"Round {round}, {season}",
+        )
+    except Exception as exc:
+        logger.exception("OG image render failed for match %s", match_id)
+        raise HTTPException(status_code=500, detail="Image rendering failed") from exc
+
+    if len(_og_png_cache) >= _OG_PNG_CACHE_MAX:
+        _og_png_cache.clear()
+    _og_png_cache[cache_key] = png
+
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
+
+
+@app.get("/share/match/{match_id}", include_in_schema=False)
+def get_share_page(
+    match_id: int,
+    season: int = Query(..., description="Season year, e.g. 2026"),
+    round: int = Query(..., description="Round number, e.g. 7", alias="round"),
+) -> HTMLResponse:
+    """HTML shell with OG meta tags for social-embed preview. Public — no auth required.
+
+    Social crawlers (Twitterbot, Slackbot) can't execute JavaScript, so the SPA
+    URL won't have populated meta tags. This endpoint returns a minimal server-side
+    rendered page that sets og:title / og:image, then immediately redirects the
+    browser to the SPA via <meta http-equiv="refresh">.
+    """
+    preds = _get_store().get(season, round)
+    pred = next((p for p in preds if p.matchId == match_id), None)
+    if not pred:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    home_pct = round(pred.homeWinProbability * 100)
+    away_pct = 100 - home_pct
+    winner = pred.home.name if pred.predictedWinner == "home" else pred.away.name
+    winner_pct = home_pct if pred.predictedWinner == "home" else away_pct
+
+    # Absolute URLs — og:image and og:url must be absolute for most crawlers.
+    api_base = _share_base_url().rstrip("/")
+    # Use the API server for og:image (it renders the PNG); use the SPA for og:url.
+    # The API URL is the Cloud Run service; the SPA URL is Firebase Hosting.
+    api_url = os.getenv("FANTASY_COACH_API_BASE_URL", api_base)
+    og_image = f"{api_url}/og/match/{match_id}.png?season={season}&round={round}"
+    spa_url = f"{api_base}/round/{season}/{round}/{match_id}"
+
+    # Escape all user-derived strings for safe embedding in HTML attributes/content.
+    e = _html.escape
+    title = e(f"{pred.home.name} vs {pred.away.name} — {winner} {winner_pct}% — Fantasy Coach")
+    description = e(
+        f"{pred.home.name} {home_pct}% vs {pred.away.name} {away_pct}%  ·  Round {round}, {season}"
+    )
+
+    page = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title}</title>
+  <meta name="description" content="{description}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{description}">
+  <meta property="og:image" content="{e(og_image)}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="{e(spa_url)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{title}">
+  <meta name="twitter:description" content="{description}">
+  <meta name="twitter:image" content="{e(og_image)}">
+  <link rel="canonical" href="{e(spa_url)}">
+  <meta http-equiv="refresh" content="0;url={e(spa_url)}">
+</head>
+<body>
+  <p>Redirecting to <a href="{e(spa_url)}">Fantasy Coach</a>&hellip;</p>
+</body>
+</html>"""
+
+    return HTMLResponse(page, headers={"Cache-Control": "public, max-age=300"})

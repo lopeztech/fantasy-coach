@@ -17,6 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src/ ./src/
 COPY deploy/ ./deploy/
+COPY assets/ ./assets/
 # Tuned XGBoost hyperparameters (#167). train_xgboost +
 # XGBoostPredictor.fit both read this path via load_best_params();
 # without it, they fall back to the hand-picked grid (pre-HPO behaviour).
@@ -27,6 +28,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev
 
 FROM python:3.12-slim AS runtime
+
+# Liberation Sans fonts for OG image card rendering (og_image.py). Adds ~1.5 MB.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 app
 

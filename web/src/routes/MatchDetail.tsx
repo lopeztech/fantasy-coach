@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { apiFetch, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
+import { ShareButton } from "../components/ShareButton";
 import { TeamFormChart } from "../components/TeamFormChart";
 import { labelFor } from "../features";
 import { SignInRequired } from "../components/SignInRequired";
@@ -124,7 +125,13 @@ export default function MatchDetail() {
       )}
 
       {status.kind === "ok" && (
-        <MatchDetailBody prediction={status.prediction} homeForm={homeForm} awayForm={awayForm} />
+        <MatchDetailBody
+          prediction={status.prediction}
+          season={season}
+          round={round}
+          homeForm={homeForm}
+          awayForm={awayForm}
+        />
       )}
     </section>
   );
@@ -201,10 +208,14 @@ function ConsensusPanel({
 
 function MatchDetailBody({
   prediction,
+  season,
+  round,
   homeForm,
   awayForm,
 }: {
   prediction: Prediction;
+  season: number;
+  round: number;
   homeForm: TeamFormHistory | null;
   awayForm: TeamFormHistory | null;
 }) {
@@ -218,15 +229,49 @@ function MatchDetailBody({
   const [expanded, setExpanded] = useState(false);
   const hasExtra = contributions.length > MOBILE_TOP;
 
+  // Inject per-match OG meta tags so JS-capable crawlers (e.g. Facebookbot) get
+  // rich previews. Static crawlers (Twitterbot, Slackbot) should use the
+  // server-rendered /share/match/{id} URL instead (see ShareButton).
+  useEffect(() => {
+    const title = `${prediction.home.name} vs ${prediction.away.name} — ${winnerName} ${winnerPct}% — Fantasy Coach`;
+    document.title = title;
+    const setMeta = (prop: string, content: string) => {
+      let el = document.querySelector<HTMLMetaElement>(`meta[property="${prop}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute("property", prop);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    setMeta("og:title", title);
+    setMeta(
+      "og:description",
+      `${prediction.home.name} ${homePct}% vs ${prediction.away.name} ${awayPct}%`,
+    );
+    return () => {
+      document.title = "Fantasy Coach";
+    };
+  }, [prediction, winnerName, winnerPct, homePct, awayPct]);
+
   return (
     <article className="match-detail">
       <header className="match-detail-header">
         <h1>
           {prediction.home.name} <span className="muted">vs</span> {prediction.away.name}
         </h1>
-        <time className="kickoff muted" dateTime={prediction.kickoff}>
-          {formatKickoff(prediction.kickoff)}
-        </time>
+        <div className="match-detail-meta">
+          <time className="kickoff muted" dateTime={prediction.kickoff}>
+            {formatKickoff(prediction.kickoff)}
+          </time>
+          <ShareButton
+            matchId={prediction.matchId}
+            season={season}
+            round={round}
+            homeTeam={prediction.home.name}
+            awayTeam={prediction.away.name}
+          />
+        </div>
       </header>
 
       <div className="prob-dial" role="img" aria-label={`Home win probability ${homePct}%`}>
