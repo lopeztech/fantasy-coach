@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
+from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamRow, TeamStat
 
 _COLLECTION = "matches"
 _BATCH_SIZE = 500  # Firestore WriteBatch hard limit
@@ -99,6 +99,8 @@ def _to_doc(row: MatchRow) -> dict[str, Any]:
         "home": _team_to_doc(row.home),
         "away": _team_to_doc(row.away),
         "team_stats": [_stat_to_doc(s) for s in row.team_stats],
+        "home_player_stats": [_player_stat_to_doc(p) for p in row.home_player_stats],
+        "away_player_stats": [_player_stat_to_doc(p) for p in row.away_player_stats],
         "referee_id": row.referee_id,
         "video_referee_id": row.video_referee_id,
     }
@@ -137,6 +139,30 @@ def _stat_to_doc(s: TeamStat) -> dict[str, Any]:
     }
 
 
+_PLAYER_STAT_FIELDS = (
+    "minutes_played",
+    "all_run_metres",
+    "tackles_made",
+    "missed_tackles",
+    "tackle_breaks",
+    "line_breaks",
+    "try_assists",
+    "offloads",
+    "errors",
+    "tries",
+    "tackle_efficiency",
+    "fantasy_points_total",
+)
+
+
+def _player_stat_to_doc(s: PlayerMatchStat) -> dict[str, Any]:
+    return {"player_id": s.player_id, **{f: getattr(s, f) for f in _PLAYER_STAT_FIELDS}}
+
+
+def _player_stat_from_doc(d: dict[str, Any]) -> PlayerMatchStat:
+    return PlayerMatchStat(player_id=d["player_id"], **{f: d.get(f) for f in _PLAYER_STAT_FIELDS})
+
+
 def _from_doc(d: dict[str, Any]) -> MatchRow:
     return MatchRow(
         match_id=d["match_id"],
@@ -150,6 +176,8 @@ def _from_doc(d: dict[str, Any]) -> MatchRow:
         home=_team_from_doc(d["home"]),
         away=_team_from_doc(d["away"]),
         team_stats=[_stat_from_doc(s) for s in d.get("team_stats", [])],
+        home_player_stats=[_player_stat_from_doc(p) for p in d.get("home_player_stats", [])],
+        away_player_stats=[_player_stat_from_doc(p) for p in d.get("away_player_stats", [])],
         referee_id=d.get("referee_id"),
         video_referee_id=d.get("video_referee_id"),
     )

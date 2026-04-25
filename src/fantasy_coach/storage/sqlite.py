@@ -13,9 +13,24 @@ from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
-from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
+from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+
+_PLAYER_STAT_COLS = (
+    "minutes_played",
+    "all_run_metres",
+    "tackles_made",
+    "missed_tackles",
+    "tackle_breaks",
+    "line_breaks",
+    "try_assists",
+    "offloads",
+    "errors",
+    "tries",
+    "tackle_efficiency",
+    "fantasy_points_total",
+)
 
 
 class SQLiteRepository:
@@ -78,6 +93,8 @@ class SQLiteRepository:
             self._insert_players(row.match_id, "home", row.home.players)
             self._insert_players(row.match_id, "away", row.away.players)
             self._insert_stats(row.match_id, row.team_stats)
+            self._insert_player_stats(row.match_id, "home", row.home_player_stats)
+            self._insert_player_stats(row.match_id, "away", row.away_player_stats)
 
     def get_match(self, match_id: int) -> MatchRow | None:
         match = self._conn.execute(
@@ -161,6 +178,12 @@ class SQLiteRepository:
                     with contextlib.suppress(Exception):
                         self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
                 self._conn.execute("UPDATE schema_version SET version = 5")
+        if from_version < 6:
+            with self._conn:
+                # v5 → v6: representative_callups (#211) and match_player_stats (#142)
+                # are both created by executescript() via CREATE TABLE IF NOT EXISTS,
+                # so no work needed beyond bumping the version marker.
+                self._conn.execute("UPDATE schema_version SET version = 6")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
@@ -184,6 +207,25 @@ class SQLiteRepository:
                     None if p.is_on_field is None else int(p.is_on_field),
                 )
                 for p in players
+            ],
+        )
+
+    def _insert_player_stats(self, match_id: int, side: str, stats: list[PlayerMatchStat]) -> None:
+        if not stats:
+            return
+        cols = ", ".join(("match_id", "side", "ordinal", "player_id", *_PLAYER_STAT_COLS))
+        placeholders = ", ".join(["?"] * (4 + len(_PLAYER_STAT_COLS)))
+        self._conn.executemany(
+            f"INSERT INTO match_player_stats ({cols}) VALUES ({placeholders})",  # noqa: S608
+            [
+                (
+                    match_id,
+                    side,
+                    ordinal,
+                    s.player_id,
+                    *(getattr(s, c) for c in _PLAYER_STAT_COLS),
+                )
+                for ordinal, s in enumerate(stats)
             ],
         )
 
@@ -230,9 +272,25 @@ class SQLiteRepository:
             """,
             (match_id,),
         ).fetchall()
+        player_stat_cols = ", ".join(("side", "player_id", *_PLAYER_STAT_COLS))
+        player_stats = self._conn.execute(
+            f"""
+            SELECT {player_stat_cols}
+            FROM match_player_stats
+            WHERE match_id = ?
+            ORDER BY side, ordinal
+            """,  # noqa: S608
+            (match_id,),
+        ).fetchall()
 
         home_players = [self._row_to_player(p) for p in players if p["side"] == "home"]
         away_players = [self._row_to_player(p) for p in players if p["side"] == "away"]
+        home_player_stats = [
+            self._row_to_player_stat(p) for p in player_stats if p["side"] == "home"
+        ]
+        away_player_stats = [
+            self._row_to_player_stat(p) for p in player_stats if p["side"] == "away"
+        ]
 
         return MatchRow(
             match_id=match_id,
@@ -271,8 +329,17 @@ class SQLiteRepository:
                 )
                 for s in stats
             ],
+            home_player_stats=home_player_stats,
+            away_player_stats=away_player_stats,
             referee_id=match["referee_id"],
             video_referee_id=match["video_referee_id"],
+        )
+
+    @staticmethod
+    def _row_to_player_stat(p: sqlite3.Row) -> PlayerMatchStat:
+        return PlayerMatchStat(
+            player_id=p["player_id"],
+            **{c: p[c] for c in _PLAYER_STAT_COLS},
         )
 
     @staticmethod

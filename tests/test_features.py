@@ -9,6 +9,7 @@ import pytest
 
 from fantasy_coach.features import (
     MatchRow,
+    PlayerMatchStat,
     PlayerRow,
     TeamRow,
     TeamStat,
@@ -77,6 +78,45 @@ def test_extract_2026_upcoming_match_has_optional_fields() -> None:
     assert row.away.score is None
     assert row.home.players == []
     assert row.away.players == []
+    assert row.home_player_stats == []
+    assert row.away_player_stats == []
+
+
+def test_extract_player_match_stats_fulltime() -> None:
+    raw = _load("match-2024-rd1-sea-eagles-v-rabbitohs.json")
+
+    row = extract_match_features(raw)
+
+    assert len(row.home_player_stats) == 18
+    assert len(row.away_player_stats) == 18
+
+    fullback = row.home_player_stats[0]
+    assert isinstance(fullback, PlayerMatchStat)
+    assert fullback.player_id == 501505
+    assert fullback.minutes_played == 80
+    assert fullback.all_run_metres == 224
+    assert fullback.tackles_made == 5
+    assert fullback.missed_tackles == 2
+    assert fullback.tackle_breaks == 3
+    assert fullback.line_breaks == 1
+    assert fullback.try_assists == 1
+    assert fullback.offloads == 4
+    assert fullback.errors == 3
+    assert fullback.tries == 0
+    assert fullback.tackle_efficiency == pytest.approx(71.43)
+    assert fullback.fantasy_points_total == 54
+
+
+def test_extract_player_match_stats_finals() -> None:
+    raw = _load("match-2024-finals-week-1-game-1.json")
+
+    row = extract_match_features(raw)
+
+    # Finals fixtures use the same per-player stats schema as regular rounds.
+    assert len(row.home_player_stats) == 18
+    assert len(row.away_player_stats) == 18
+    assert all(p.player_id > 0 for p in row.home_player_stats)
+    assert all(p.minutes_played is not None for p in row.home_player_stats)
 
 
 def test_unknown_top_level_keys_are_logged_not_fatal(

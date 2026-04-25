@@ -1,13 +1,14 @@
 -- Schema version 6.
 --
--- One row per match in `matches`, children (`match_players`, `match_team_stats`)
--- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
--- existing match rows and re-inserting, so children stay consistent.
+-- One row per match in `matches`, children (`match_players`, `match_team_stats`,
+-- `match_player_stats`) keyed by match_id + side ('home' | 'away'). Upserts are
+-- done by deleting the existing match rows and re-inserting, so children stay
+-- consistent.
 -- v2 adds referee_id and video_referee_id columns to matches (NRL officials block).
 -- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
--- v6 adds representative_callups table for Origin/Test squad selections (#211).
+-- v6 adds representative_callups (#211) and match_player_stats (#142) tables.
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -97,3 +98,26 @@ CREATE TABLE IF NOT EXISTS representative_callups (
 
 CREATE INDEX IF NOT EXISTS idx_rep_callups_season_fixture
     ON representative_callups (season, fixture);
+
+CREATE TABLE IF NOT EXISTS match_player_stats (
+    match_id             INTEGER NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,
+    side                 TEXT    NOT NULL CHECK (side IN ('home', 'away')),
+    ordinal              INTEGER NOT NULL,
+    player_id            INTEGER NOT NULL,
+    minutes_played       INTEGER,
+    all_run_metres       INTEGER,
+    tackles_made         INTEGER,
+    missed_tackles       INTEGER,
+    tackle_breaks        INTEGER,
+    line_breaks          INTEGER,
+    try_assists          INTEGER,
+    offloads             INTEGER,
+    errors               INTEGER,
+    tries                INTEGER,
+    tackle_efficiency    REAL,
+    fantasy_points_total INTEGER,
+    PRIMARY KEY (match_id, side, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_player_stats_player_match
+    ON match_player_stats (player_id, match_id);
