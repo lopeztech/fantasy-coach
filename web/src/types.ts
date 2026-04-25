@@ -22,9 +22,12 @@ export type FeatureContribution = {
   // Optional per-feature structured narrative detail (#124). Backend populates
   // specific keys when a plain text label would under-sell the reason —
   // e.g. `{home_missing, away_missing}` behind `key_absence_diff`.
+  // For tree-based models (#213), `interaction` carries the dominant
+  // interaction partner and its magnitude in log-odds units.
   detail?: {
     home_missing?: MissingPlayer[];
     away_missing?: MissingPlayer[];
+    interaction?: { partner: string; magnitude: number };
   } | null;
 };
 

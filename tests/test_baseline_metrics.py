@@ -95,12 +95,18 @@ EXPECTED = {
     # #203 caps |PSD| at ±1000. Logistic loses additional tail signal that
     # XGBoost rebuilds via tree splits; pins below are post-#145 + post-#203.
     # Refreshed by walk-forward against the same baseline-nrl.db fixture.
-    "logistic": {"n": 480, "accuracy": 0.5563, "log_loss": 0.9062, "brier": 0.2894},
-    "xgboost": {"n": 480, "accuracy": 0.5979, "log_loss": 0.6984, "brier": 0.2483},
-    "skellam": {"n": 480, "accuracy": 0.5688, "log_loss": 0.7148, "brier": 0.2550},
-    # #145: stacked log_loss improves slightly (−0.0037) as xgboost component
-    # adjusts; accuracy flat.
-    "stacked": {"n": 480, "accuracy": 0.5875, "log_loss": 0.6808, "brier": 0.2424},
+    #
+    # #211 adds 4 new calendar features (is_origin_round, is_magic_round,
+    # origin_callups_diff, is_test_window). All default to 0.0 on the baseline
+    # DB window (2024-2026 R1-7 lacks Origin/Magic/Test rounds), so Elo-based
+    # models are unaffected. Logistic accuracy improves marginally (+0.002) while
+    # log_loss/brier regress slightly (sparse near-zero features, same pattern as
+    # #108/#145/#160). XGBoost improves on both log_loss and brier.
+    "logistic": {"n": 480, "accuracy": 0.5583, "log_loss": 0.9181, "brier": 0.2941},
+    "xgboost": {"n": 480, "accuracy": 0.6042, "log_loss": 0.6931, "brier": 0.2464},
+    "skellam": {"n": 480, "accuracy": 0.5688, "log_loss": 0.7172, "brier": 0.2561},
+    # #211: stacked adjusts with xgboost component; log_loss/brier shift marginally.
+    "stacked": {"n": 480, "accuracy": 0.5854, "log_loss": 0.6843, "brier": 0.2443},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

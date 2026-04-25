@@ -320,6 +320,11 @@ function MatchDetailBody({
                     {c.contribution >= 0 ? "+" : ""}
                     {c.contribution.toFixed(2)}
                   </span>
+                  {c.detail?.interaction && (
+                    <span className="contribution-interaction muted">
+                      × {c.detail.interaction.partner.replace(/_/g, " ")}
+                    </span>
+                  )}
                 </li>
               );
             })}

@@ -152,6 +152,22 @@ FEATURE_NAMES = (
     # grounds all trigger this. When true, team_venue_hga_estimate is forced
     # to 0.0 so the model doesn't learn spurious intercepts from rare venues.
     "is_neutral_venue",
+    # NRL calendar-effect features (#211). These structural calendar moments
+    # cause predictable, repeat roster disruptions that the model can learn
+    # once a player's club-round availability is known (from named squads).
+    #
+    # ``is_origin_round`` / ``is_magic_round`` — binary flags derived from the
+    # hard-coded NRL calendar in ``representative.py``. Always 0 for seasons /
+    # rounds not yet catalogued.
+    # ``origin_callups_diff`` — position-weighted count of Origin-named players
+    # on each team's named squad (home minus away). Requires squad data; 0.0
+    # when no representative_callups rows exist for this fixture window.
+    # ``is_test_window`` — 1.0 when the match date falls in an international
+    # Test window (Pacific Championships, etc.).
+    "is_origin_round",
+    "is_magic_round",
+    "origin_callups_diff",
+    "is_test_window",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -376,6 +392,19 @@ class FeatureBuilder:
         is_neutral = self._is_neutral_venue(h_id, a_id, vkey, match.season)
         tv_hga = 0.0 if is_neutral else self._team_venue_hga_estimate(h_id, vkey)
 
+        from fantasy_coach.representative import (  # noqa: PLC0415
+            is_magic_round,
+            is_origin_round,
+            is_test_window,
+        )
+
+        origin_flag = 1.0 if is_origin_round(match.season, match.round) else 0.0
+        magic_flag = 1.0 if is_magic_round(match.season, match.round) else 0.0
+        test_flag = 1.0 if is_test_window(match.start_time.date()) else 0.0
+        # origin_callups_diff requires representative_callups DB rows; defaults
+        # to 0.0 until squad data is backfilled via `representative.fetch_origin_squads`.
+        origin_callups = 0.0
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -418,6 +447,10 @@ class FeatureBuilder:
             missing_ts,
             tv_hga,
             float(is_neutral),
+            origin_flag,
+            magic_flag,
+            origin_callups,
+            test_flag,
         ]
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:

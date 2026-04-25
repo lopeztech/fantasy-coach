@@ -5,9 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fantasy_coach.evaluation.harness import EvaluationResult
 from fantasy_coach.models.calibration import reliability_bins
+
+if TYPE_CHECKING:
+    from fantasy_coach.evaluation.profit import CLVReport
 
 
 def render_markdown(
@@ -15,6 +19,7 @@ def render_markdown(
     *,
     seasons: Sequence[int],
     generated_at: datetime | None = None,
+    clv_reports: Sequence[CLVReport] | None = None,
 ) -> str:
     generated_at = generated_at or datetime.now()
     lines = [
@@ -63,6 +68,35 @@ def render_markdown(
             lines.append(f"| {b['lo']:.1f}–{b['hi']:.1f} | {conf} | {acc} | {b['n']} |")
         lines.append("")
 
+    if clv_reports:
+        lines.append("## Market efficiency (CLV)")
+        lines.append("")
+        lines.append(
+            "CLV = model probability − de-vigged closing line probability.  "
+            "Positive mean CLV indicates the model consistently finds value "
+            "the market corrects to — the long-run edge signal."
+        )
+        lines.append("")
+        lines.append("| Model | n (with odds) | Mean CLV | Win rate | ROI flat |")
+        lines.append("|-------|--------------|----------|----------|----------|")
+        for report in clv_reports:
+            lines.append(
+                f"| {report.predictor_name} | {report.n} | "
+                f"{report.mean_clv:+.4f} | {report.win_rate:.3f} | "
+                f"{report.roi_flat:+.3f} |"
+            )
+        lines.append("")
+
+        for report in clv_reports:
+            lines.append(f"### {report.predictor_name} — cumulative CLV curve")
+            lines.append("")
+            lines.append("| # | Season | Round | CLV | Cumulative CLV |")
+            lines.append("|---|--------|-------|-----|----------------|")
+            cum = report.cumulative_clv
+            for i, (c, cumulative) in enumerate(zip(report.match_clvs, cum, strict=True), start=1):
+                lines.append(f"| {i} | {c.season} | {c.round} | {c.clv:+.4f} | {cumulative:+.4f} |")
+            lines.append("")
+
     return "\n".join(lines)
 
 
@@ -71,6 +105,7 @@ def write_markdown(
     results: Sequence[EvaluationResult],
     *,
     seasons: Sequence[int],
+    clv_reports: Sequence[CLVReport] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_markdown(results, seasons=seasons))
+    path.write_text(render_markdown(results, seasons=seasons, clv_reports=clv_reports))

@@ -46,6 +46,25 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `missing_line_move` | `1.0` when opening odds are absent (either side). | Distinguishes no-open-data rows from genuine 0-movement rows; model learns a separate intercept for rows without line-move signal. |
 | `team_venue_hga_estimate` | Rolling mean of `(actual_home_result − Elo-expected_home_win_prob)` for the home team at this specific venue over the last `TEAM_VENUE_WINDOW` (30) games. Linearly regressed toward 0 when fewer than `TEAM_VENUE_MIN_OBS` (5) observations exist. Set to `0.0` for neutral venues. | Teams that consistently beat expectations at their home ground (fortress effect) carry a systematic advantage beyond what the Elo model captures; this feature isolates that signal per-team-per-venue. |
 | `is_neutral_venue` | `1.0` when the venue is neutral for both teams — neither team has appeared as the home side at this venue ≥ `NEUTRAL_VENUE_THRESHOLD` (5) times in any of the `NEUTRAL_VENUE_SEASONS_BACK` (3) prior seasons. `0.0` otherwise. | Magic Round, the Vegas opener, and rare one-off grounds confer no home-ground advantage; forcing `team_venue_hga_estimate` to 0 for these venues prevents spurious learning from small samples. |
+| `is_origin_round` | `1.0` when the NRL club round overlaps a State of Origin game week (Rounds 13, 16, 19 for 2024–2026). `0.0` otherwise. Hard-coded calendar in `representative.py`. | Origin camps pull up to 17 players per state from their clubs the week of each game, causing systematic roster disruption that Elo and rolling form cannot see. |
+| `is_magic_round` | `1.0` when this is the Magic Round (all 16 teams at Suncorp, single weekend). `0.0` otherwise. Hard-coded calendar in `representative.py`. | The logistical bunching and atypical travel pattern adds a signal on top of `is_neutral_venue`. |
+| `origin_callups_diff` | Home minus away count of players named in the Origin squad for this fixture window (from `representative_callups` DB table). `0.0` until squad data is backfilled. | Granular per-match disruption index — a team missing 6 Origin players has a quantifiably different disadvantage than one missing 1. |
+| `is_test_window` | `1.0` when the match date falls within an international Test window (e.g. Pacific Championships, Oct–Nov). `0.0` otherwise. | Representative-country players pulled from club squads late-season; affects finals warm-up matches. |
+
+### NRL calendar effects (#211)
+
+`representative.py` holds hard-coded calendar data for 2024–2026 (the
+seasons with training data). Each function is a pure lookup with no I/O:
+
+- `is_origin_round(season, round_)` — True when the NRL round overlaps an Origin week.
+- `is_magic_round(season, round_)` — True for the single-venue Magic Round weekend.
+- `is_test_window(match_date)` — True when the date falls within a Pacific Championships / Test window.
+- `origin_game_number(season, round_)` — Returns 1, 2, or 3 for the corresponding Origin game, or None.
+
+`representative_callups` is a SQLite/Firestore table (schema v6) populated by
+the precompute job when squad announcements are scraped. Until squads are
+backfilled, `origin_callups_diff` defaults to `0.0` — the model degrades
+gracefully to the binary `is_origin_round` flag.
 
 ### Position weighting (#27)
 
@@ -463,12 +482,19 @@ pins walk-forward numbers for *both* models so regressions on either side
 are caught.
 
 **Contribution attribution:** ``_compute_contributions`` in
-``predictions.py`` now dispatches by model type:
-- logistic: ``coef × (x − mean) / scale`` (unchanged).
-- XGBoost: booster ``predict(pred_contribs=True)`` — returns per-feature
-  margin contributions (log-odds for binary classification), drops the
-  bias column. Output shape matches logistic so the sentinel filter +
-  detail enrichment + UI rendering all work without branching.
+``predictions.py`` dispatches by model type:
+- **logistic**: ``coef × (x − mean) / scale`` (unchanged, exact).
+- **XGBoost / gradient-boosting**: TreeSHAP via
+  ``models/explainability.py::shap_contributions`` — delegates to
+  ``Booster.predict(pred_contribs=True)``.  Returns per-feature contributions
+  in log-odds space satisfying the exact sum invariant:
+  ``sum(shap_contributions) + bias == raw_log_odds``.  The bias column is
+  dropped so the output aligns with ``FEATURE_NAMES``. Output shape matches
+  logistic so the sentinel filter + detail enrichment + UI rendering all work
+  without branching. For XGBoost artefacts, ``shap_interactions`` also
+  enriches each contribution's ``detail`` with the dominant interaction partner
+  (``detail.interaction.{partner, magnitude}``), surfaced in the SPA as a
+  "× feature_name" sub-row.
 
 ### Comparison (2024–2025 walk-forward baseline, 424 predictions)
 
@@ -883,3 +909,43 @@ every execution so it picks the revert up on its next scheduled run.
 - Online / per-round retraining. Weekly is sufficient at the current
   pace of data — rounds are week-sized and there's no mid-round signal
   that would change weights.
+
+## Market efficiency: CLV + profit-based evaluation (#212)
+
+`src/fantasy_coach/evaluation/profit.py` adds a second evaluation axis:
+
+**Closing-line value (CLV)** — does the model beat the closing line?
+
+    clv = p_model − p_close
+
+where `p_close` is the de-vigged closing-line probability (from
+`MatchRow.home.odds` / `.away.odds`, backfilled via `merge-closing-lines`).
+
+A consistently positive mean CLV indicates the model finds value the market
+later corrects to — the near-unfakeable long-run profitability signal.
+
+**Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `compute_clv(eval_result, matches)` | Join predictions to closing-line data; return a `CLVReport` with per-match CLV, mean CLV, win rate, and flat-stake ROI. Returns `None` when fewer than 10 covered matches exist. |
+| `kelly_stake(p_model, decimal_odds, bankroll, kelly_fraction=0.25)` | Quarter-Kelly stake sizing. Returns 0 when the model has no edge (`p × odds ≤ 1`). |
+| `simulate_pnl(match_clvs, strategy, starting_bankroll)` | Simulate bankroll evolution across all covered matches. Strategies: `"flat"` (1 unit/bet) or `"quarter_kelly"`. |
+
+**Usage:**
+
+```bash
+python -m fantasy_coach evaluate \
+  --model xgboost --model bookmaker \
+  --seasons 2024,2025 \
+  --closing-lines data/odds/nrl.xlsx \
+  --profit
+```
+
+The `--profit` flag appends a "Market efficiency" section to the markdown
+report with mean CLV per model and a cumulative CLV curve table.
+
+**Interpretation note** documented in the report: positive CLV does **not**
+equal positive PnL on a small sample — both are reported side by side.
+Statistical significance requires ≥ 400 predictions; Wald-test p < 0.05
+is the criterion used to declare a model "statistically edge-positive".

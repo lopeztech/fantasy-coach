@@ -1,4 +1,4 @@
--- Schema version 5.
+-- Schema version 6.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
@@ -7,6 +7,7 @@
 -- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
+-- v6 adds representative_callups table for Origin/Test squad selections (#211).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -78,3 +79,21 @@ CREATE TABLE IF NOT EXISTS match_team_stats (
     away_value  REAL,
     PRIMARY KEY (match_id, ordinal)
 );
+
+-- Representative callups for State of Origin and Test matches (#211).
+-- One row per player per fixture window.  Populated by the precompute Job
+-- via `representative.fetch_origin_squads` after squad announcement.
+-- fixture: "origin1" | "origin2" | "origin3" | "test_au" | "test_nz" | "test_pac"
+-- state:   "nsw" | "qld" | NULL (for non-Origin callups)
+CREATE TABLE IF NOT EXISTS representative_callups (
+    player_id    INTEGER NOT NULL,
+    season       INTEGER NOT NULL,
+    fixture      TEXT    NOT NULL,
+    fixture_date TEXT    NOT NULL,  -- ISO 8601 date (Sunday of announcement week)
+    nrl_team_id  INTEGER NOT NULL,
+    state        TEXT,
+    PRIMARY KEY (player_id, season, fixture)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rep_callups_season_fixture
+    ON representative_callups (season, fixture);
