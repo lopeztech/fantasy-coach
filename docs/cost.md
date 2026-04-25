@@ -15,7 +15,8 @@ once it's manually enabled (see below).
 
 | Component | Driver | Expected monthly cost at current traffic |
 |-----------|--------|-------------------------------------------|
-| Cloud Run (API) | 0 → low; scale-to-zero; 256Mi × concurrency 80 | < $1 |
+| Cloud Run (API) | 0 → low; scale-to-zero; 512Mi × concurrency 80 | < $1 |
+| Cloud Run Job (precompute) | 0.5 vCPU × 256 Mi; ~90 s/run × 2 runs/week | ~$0.10/month |
 | Firestore | Free tier (1 GiB storage, 50K reads/day) | $0 |
 | Artifact Registry | Last 10 tagged images retained; cleanup policy in platform-infra | ~$0.04 steady-state |
 | Cloud Logging | Default retention; low request volume | $0 (free tier) |

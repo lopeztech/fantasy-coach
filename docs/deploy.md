@@ -97,6 +97,54 @@ These values were chosen against 13 hours of post-launch metrics, not a
 30-day window. Revisit once we have real traffic (tracked as a follow-up
 on #64).
 
+## Cloud Run Job (`fantasy-coach-precompute`)
+
+The precompute Job runs the scrape → feature-build → XGBoost inference → Firestore
+write pipeline twice a week (Tue 09:00 AEST, Thu 06:00 AEST). It is separate from
+the API service and has its own resource configuration in
+`lopeztech/platform-infra → projects/fantasy-coach/cloud_run.tf`.
+
+### Resource sizing
+
+| Resource | Current config | Rationale |
+|----------|---------------|-----------|
+| CPU | 0.5 vCPU | I/O-bound workload (Firestore + nrl.com HTTP); XGBoost inference on 8 × 22 features is µs-scale. Profile confirmed < 10% sustained CPU at 1 vCPU. |
+| Memory | 256 Mi | Observed peak RSS ~120–180 MiB (XGBoost artefact load + sklearn pipeline). 256 Mi = ~1.5× headroom. |
+| Timeout | 300 s | Job typically completes in ~90 s. 300 s gives 3× headroom; a Job exceeding this indicates a real problem. |
+| Max retries | 1 | Fail loud on persistent errors rather than retrying indefinitely. |
+
+**Rule**: when new CPU-heavy work is added (HPO retrain, player-stats scrape), re-run
+the profiler and retune — target 1.5× over the observed peak RSS and the observed
+p99 wall-clock × 3 for timeout.
+
+### Profiling the Job
+
+Add `--profile` (or set `FANTASY_COACH_PROFILE=1`) to wrap the pipeline in
+`cProfile` and log peak RSS every 5 s:
+
+```bash
+# Locally
+python -m fantasy_coach precompute --profile
+
+# On the live Cloud Run Job (one-off)
+gcloud run jobs execute fantasy-coach-precompute \
+    --region australia-southeast1 \
+    --project fantasy-coach-lcd \
+    --update-env-vars FANTASY_COACH_PROFILE=1
+```
+
+The cProfile dump is written to `/tmp/precompute_profile.out` inside the container.
+The top-20 cumulative-time functions are printed to stdout (visible in Cloud Logging).
+RSS samples appear as `[profile] rss=NMiB peak=NMiB` lines every 5 s.
+
+To read the dump locally after downloading:
+
+```python
+import pstats
+s = pstats.Stats("/tmp/precompute_profile.out")
+s.sort_stats("cumulative").print_stats(30)
+```
+
 ## Auth model
 
 The service is `--allow-unauthenticated` at the Cloud Run IAM layer
