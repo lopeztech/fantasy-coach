@@ -952,3 +952,62 @@ python -m fantasy_coach evaluate \
   --profit \
   --report reports/evaluation.md
 ```
+
+## NRL calendar effects — Origin, Magic Round, Test windows (#211)
+
+Three structural moments each NRL season cause roster strength to deviate
+massively from the regular pattern:
+
+| Round type | Effect | Round range (typical) |
+|------------|--------|----------------------|
+| **State of Origin** | Up to 34 NRL stars unavailable (17 per state) | Rounds 13, 17, 21 |
+| **Magic Round** | All games at one neutral venue (Brisbane) | Round 11–12 |
+| **Test/Pacific window** | Late-season internationals pull players from finals warm-ups | Oct–Nov |
+
+### Calendar detection
+
+`src/fantasy_coach/representative.py` exposes three functions:
+
+```python
+is_origin_round(season, round_)  # True for rounds 13, 17, 21 (± year)
+is_magic_round(season, round_)   # True for the neutral-venue round
+is_test_window(match_date)       # True for Oct–Nov international weeks
+```
+
+The calendar is hard-coded for 2024–2026; a JSON override at
+`data/representative_schedule.json` allows extending to future seasons
+without a code change.
+
+### Storage
+
+The `representative_callups` table (schema v6) stores one row per player
+per representative fixture:
+
+```
+representative_callups (callup_id, player_id, fixture, fixture_date,
+                        season, round, state)
+```
+
+`fixture` is one of `origin1`, `origin2`, `origin3`, `test_au`, `test_nz`,
+`test_pac`.  `state` is `NSW` | `QLD` | NULL for Test fixtures.
+
+### Planned feature additions (requires data backfill + retrain)
+
+The following features are *not yet in `FEATURE_NAMES`* — they will be
+added in a follow-up PR after Origin squads are backfilled for 2024–2026
+and the model is retrained:
+
+- `is_origin_round` — 0/1 categorical; model can learn that point margins
+  compress when both rosters are weakened.
+- `origin_callups_diff` — position-weighted count of Origin-named players,
+  home minus away.  Fires the round of and the round after Origin.
+- `is_magic_round` — 0/1 categorical for neutral-venue bunching effects.
+- `is_test_window_diff` — Test-named players on each roster, home minus away.
+
+To complete the backfill:
+```bash
+# Once fetch_origin_squads endpoint is confirmed (see #211):
+python -m fantasy_coach precompute-origin-squads --season 2024 --season 2025
+python -m fantasy_coach train-xgboost --season 2024 --season 2025 --season 2026
+# Re-pin test_baseline_metrics.py EXPECTED dict from fresh walk-forward run.
+```

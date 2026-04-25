@@ -1,4 +1,4 @@
--- Schema version 5.
+-- Schema version 6.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
@@ -7,6 +7,7 @@
 -- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
+-- v6 adds representative_callups table (#211).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -78,3 +79,23 @@ CREATE TABLE IF NOT EXISTS match_team_stats (
     away_value  REAL,
     PRIMARY KEY (match_id, ordinal)
 );
+
+-- v6: representative callups for State of Origin + Test windows (#211).
+-- One row per player per representative fixture.  The (player_id, fixture,
+-- fixture_date) triple is unique — re-running the scraper for the same
+-- announcement is idempotent.
+-- fixture enum: origin1 | origin2 | origin3 | test_au | test_nz | test_pac
+-- state: NSW | QLD | NULL (for Test fixtures)
+CREATE TABLE IF NOT EXISTS representative_callups (
+    callup_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id     INTEGER NOT NULL,
+    fixture       TEXT    NOT NULL,
+    fixture_date  TEXT    NOT NULL,  -- ISO 8601 date (YYYY-MM-DD)
+    season        INTEGER NOT NULL,
+    round         INTEGER NOT NULL,
+    state         TEXT,              -- NSW | QLD | NULL for Tests
+    UNIQUE (player_id, fixture, fixture_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_callups_season_round
+    ON representative_callups (season, round);

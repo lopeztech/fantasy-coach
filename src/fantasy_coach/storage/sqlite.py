@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class SQLiteRepository:
@@ -161,6 +161,66 @@ class SQLiteRepository:
                     with contextlib.suppress(Exception):
                         self._conn.execute(f"ALTER TABLE matches ADD COLUMN {col}")
                 self._conn.execute("UPDATE schema_version SET version = 5")
+        if from_version < 6:
+            with self._conn:
+                # v5 → v6: add representative_callups table (#211). The table
+                # is created by executescript(schema) above via CREATE TABLE IF
+                # NOT EXISTS; we just bump the version here.
+                self._conn.execute("UPDATE schema_version SET version = 6")
+
+    # ----- representative callups (#211) -----
+
+    def record_callup(self, callup: "Callup") -> None:  # type: ignore[name-defined]
+        """Insert one representative callup; silently ignores duplicates."""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR IGNORE INTO representative_callups
+                    (player_id, fixture, fixture_date, season, round, state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    callup.player_id,
+                    callup.fixture,
+                    callup.fixture_date.isoformat(),
+                    callup.season,
+                    callup.round,
+                    callup.state,
+                ),
+            )
+
+    def list_callups(
+        self,
+        *,
+        season: int,
+        round_: int,
+        fixture: "str | None" = None,  # type: ignore[name-defined]
+    ) -> list:
+        """Return callups active during a given season/round."""
+        from fantasy_coach.representative import Callup  # noqa: PLC0415
+        from datetime import date  # noqa: PLC0415
+
+        if fixture is not None:
+            rows = self._conn.execute(
+                "SELECT * FROM representative_callups WHERE season=? AND round=? AND fixture=?",
+                (season, round_, fixture),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM representative_callups WHERE season=? AND round=?",
+                (season, round_),
+            ).fetchall()
+        return [
+            Callup(
+                player_id=r["player_id"],
+                fixture=r["fixture"],
+                fixture_date=date.fromisoformat(r["fixture_date"]),
+                season=r["season"],
+                round=r["round"],
+                state=r["state"],
+            )
+            for r in rows
+        ]
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
