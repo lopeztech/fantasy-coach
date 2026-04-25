@@ -164,6 +164,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the aussportsbetting NRL xlsx. Required when --model bookmaker is used.",
     )
     ev.add_argument(
+        "--profit",
+        action="store_true",
+        default=False,
+        help=(
+            "Append a CLV + PnL section to the report. Requires --closing-lines; "
+            "ignored when closing-lines data is absent."
+        ),
+    )
+    ev.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -568,8 +577,57 @@ def _run_evaluate(args: argparse.Namespace) -> int:
             f"{r.predictor_name}: n={r.n} "
             f"acc={m['accuracy']:.3f} log_loss={m['log_loss']:.3f} brier={m['brier']:.3f}"
         )
+
+    if getattr(args, "profit", False) and args.closing_lines is not None:
+        _run_profit_section(args, results)
+
     print(f"Report written to {args.report}")
     return 0
+
+
+def _run_profit_section(args: argparse.Namespace, results: list) -> None:
+    """Compute CLV and append a P&L section to the evaluation report."""
+    from fantasy_coach.evaluation.profit import clv_wald_pvalue, compute_clv, render_clv_section  # noqa: PLC0415
+
+    lines = load_closing_lines(args.closing_lines)
+    # Build a match_id → de-vigged p_home probability mapping via the
+    # BookmakerPredictor's _lookup so date-tolerance and name-canonicalisation
+    # are applied consistently.
+    repo2 = SQLiteRepository(args.db)
+    seasons = [int(s) for s in args.seasons.split(",") if s.strip()]
+    all_matches = {}
+    try:
+        for season in seasons:
+            for m in repo2.list_matches(season):
+                all_matches[m.match_id] = m
+    finally:
+        repo2.close()
+
+    bm = BookmakerPredictor(lines)
+    closing_probs: dict[int, float] = {}
+    for match_id, match in all_matches.items():
+        line = bm._lookup(match)  # noqa: SLF001
+        if line is not None:
+            closing_probs[match_id] = line.p_home_devigged
+
+    clv_reports = [compute_clv(r, closing_probs) for r in results]
+
+    # Append CLV section to report.
+    clv_md = render_clv_section(clv_reports)
+    with open(args.report, "a") as f:
+        f.write(clv_md)
+        f.write("\n")
+
+    for r in clv_reports:
+        if r.n_with_odds == 0:
+            print(f"{r.model_name}: no CLV data (no closing-line coverage)")
+            continue
+        p = clv_wald_pvalue(r.records)
+        print(
+            f"{r.model_name}: CLV mean={r.mean_clv:+.4f} n={r.n_with_odds} "
+            f"ROI_flat={r.roi_flat_stake:+.4f} ROI_kelly={r.roi_quarter_kelly:+.4f} "
+            f"p={p:.4f}"
+        )
 
 
 def _detect_upcoming_round(year: int) -> int | None:
