@@ -6,6 +6,10 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "assets/**"
+      - "deploy/**"
+      - "artifacts/best_params.json"
+      - "Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/ci.yml"
@@ -14,9 +18,19 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "assets/**"
+      - "deploy/**"
+      - "artifacts/best_params.json"
+      - "Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/ci.yml"
+
+# Cancel superseded runs on the same PR/branch — keeps queue depth bounded
+# and avoids two pushes racing for the same WIF token / Artifact Registry tag.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -38,3 +52,39 @@ jobs:
 
       - name: Test
         run: uv run pytest --cov=fantasy_coach --cov-report=term-missing
+
+  # Build and smoke-test the production image so Dockerfile / asset / deploy
+  # config breakage is caught before deploy.yml hits Cloud Run. Cheap because
+  # we cache layers via GHA buildx and never push — the smoke test just runs
+  # the container and waits for /healthz to return 200.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: fantasy-coach:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container smoke test (/healthz)
+        run: |
+          set -euo pipefail
+          docker run --rm -d --name fc-ci -p 8080:8080 -e PORT=8080 fantasy-coach:ci
+          trap 'docker logs fc-ci || true; docker rm -f fc-ci || true' EXIT
+          # Wait up to 30s for the app to start serving /healthz.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              echo "healthz ok after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "healthz never returned 200" >&2
+          exit 1
