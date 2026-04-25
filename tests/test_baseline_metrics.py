@@ -6,6 +6,7 @@ Update the expected dict in the same PR so the new numbers are reviewed
 deliberately, not silently.
 
 To regenerate after a deliberate change:
+  uv run python -m fantasy_coach backfill --season 2023 --db data/nrl.db
   uv run python -m fantasy_coach backfill --season 2024 --db data/nrl.db
   uv run python -m fantasy_coach backfill --season 2025 --db data/nrl.db
   cp data/nrl.db tests/fixtures/baseline-nrl.db
@@ -36,7 +37,11 @@ BASELINE_DB = Path(__file__).parent / "fixtures" / "baseline-nrl.db"
 # 2026 rows represent the current rosters / coaching / any rule tweaks;
 # XGBoost additionally weights them 2.5× via ``SEASON_WEIGHTS`` so they
 # dominate fit decisions proportionally.
-SEASONS = (2024, 2025, 2026)
+# #158 prepends 2023 (213 matches), bringing the walk-forward sample to
+# 692 non-draw predictions. 2023 is included as scored, not warmup-only —
+# the harness has no warmup mode — so 2023's cold-start predictions
+# (early rounds with no rolling history) sit in the pooled metrics.
+SEASONS = (2023, 2024, 2025, 2026)
 
 # Snapshot from a 2024+2025 backfill on 2026-04-22 (213 matches/season,
 # draws dropped → 424 scored predictions). Baseline DB refreshed in #27 so
@@ -79,34 +84,36 @@ SEASONS = (2024, 2025, 2026)
 # recency weights: log_loss drops 0.7364 → 0.7045 (−4.3 %) and brier
 # 0.2559 → 0.2496 (−2.5 %) — both proper scoring rules improve on the
 # larger eval pool, which is what the #107 retrain gate checks.
+#
+# Pins refreshed again in #158 — SEASONS prepends 2023 (213 matches),
+# pool grows 480 → 692 non-draw predictions. Effects on pooled metrics:
+#
+#   - Plain Elo +3.5pp accuracy / brier −0.0038. Cold-start ratings move
+#     through 2023 first, so the 2024+ portion runs on warmer ratings;
+#     the larger pool also dilutes the 2026-R1 thin-history rounds.
+#   - EloMOV +1.5pp accuracy / brier −0.0051 — same effect, smaller
+#     because EloMOV converges faster than plain Elo.
+#   - Logistic accuracy −0.9pp BUT log_loss −0.0423 / brier −0.0152.
+#     The accuracy dip is the cold-2023 portion (sparse warmup features
+#     misclassify near 0.5); the calibration improvements are the larger
+#     training pool letting the regulariser settle on saner coefficients.
+#   - XGBoost −3.9pp accuracy / brier flat. Cold-start 2023 predictions
+#     drag accuracy because XGBoost without rolling features is essentially
+#     guessing; the rest of the pool is roughly unchanged. Held-out 2026
+#     metrics (the production-relevant slice) are not regressed — see the
+#     follow-up audit script in scripts/ for the per-season split.
+#   - Skellam +2.5pp accuracy / brier −0.0154. Strong-L2 prior dominates
+#     early-2023 predictions toward 0.55; the rest tightens with more data.
+#   - Stacked +1.0pp accuracy / brier −0.0039. Inherits the XGBoost-component
+#     drag and the Elo-component lift; net positive.
 EXPECTED = {
-    "home": {"n": 480, "accuracy": 0.5646, "log_loss": 0.6852, "brier": 0.2460},
-    "elo": {"n": 480, "accuracy": 0.5833, "log_loss": 0.6628, "brier": 0.2353},
-    "elo_mov": {"n": 480, "accuracy": 0.6125, "log_loss": 0.6668, "brier": 0.2366},
-    # #145 adds team_venue_hga_estimate + is_neutral_venue.
-    # Logistic regresses (same sparse-feature noise pattern as #108 / #160 /
-    # #168) — the new features are near-zero for most of the baseline DB window
-    # because only 2024–2026 data is present and many (team, venue) pairs have
-    # fewer than TEAM_VENUE_MIN_OBS observations. Signal is expected to grow
-    # once #158 (2023 backfill) lands. XGBoost and EloMOV are unaffected
-    # (tree-based model handles near-zero features well; Elo models unchanged
-    # since home_advantage_fn defaults to None).
-    #
-    # #203 caps |PSD| at ±1000. Logistic loses additional tail signal that
-    # XGBoost rebuilds via tree splits; pins below are post-#145 + post-#203.
-    # Refreshed by walk-forward against the same baseline-nrl.db fixture.
-    #
-    # #211 adds 4 new calendar features (is_origin_round, is_magic_round,
-    # origin_callups_diff, is_test_window). All default to 0.0 on the baseline
-    # DB window (2024-2026 R1-7 lacks Origin/Magic/Test rounds), so Elo-based
-    # models are unaffected. Logistic accuracy improves marginally (+0.002) while
-    # log_loss/brier regress slightly (sparse near-zero features, same pattern as
-    # #108/#145/#160). XGBoost improves on both log_loss and brier.
-    "logistic": {"n": 480, "accuracy": 0.5583, "log_loss": 0.9181, "brier": 0.2941},
-    "xgboost": {"n": 480, "accuracy": 0.6042, "log_loss": 0.6931, "brier": 0.2464},
-    "skellam": {"n": 480, "accuracy": 0.5688, "log_loss": 0.7172, "brier": 0.2561},
-    # #211: stacked adjusts with xgboost component; log_loss/brier shift marginally.
-    "stacked": {"n": 480, "accuracy": 0.5854, "log_loss": 0.6843, "brier": 0.2443},
+    "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
+    "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
+    "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
+    "logistic": {"n": 692, "accuracy": 0.5491, "log_loss": 0.8758, "brier": 0.2789},
+    "xgboost": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6899, "brier": 0.2465},
+    "skellam": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6757, "brier": 0.2407},
+    "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6745, "brier": 0.2404},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
