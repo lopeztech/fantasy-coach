@@ -469,10 +469,19 @@ def _compute_contributions(
         return None
 
     contributions = _logistic_raw_contribs(loaded, raw)
+    is_logistic = contributions is not None
     if contributions is None:
         contributions = _xgboost_raw_contribs(loaded, x)
     if contributions is None:
         return None
+
+    # For XGBoost, pre-compute the dominant interaction partner per feature
+    # so the UI can surface "× partner" sub-rows on the contribution panel.
+    interactions: dict[str, tuple[str, float]] | None = None
+    if not is_logistic:
+        from fantasy_coach.models.explainability import shap_interactions  # noqa: PLC0415
+
+        interactions = shap_interactions(loaded, x)
 
     # Rank all features by |contribution|, then filter out sentinel/flag
     # rows before slicing to top_k. Filtering *after* the rank keeps us
@@ -485,12 +494,18 @@ def _compute_contributions(
         predicate = _SENTINEL_PREDICATES.get(name)
         if predicate is not None and predicate(value):
             continue
+        detail = _contribution_detail(name, builder, match)
+        if interactions and name in interactions:
+            partner, magnitude = interactions[name]
+            if detail is None:
+                detail = {}
+            detail["interaction"] = {"partner": partner, "magnitude": round(magnitude, 4)}
         picked.append(
             FeatureContribution(
                 feature=name,
                 value=round(value, 6),
                 contribution=round(float(contributions[idx]), 4),
-                detail=_contribution_detail(name, builder, match),
+                detail=detail,
             )
         )
         if len(picked) >= top_k:
@@ -528,48 +543,17 @@ def _logistic_raw_contribs(loaded: Any, raw: Any) -> Any | None:
 
 
 def _xgboost_raw_contribs(loaded: Any, x: Any) -> Any | None:
-    """Compute per-feature margin contributions for an XGBoost estimator.
+    """Compute per-feature SHAP contributions for an XGBoost estimator.
 
-    Uses the booster's ``pred_contribs=True`` mode, which returns per-
-    sample, per-feature contributions in raw-margin (log-odds for binary
-    classification). The final column is the bias and is dropped. Returns
-    ``None`` if the artefact isn't an XGBoost model or xgboost isn't
-    importable in this environment (macOS without libomp).
+    Delegates to ``models.explainability.shap_contributions`` which uses the
+    booster's ``pred_contribs=True`` mode (TreeSHAP). Returns per-feature
+    contributions in raw-margin (log-odds for binary classification) with the
+    bias column dropped. Returns ``None`` when the artefact isn't XGBoost or
+    xgboost is unavailable.
     """
-    estimator = getattr(loaded, "estimator", None)
-    if estimator is None:
-        return None
-    get_booster = getattr(estimator, "get_booster", None)
-    if not callable(get_booster):
-        return None
+    from fantasy_coach.models.explainability import shap_contributions  # noqa: PLC0415
 
-    try:
-        import xgboost as xgb  # noqa: PLC0415
-    except Exception:  # pragma: no cover — libomp-missing safety net
-        return None
-
-    try:
-        booster = get_booster()
-    except Exception:
-        return None
-
-    feature_names = getattr(loaded, "feature_names", None)
-    import numpy as np  # noqa: PLC0415
-
-    try:
-        dmatrix = xgb.DMatrix(
-            np.asarray(x, dtype=float),
-            feature_names=list(feature_names) if feature_names else None,
-        )
-        contribs = booster.predict(dmatrix, pred_contribs=True)
-    except Exception:
-        return None
-
-    arr = np.asarray(contribs)
-    if arr.ndim != 2 or arr.shape[0] < 1:
-        return None
-    # Last column is the bias term; drop it to align with feature_names.
-    return arr[0, :-1]
+    return shap_contributions(loaded, x)
 
 
 def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:

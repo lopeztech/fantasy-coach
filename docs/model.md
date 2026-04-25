@@ -463,12 +463,19 @@ pins walk-forward numbers for *both* models so regressions on either side
 are caught.
 
 **Contribution attribution:** ``_compute_contributions`` in
-``predictions.py`` now dispatches by model type:
-- logistic: ``coef × (x − mean) / scale`` (unchanged).
-- XGBoost: booster ``predict(pred_contribs=True)`` — returns per-feature
-  margin contributions (log-odds for binary classification), drops the
-  bias column. Output shape matches logistic so the sentinel filter +
-  detail enrichment + UI rendering all work without branching.
+``predictions.py`` dispatches by model type:
+- **logistic**: ``coef × (x − mean) / scale`` (unchanged, exact).
+- **XGBoost / gradient-boosting**: TreeSHAP via
+  ``models/explainability.py::shap_contributions`` — delegates to
+  ``Booster.predict(pred_contribs=True)``.  Returns per-feature contributions
+  in log-odds space satisfying the exact sum invariant:
+  ``sum(shap_contributions) + bias == raw_log_odds``.  The bias column is
+  dropped so the output aligns with ``FEATURE_NAMES``. Output shape matches
+  logistic so the sentinel filter + detail enrichment + UI rendering all work
+  without branching. For XGBoost artefacts, ``shap_interactions`` also
+  enriches each contribution's ``detail`` with the dominant interaction partner
+  (``detail.interaction.{partner, magnitude}``), surfaced in the SPA as a
+  "× feature_name" sub-row.
 
 ### Comparison (2024–2025 walk-forward baseline, 424 predictions)
 

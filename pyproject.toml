@@ -70,6 +70,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 "tests/test_logistic.py" = ["N806"]
 "tests/test_calibration.py" = ["N806"]
 "tests/test_xgboost_model.py" = ["N806"]
+"tests/test_explainability.py" = ["N806"]
 # Fake Model-protocol implementations mirror sklearn naming (capital X).
 "tests/test_promotion.py" = ["N803"]
 "tests/test_retrain.py" = ["N803"]
