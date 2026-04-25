@@ -1,4 +1,4 @@
--- Schema version 5.
+-- Schema version 6.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`)
 -- keyed by match_id + side ('home' | 'away'). Upserts are done by deleting the
@@ -7,6 +7,7 @@
 -- v3 adds is_on_field to match_players + a team_list_snapshots table (#24).
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
+-- v6 adds representative_callups for State of Origin / Test squad tracking (#211).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -67,6 +68,26 @@ CREATE INDEX IF NOT EXISTS idx_team_list_match_time
 
 CREATE INDEX IF NOT EXISTS idx_team_list_season_time
     ON team_list_snapshots (season, scraped_at);
+
+-- Representative callups: State of Origin, Test, and Pacific Championship
+-- squads. One row per (player_id, fixture) pair. ``fixture`` is an enum:
+-- origin1, origin2, origin3, test_au, test_nz, test_pac.
+-- Populated manually from squad announcements; used to derive the
+-- origin_callups_diff and is_test_window_diff model features (#211).
+CREATE TABLE IF NOT EXISTS representative_callups (
+    player_id    INTEGER NOT NULL,
+    season       INTEGER NOT NULL,
+    fixture      TEXT    NOT NULL CHECK (fixture IN (
+                     'origin1', 'origin2', 'origin3',
+                     'test_au', 'test_nz', 'test_pac'
+                 )),
+    fixture_date TEXT    NOT NULL,  -- ISO 8601 date of the rep game
+    state        TEXT,              -- 'NSW', 'QLD', 'AUS', 'NZ', 'PAC', etc.
+    PRIMARY KEY (player_id, season, fixture)
+);
+
+CREATE INDEX IF NOT EXISTS idx_representative_callups_season
+    ON representative_callups (season, fixture);
 
 CREATE TABLE IF NOT EXISTS match_team_stats (
     match_id    INTEGER NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,
