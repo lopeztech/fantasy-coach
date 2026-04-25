@@ -30,8 +30,10 @@ from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
-# Paths that bypass auth — kept as a frozenset for O(1) lookup.
+# Paths that bypass auth — kept as a frozenset for O(1) exact lookup.
 _OPEN_PATHS: frozenset[str] = frozenset({"/healthz"})
+# Path prefixes that bypass auth (social-embed endpoints — crawlers have no tokens).
+_OPEN_PREFIXES: tuple[str, ...] = ("/og/", "/share/")
 
 # Module-level singleton so we initialise Firebase once per process.
 _app: firebase_admin.App | None = None
@@ -59,7 +61,9 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if request.url.path in _OPEN_PATHS:
+        if request.url.path in _OPEN_PATHS or any(
+            request.url.path.startswith(p) for p in _OPEN_PREFIXES
+        ):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
