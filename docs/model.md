@@ -463,12 +463,24 @@ pins walk-forward numbers for *both* models so regressions on either side
 are caught.
 
 **Contribution attribution:** ``_compute_contributions`` in
-``predictions.py`` now dispatches by model type:
-- logistic: ``coef × (x − mean) / scale`` (unchanged).
-- XGBoost: booster ``predict(pred_contribs=True)`` — returns per-feature
-  margin contributions (log-odds for binary classification), drops the
-  bias column. Output shape matches logistic so the sentinel filter +
-  detail enrichment + UI rendering all work without branching.
+``predictions.py`` dispatches by model type to model-aware explainers
+implemented in ``src/fantasy_coach/models/explainability.py``:
+
+- **Logistic:** ``coef × (x − mean) / scale`` — exact linear decomposition.
+- **XGBoost / gradient_boosting:** TreeSHAP via
+  ``xgboost.Booster.predict(pred_contribs=True)``.  This is an *exact*
+  attribution — the central correctness invariant
+  ``sum(shap_values) + bias == booster_raw_margin`` is verified in
+  ``tests/test_explainability.py``.  The bias column is dropped before
+  aligning with ``FEATURE_NAMES``; the values are in raw-margin (log-odds)
+  units, matching the logistic convention.
+- **Interaction enrichment:** for XGBoost, ``shap_interactions`` computes
+  the top pairwise interaction matrix (``pred_interactions=True``) and
+  annotates each contribution row's ``detail`` field with its strongest
+  interaction partner.  The ``/predictions`` payload schema is unchanged —
+  ``detail`` was already an opaque ``dict | null``.
+- **Ensemble:** returns ``None`` — weighted-average attribution across
+  correlated bases has no clean interpretation yet.
 
 ### Comparison (2024–2025 walk-forward baseline, 424 predictions)
 

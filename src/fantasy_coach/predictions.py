@@ -468,11 +468,34 @@ def _compute_contributions(
     if len(raw) != len(feature_names):
         return None
 
+    is_xgboost = getattr(loaded, "estimator", None) is not None
     contributions = _logistic_raw_contribs(loaded, raw)
     if contributions is None:
         contributions = _xgboost_raw_contribs(loaded, x)
     if contributions is None:
         return None
+
+    # Pre-compute SHAP interactions for tree models so we can annotate each
+    # contribution row with its strongest interaction partner.
+    interaction_map: dict[str, dict] = {}
+    if is_xgboost:
+        estimator = getattr(loaded, "estimator", None)
+        if estimator is not None:
+            from fantasy_coach.models.explainability import shap_interactions  # noqa: PLC0415
+
+            top_interactions = shap_interactions(estimator, feature_names, x, top_k=10)
+            for pair in top_interactions:
+                for primary, partner in [
+                    (pair["feature_a"], pair["feature_b"]),
+                    (pair["feature_b"], pair["feature_a"]),
+                ]:
+                    if primary not in interaction_map or abs(pair["magnitude"]) > abs(
+                        interaction_map[primary].get("magnitude", 0)
+                    ):
+                        interaction_map[primary] = {
+                            "interaction_partner": partner,
+                            "magnitude": pair["magnitude"],
+                        }
 
     # Rank all features by |contribution|, then filter out sentinel/flag
     # rows before slicing to top_k. Filtering *after* the rank keeps us
@@ -485,12 +508,15 @@ def _compute_contributions(
         predicate = _SENTINEL_PREDICATES.get(name)
         if predicate is not None and predicate(value):
             continue
+        detail = _contribution_detail(name, builder, match)
+        if name in interaction_map:
+            detail = {**(detail or {}), **interaction_map[name]}
         picked.append(
             FeatureContribution(
                 feature=name,
                 value=round(value, 6),
                 contribution=round(float(contributions[idx]), 4),
-                detail=_contribution_detail(name, builder, match),
+                detail=detail if detail else None,
             )
         )
         if len(picked) >= top_k:
@@ -528,48 +554,24 @@ def _logistic_raw_contribs(loaded: Any, raw: Any) -> Any | None:
 
 
 def _xgboost_raw_contribs(loaded: Any, x: Any) -> Any | None:
-    """Compute per-feature margin contributions for an XGBoost estimator.
+    """Compute per-feature TreeSHAP contributions for an XGBoost estimator.
 
-    Uses the booster's ``pred_contribs=True`` mode, which returns per-
-    sample, per-feature contributions in raw-margin (log-odds for binary
-    classification). The final column is the bias and is dropped. Returns
+    Delegates to ``models.explainability.shap_contributions``.  Returns
     ``None`` if the artefact isn't an XGBoost model or xgboost isn't
     importable in this environment (macOS without libomp).
     """
     estimator = getattr(loaded, "estimator", None)
     if estimator is None:
         return None
-    get_booster = getattr(estimator, "get_booster", None)
-    if not callable(get_booster):
-        return None
 
-    try:
-        import xgboost as xgb  # noqa: PLC0415
-    except Exception:  # pragma: no cover — libomp-missing safety net
-        return None
-
-    try:
-        booster = get_booster()
-    except Exception:
-        return None
+    from fantasy_coach.models.explainability import shap_contributions  # noqa: PLC0415
 
     feature_names = getattr(loaded, "feature_names", None)
+    if not feature_names:
+        return None
     import numpy as np  # noqa: PLC0415
 
-    try:
-        dmatrix = xgb.DMatrix(
-            np.asarray(x, dtype=float),
-            feature_names=list(feature_names) if feature_names else None,
-        )
-        contribs = booster.predict(dmatrix, pred_contribs=True)
-    except Exception:
-        return None
-
-    arr = np.asarray(contribs)
-    if arr.ndim != 2 or arr.shape[0] < 1:
-        return None
-    # Last column is the bias term; drop it to align with feature_names.
-    return arr[0, :-1]
+    return shap_contributions(estimator, tuple(feature_names), np.asarray(x, dtype=float))
 
 
 def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:
