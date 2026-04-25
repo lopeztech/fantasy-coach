@@ -528,48 +528,20 @@ def _logistic_raw_contribs(loaded: Any, raw: Any) -> Any | None:
 
 
 def _xgboost_raw_contribs(loaded: Any, x: Any) -> Any | None:
-    """Compute per-feature margin contributions for an XGBoost estimator.
+    """Compute per-feature TreeSHAP contributions for an XGBoost estimator.
 
-    Uses the booster's ``pred_contribs=True`` mode, which returns per-
-    sample, per-feature contributions in raw-margin (log-odds for binary
-    classification). The final column is the bias and is dropped. Returns
-    ``None`` if the artefact isn't an XGBoost model or xgboost isn't
-    importable in this environment (macOS without libomp).
+    Delegates to ``models.explainability.shap_contributions`` and returns the
+    per-feature array (bias dropped) so the caller's ranking/filtering logic is
+    unchanged. Returns ``None`` when the artefact is not XGBoost or xgboost is
+    not importable (macOS without libomp).
     """
-    estimator = getattr(loaded, "estimator", None)
-    if estimator is None:
-        return None
-    get_booster = getattr(estimator, "get_booster", None)
-    if not callable(get_booster):
-        return None
+    from fantasy_coach.models.explainability import shap_contributions  # noqa: PLC0415
 
-    try:
-        import xgboost as xgb  # noqa: PLC0415
-    except Exception:  # pragma: no cover — libomp-missing safety net
+    result = shap_contributions(loaded, x)
+    if result is None:
         return None
-
-    try:
-        booster = get_booster()
-    except Exception:
-        return None
-
-    feature_names = getattr(loaded, "feature_names", None)
-    import numpy as np  # noqa: PLC0415
-
-    try:
-        dmatrix = xgb.DMatrix(
-            np.asarray(x, dtype=float),
-            feature_names=list(feature_names) if feature_names else None,
-        )
-        contribs = booster.predict(dmatrix, pred_contribs=True)
-    except Exception:
-        return None
-
-    arr = np.asarray(contribs)
-    if arr.ndim != 2 or arr.shape[0] < 1:
-        return None
-    # Last column is the bias term; drop it to align with feature_names.
-    return arr[0, :-1]
+    per_feature, _ = result
+    return per_feature
 
 
 def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:
