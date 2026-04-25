@@ -160,13 +160,16 @@ the precompute Cloud Run Job, never by the API endpoint (which is a Firestore
 cache read). As a result, importing `predictions.py` during API startup no
 longer pulls in the entire ML stack.
 
-`app.py` module scope only imports stdlib + `fastapi` + `pydantic` + Firebase
-auth middleware + pure-Python internal modules.
+`app.py` module scope only imports stdlib + `fastapi` + `pydantic` +
+pure-Python internal modules. `FirebaseAuthMiddleware` (which pulls in
+`firebase_admin`, ~85 ms) and `EloMOV` are imported conditionally / inside
+the first call site so `/healthz` cold-starts without touching the auth or
+ML stacks.
 
-**Rule for new contributors**: Any ML import (`numpy`, `sklearn`, `xgboost`,
-`joblib`) added to `predictions.py` must be inside the function that uses it,
-not at module scope. The same rule applies to any new module imported by
-`app.py` at module scope.
+**Rule for new contributors**: Any heavy import (`numpy`, `sklearn`,
+`xgboost`, `joblib`, `firebase_admin`) added to a module must be inside the
+function that uses it, not at module scope of `app.py` or any module it
+imports unconditionally.
 
 ### Training extras
 

@@ -11,9 +11,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from fantasy_coach import __version__
-from fantasy_coach.auth import FirebaseAuthMiddleware
 from fantasy_coach.config import get_repository
-from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
@@ -137,6 +135,10 @@ app = FastAPI(
 # sees it — auth middleware only understands Bearer tokens and would 401 the
 # preflight otherwise.
 if os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT"):
+    # Lazy import: firebase_admin (~85 ms) is only needed when auth is enabled.
+    # This keeps /healthz cold-start below 100 ms in environments without auth.
+    from fantasy_coach.auth import FirebaseAuthMiddleware  # noqa: PLC0415
+
     app.add_middleware(FirebaseAuthMiddleware)
 
 app.add_middleware(
@@ -406,6 +408,8 @@ def get_team_form(
         key=lambda m: (m.start_time, m.match_id),
     )
 
+    from fantasy_coach.models.elo_mov import EloMOV  # noqa: PLC0415
+
     elo = EloMOV()
     entries: list[TeamFormEntry] = []
     team_name = ""
@@ -500,6 +504,8 @@ def get_team_profile(
 
     # Sort chronologically to walk forward for Elo computation.
     sorted_matches = sorted(all_matches, key=lambda m: (m.start_time, m.match_id))
+
+    from fantasy_coach.models.elo_mov import EloMOV  # noqa: PLC0415
 
     elo = EloMOV()
     team_name = ""
