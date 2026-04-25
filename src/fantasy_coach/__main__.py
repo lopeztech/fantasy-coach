@@ -201,6 +201,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     pc.add_argument(
+        "--profile",
+        action="store_true",
+        default=False,
+        help=(
+            "Wrap the precompute pipeline in cProfile, sample peak RSS every 5 s, "
+            "and write a dump to /tmp/precompute_profile.out. "
+            "Also activated by FANTASY_COACH_PROFILE=1 env var."
+        ),
+    )
+    pc.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -581,6 +591,31 @@ def _detect_upcoming_round(year: int) -> int | None:
     return None
 
 
+def _rss_sampler(stop_event) -> None:  # type: ignore[type-arg]
+    """Log current and peak RSS every 5 s until stop_event is set."""
+    try:
+        import psutil  # noqa: PLC0415
+
+        proc = psutil.Process()
+
+        def _rss_mib() -> int:
+            return proc.memory_info().rss // (1024 * 1024)
+
+    except ImportError:
+        import resource  # noqa: PLC0415
+
+        def _rss_mib() -> int:  # type: ignore[misc]
+            # ru_maxrss is KB on Linux, bytes on macOS — Cloud Run is Linux.
+            return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+
+    peak_mib = 0
+    while not stop_event.wait(5.0):
+        rss = _rss_mib()
+        peak_mib = max(peak_mib, rss)
+        print(f"[profile] rss={rss}MiB peak={peak_mib}MiB")
+    print(f"[profile] final peak RSS: {peak_mib} MiB")
+
+
 def _run_precompute(args: argparse.Namespace) -> int:
     import os  # noqa: PLC0415
     from datetime import UTC, datetime  # noqa: PLC0415
@@ -591,6 +626,8 @@ def _run_precompute(args: argparse.Namespace) -> int:
         FirestoreTeamListRepository,
         SQLiteTeamListRepository,
     )
+
+    enable_profile = getattr(args, "profile", False) or os.getenv("FANTASY_COACH_PROFILE") == "1"
 
     season = args.season or datetime.now(UTC).year
     round_ = args.round
@@ -614,6 +651,19 @@ def _run_precompute(args: argparse.Namespace) -> int:
         conn = getattr(repo, "_conn", None)
         team_list_repo = SQLiteTeamListRepository(conn) if conn is not None else None
 
+    # Start RSS sampler and cProfile when --profile / FANTASY_COACH_PROFILE=1.
+    _rss_stop = None
+    _profiler = None
+    if enable_profile:
+        import cProfile  # noqa: PLC0415
+        import threading  # noqa: PLC0415
+
+        _rss_stop = threading.Event()
+        threading.Thread(target=_rss_sampler, args=(_rss_stop,), daemon=True).start()
+        _profiler = cProfile.Profile()
+        _profiler.enable()
+        print("[profile] cProfile + RSS sampler started")
+
     try:
         predictions = compute_predictions(
             season,
@@ -636,6 +686,18 @@ def _run_precompute(args: argparse.Namespace) -> int:
         if refreshed:
             print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
     finally:
+        if _profiler is not None:
+            import pstats  # noqa: PLC0415
+
+            _profiler.disable()
+            _profile_path = "/tmp/precompute_profile.out"
+            _profiler.dump_stats(_profile_path)
+            print(f"[profile] cProfile dump written to {_profile_path}")
+            _stats = pstats.Stats(_profiler)
+            _stats.sort_stats("cumulative")
+            _stats.print_stats(20)
+        if _rss_stop is not None:
+            _rss_stop.set()
         if hasattr(repo, "close"):
             repo.close()
         if hasattr(store, "close"):
