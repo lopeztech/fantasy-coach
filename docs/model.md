@@ -46,6 +46,25 @@ each match using only matches whose `start_time` precedes it — no leakage.
 | `missing_line_move` | `1.0` when opening odds are absent (either side). | Distinguishes no-open-data rows from genuine 0-movement rows; model learns a separate intercept for rows without line-move signal. |
 | `team_venue_hga_estimate` | Rolling mean of `(actual_home_result − Elo-expected_home_win_prob)` for the home team at this specific venue over the last `TEAM_VENUE_WINDOW` (30) games. Linearly regressed toward 0 when fewer than `TEAM_VENUE_MIN_OBS` (5) observations exist. Set to `0.0` for neutral venues. | Teams that consistently beat expectations at their home ground (fortress effect) carry a systematic advantage beyond what the Elo model captures; this feature isolates that signal per-team-per-venue. |
 | `is_neutral_venue` | `1.0` when the venue is neutral for both teams — neither team has appeared as the home side at this venue ≥ `NEUTRAL_VENUE_THRESHOLD` (5) times in any of the `NEUTRAL_VENUE_SEASONS_BACK` (3) prior seasons. `0.0` otherwise. | Magic Round, the Vegas opener, and rare one-off grounds confer no home-ground advantage; forcing `team_venue_hga_estimate` to 0 for these venues prevents spurious learning from small samples. |
+| `is_origin_round` | `1.0` when the NRL club round overlaps a State of Origin game week (Rounds 13, 16, 19 for 2024–2026). `0.0` otherwise. Hard-coded calendar in `representative.py`. | Origin camps pull up to 17 players per state from their clubs the week of each game, causing systematic roster disruption that Elo and rolling form cannot see. |
+| `is_magic_round` | `1.0` when this is the Magic Round (all 16 teams at Suncorp, single weekend). `0.0` otherwise. Hard-coded calendar in `representative.py`. | The logistical bunching and atypical travel pattern adds a signal on top of `is_neutral_venue`. |
+| `origin_callups_diff` | Home minus away count of players named in the Origin squad for this fixture window (from `representative_callups` DB table). `0.0` until squad data is backfilled. | Granular per-match disruption index — a team missing 6 Origin players has a quantifiably different disadvantage than one missing 1. |
+| `is_test_window` | `1.0` when the match date falls within an international Test window (e.g. Pacific Championships, Oct–Nov). `0.0` otherwise. | Representative-country players pulled from club squads late-season; affects finals warm-up matches. |
+
+### NRL calendar effects (#211)
+
+`representative.py` holds hard-coded calendar data for 2024–2026 (the
+seasons with training data). Each function is a pure lookup with no I/O:
+
+- `is_origin_round(season, round_)` — True when the NRL round overlaps an Origin week.
+- `is_magic_round(season, round_)` — True for the single-venue Magic Round weekend.
+- `is_test_window(match_date)` — True when the date falls within a Pacific Championships / Test window.
+- `origin_game_number(season, round_)` — Returns 1, 2, or 3 for the corresponding Origin game, or None.
+
+`representative_callups` is a SQLite/Firestore table (schema v6) populated by
+the precompute job when squad announcements are scraped. Until squads are
+backfilled, `origin_callups_diff` defaults to `0.0` — the model degrades
+gracefully to the binary `is_origin_round` flag.
 
 ### Position weighting (#27)
 
