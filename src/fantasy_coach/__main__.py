@@ -164,6 +164,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the aussportsbetting NRL xlsx. Required when --model bookmaker is used.",
     )
     ev.add_argument(
+        "--profit",
+        action="store_true",
+        default=False,
+        help=(
+            "Add CLV + PnL section to the report. Requires --closing-lines. "
+            "Reports mean CLV, win rate, and flat-stake ROI per model."
+        ),
+    )
+    ev.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -539,6 +548,13 @@ def _run_train_xgboost(args: argparse.Namespace) -> int:
 def _run_evaluate(args: argparse.Namespace) -> int:
     seasons = [int(s) for s in args.seasons.split(",") if s.strip()]
 
+    if args.profit and args.closing_lines is None:
+        print(
+            "error: --profit requires --closing-lines PATH",
+            file=sys.stderr,
+        )
+        return 2
+
     factories = {}
     for name in args.model:
         if name == "bookmaker":
@@ -558,16 +574,38 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         results = []
         for model_name in args.model:
             results.append(walk_forward_from_repo(repo, seasons, factories[model_name]))
+
+        clv_reports = None
+        if args.profit:
+            import contextlib  # noqa: PLC0415
+
+            from fantasy_coach.evaluation.profit import compute_clv  # noqa: PLC0415
+
+            all_matches = []
+            for s in seasons:
+                with contextlib.suppress(Exception):
+                    all_matches.extend(repo.list_matches(s))
+            clv_reports = []
+            for r in results:
+                report = compute_clv(r, all_matches)
+                if report is not None:
+                    clv_reports.append(report)
     finally:
         repo.close()
 
-    write_markdown(args.report, results, seasons=seasons)
+    write_markdown(args.report, results, seasons=seasons, clv_reports=clv_reports)
     for r in results:
         m = r.metrics()
         print(
             f"{r.predictor_name}: n={r.n} "
             f"acc={m['accuracy']:.3f} log_loss={m['log_loss']:.3f} brier={m['brier']:.3f}"
         )
+    if clv_reports:
+        for cr in clv_reports:
+            print(
+                f"{cr.predictor_name}: clv_n={cr.n} "
+                f"mean_clv={cr.mean_clv:+.4f} roi_flat={cr.roi_flat:+.3f}"
+            )
     print(f"Report written to {args.report}")
     return 0
 

@@ -890,3 +890,43 @@ every execution so it picks the revert up on its next scheduled run.
 - Online / per-round retraining. Weekly is sufficient at the current
   pace of data — rounds are week-sized and there's no mid-round signal
   that would change weights.
+
+## Market efficiency: CLV + profit-based evaluation (#212)
+
+`src/fantasy_coach/evaluation/profit.py` adds a second evaluation axis:
+
+**Closing-line value (CLV)** — does the model beat the closing line?
+
+    clv = p_model − p_close
+
+where `p_close` is the de-vigged closing-line probability (from
+`MatchRow.home.odds` / `.away.odds`, backfilled via `merge-closing-lines`).
+
+A consistently positive mean CLV indicates the model finds value the market
+later corrects to — the near-unfakeable long-run profitability signal.
+
+**Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `compute_clv(eval_result, matches)` | Join predictions to closing-line data; return a `CLVReport` with per-match CLV, mean CLV, win rate, and flat-stake ROI. Returns `None` when fewer than 10 covered matches exist. |
+| `kelly_stake(p_model, decimal_odds, bankroll, kelly_fraction=0.25)` | Quarter-Kelly stake sizing. Returns 0 when the model has no edge (`p × odds ≤ 1`). |
+| `simulate_pnl(match_clvs, strategy, starting_bankroll)` | Simulate bankroll evolution across all covered matches. Strategies: `"flat"` (1 unit/bet) or `"quarter_kelly"`. |
+
+**Usage:**
+
+```bash
+python -m fantasy_coach evaluate \
+  --model xgboost --model bookmaker \
+  --seasons 2024,2025 \
+  --closing-lines data/odds/nrl.xlsx \
+  --profit
+```
+
+The `--profit` flag appends a "Market efficiency" section to the markdown
+report with mean CLV per model and a cumulative CLV curve table.
+
+**Interpretation note** documented in the report: positive CLV does **not**
+equal positive PnL on a small sample — both are reported side by side.
+Statistical significance requires ≥ 400 predictions; Wald-test p < 0.05
+is the criterion used to declare a model "statistically edge-positive".
