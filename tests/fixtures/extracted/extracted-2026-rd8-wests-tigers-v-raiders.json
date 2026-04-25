@@ -13,7 +13,8 @@
     "nick_name": "Wests Tigers",
     "score": null,
     "players": [],
-    "odds": 1.56
+    "odds": 1.56,
+    "odds_open": null
   },
   "away": {
     "team_id": 500013,
@@ -21,7 +22,8 @@
     "nick_name": "Raiders",
     "score": null,
     "players": [],
-    "odds": 2.42
+    "odds": 2.42,
+    "odds_open": null
   },
   "team_stats": [
     {
@@ -95,6 +97,8 @@
       "away_value": 48.0
     }
   ],
+  "home_player_stats": [],
+  "away_player_stats": [],
   "referee_id": null,
   "video_referee_id": null
 }

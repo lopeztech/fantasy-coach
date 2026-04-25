@@ -193,6 +193,16 @@ def test_upsert_replaces_stale_state(repo: FirestoreRepository) -> None:
     assert loaded == fulltime
     assert len(loaded.home.players) == len(fulltime.home.players)
     assert len(loaded.team_stats) == len(fulltime.team_stats)
+    assert len(loaded.home_player_stats) == len(fulltime.home_player_stats)
+
+
+def test_player_stats_round_trip(repo: FirestoreRepository) -> None:
+    row = _match(FULLTIME_FIXTURE)
+    repo.upsert_match(row)
+    loaded = repo.get_match(row.match_id)
+    assert loaded is not None
+    assert loaded.home_player_stats == row.home_player_stats
+    assert loaded.away_player_stats == row.away_player_stats
 
 
 def test_list_matches_by_season(repo: FirestoreRepository) -> None:

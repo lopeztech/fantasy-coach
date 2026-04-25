@@ -60,6 +60,38 @@ Returns rich per-match JSON: `matchId`, `homeTeam`/`awayTeam` with player lists 
 
 **Slug ordering**: `home-v-away`, not alphabetical. Wrong order returns 404. Always source slugs from the fixtures endpoint rather than constructing them manually.
 
+### Per-player game stats (`stats.players`)
+
+Completed matches (`matchState == "FullTime"`) include a per-player stats block at:
+
+```
+stats.players.homeTeam[]   # 18 entries (13 starters + 5 bench)
+stats.players.awayTeam[]   # 18 entries
+stats.players.meta[]       # group metadata for the in-app UI; not used here
+```
+
+Each entry has `playerId` plus ~58 numeric stat fields. The fields the project currently persists (#142):
+
+| Key | Type | Notes |
+|-----|------|-------|
+| `playerId` | int | Stable across seasons |
+| `minutesPlayed` | int | 0-80 (regular time) |
+| `allRunMetres` | int | Total run metres incl. dummy-half + kick returns |
+| `tacklesMade` | int | Successful tackles |
+| `missedTackles` | int | |
+| `tackleBreaks` | int | "Tackle busts" in commentary |
+| `lineBreaks` | int | |
+| `tryAssists` | int | |
+| `offloads` | int | |
+| `errors` | int | All handling/general errors |
+| `tries` | int | |
+| `tackleEfficiency` | float | Percentage 0-100, pre-computed by NRL |
+| `fantasyPointsTotal` | int | NRL Fantasy points; useful as composite signal |
+
+Other published-but-not-persisted fields include `hitUps`, `hitUpRunMetres`, `dummyHalfRuns`, `dummyHalfRunMetres`, `kicks`, `kickMetres`, `kickReturnMetres`, `passes`, `receipts`, `postContactMetres`, `lineBreakAssists`, `lineEngagedRuns`, `playTheBallTotal`, `playTheBallAverageSpeed`, `tackleEfficiency`, `bombKicks`, `crossFieldKicks`, `grubberKicks`, `forcedDropOutKicks`, `fortyTwentyKicks`, `goals`, `conversions`, `fieldGoals`, `points`, etc. Add to `PlayerMatchStat` and the SQLite schema (with a v6→v7 migration) when needed.
+
+**Upcoming matches** carry an empty `stats.players: {}` — extractor must default both arrays to `[]`.
+
 ## Rate limits
 
 No documented rate limit. No `robots.txt` permission statement for these endpoints. Throttle to ~1 req/sec out of politeness.

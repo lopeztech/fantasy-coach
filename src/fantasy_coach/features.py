@@ -120,6 +120,33 @@ class TeamStat(BaseModel):
     away_value: float | None
 
 
+class PlayerMatchStat(BaseModel):
+    """Per-player game stats from `stats.players.{homeTeam,awayTeam}[]` (#142).
+
+    NRL.com publishes ~60 fields per player per match. We persist the subset
+    needed to derive the team-level rolling features in feature_engineering
+    (running metres, tackle activity, line breaks, errors) plus
+    `tackle_efficiency` (already computed by NRL) and `fantasy_points_total`
+    as a free composite signal.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    player_id: int
+    minutes_played: int | None = None
+    all_run_metres: int | None = None
+    tackles_made: int | None = None
+    missed_tackles: int | None = None
+    tackle_breaks: int | None = None
+    line_breaks: int | None = None
+    try_assists: int | None = None
+    offloads: int | None = None
+    errors: int | None = None
+    tries: int | None = None
+    tackle_efficiency: float | None = None
+    fantasy_points_total: int | None = None
+
+
 class MatchRow(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -134,6 +161,8 @@ class MatchRow(BaseModel):
     home: TeamRow
     away: TeamRow
     team_stats: list[TeamStat]
+    home_player_stats: list[PlayerMatchStat] = []
+    away_player_stats: list[PlayerMatchStat] = []
     referee_id: int | None = None
     video_referee_id: int | None = None
 
@@ -146,6 +175,8 @@ def extract_match_features(raw: dict[str, Any]) -> MatchRow:
     start_time = _parse_iso_utc(raw["startTime"])
     referee_id, video_referee_id = _extract_referee_ids(raw.get("officials") or [])
 
+    raw_stats = raw.get("stats") or {}
+    raw_player_stats = raw_stats.get("players") or {}
     return MatchRow(
         match_id=int(raw["matchId"]),
         season=start_time.year,
@@ -157,7 +188,9 @@ def extract_match_features(raw: dict[str, Any]) -> MatchRow:
         weather=raw.get("weather"),
         home=_extract_team(raw["homeTeam"]),
         away=_extract_team(raw["awayTeam"]),
-        team_stats=_extract_team_stats(raw.get("stats") or {}),
+        team_stats=_extract_team_stats(raw_stats),
+        home_player_stats=_extract_player_stats(raw_player_stats.get("homeTeam") or []),
+        away_player_stats=_extract_player_stats(raw_player_stats.get("awayTeam") or []),
         referee_id=referee_id,
         video_referee_id=video_referee_id,
     )
@@ -202,6 +235,40 @@ def _extract_team_stats(stats: dict[str, Any]) -> list[TeamStat]:
                 )
             )
     return rows
+
+
+def _extract_player_stats(rows: list[dict[str, Any]]) -> list[PlayerMatchStat]:
+    """Project the per-player block from `stats.players.{homeTeam,awayTeam}`.
+
+    NRL publishes ~60 fields per player per match; we keep only the ones the
+    feature pipeline needs (#142). Unknown fields are silently ignored — the
+    schema is wide enough that warning on unknowns would be noise.
+    """
+    return [
+        PlayerMatchStat(
+            player_id=int(row["playerId"]),
+            minutes_played=_optional_int(row.get("minutesPlayed")),
+            all_run_metres=_optional_int(row.get("allRunMetres")),
+            tackles_made=_optional_int(row.get("tacklesMade")),
+            missed_tackles=_optional_int(row.get("missedTackles")),
+            tackle_breaks=_optional_int(row.get("tackleBreaks")),
+            line_breaks=_optional_int(row.get("lineBreaks")),
+            try_assists=_optional_int(row.get("tryAssists")),
+            offloads=_optional_int(row.get("offloads")),
+            errors=_optional_int(row.get("errors")),
+            tries=_optional_int(row.get("tries")),
+            tackle_efficiency=_optional_float(row.get("tackleEfficiency")),
+            fantasy_points_total=_optional_int(row.get("fantasyPointsTotal")),
+        )
+        for row in rows
+        if row.get("playerId") is not None
+    ]
+
+
+def _optional_float(raw: Any) -> float | None:
+    if raw is None or raw == "":
+        return None
+    return float(raw)
 
 
 def _stat_value(raw: Any) -> float | None:

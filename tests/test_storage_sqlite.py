@@ -91,6 +91,21 @@ def test_upsert_replaces_stale_children_when_match_transitions(
     assert loaded == fulltime
     assert len(loaded.home.players) == len(fulltime.home.players)
     assert len(loaded.team_stats) == len(fulltime.team_stats)
+    assert len(loaded.home_player_stats) == len(fulltime.home_player_stats)
+    assert len(loaded.away_player_stats) == len(fulltime.away_player_stats)
+
+
+def test_player_stats_round_trip_preserves_order_and_values(
+    repo: SQLiteRepository,
+) -> None:
+    row = _match(FULLTIME_FIXTURE)
+
+    repo.upsert_match(row)
+    loaded = repo.get_match(row.match_id)
+
+    assert loaded is not None
+    assert loaded.home_player_stats == row.home_player_stats
+    assert loaded.away_player_stats == row.away_player_stats
 
 
 def test_list_matches_by_season(repo: SQLiteRepository) -> None:
