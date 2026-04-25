@@ -895,3 +895,60 @@ every execution so it picks the revert up on its next scheduled run.
 - Online / per-round retraining. Weekly is sufficient at the current
   pace of data — rounds are week-sized and there's no mid-round signal
   that would change weights.
+
+## Market efficiency — CLV + PnL (#212)
+
+Walk-forward evaluation reports proper scoring rules (accuracy, log-loss,
+Brier, ECE) that measure calibration and accuracy.  The `--profit` flag on
+the `evaluate` command adds a second axis: **closing-line value (CLV)**, which
+measures whether the model finds value the *market* does not.
+
+### CLV definition
+
+For each walk-forward prediction, the model picks a side (home when
+`p_model ≥ 0.5`, away otherwise).  The per-match CLV is:
+
+```
+CLV = p_model_picked − p_close_picked
+```
+
+where `p_close_picked` is the de-vigged closing-line probability for the
+side the model backed.  Positive CLV = model found value the market later
+corrected.  Average CLV > 0 over a season is the "beating the closing line"
+test.
+
+### Quarter-Kelly staking
+
+Bankroll simulation uses a 25 % fractional-Kelly stake for each bet:
+
+```
+full_kelly = (p × b − q) / b      where b = decimal_odds − 1, q = 1 − p
+stake      = min(0.25 × full_kelly × bankroll, 0.25 × bankroll)
+```
+
+The 25 % multiplier is the industry standard for serious bettors — it
+reduces variance by a factor of ~4 relative to full Kelly.  A `--profit`
+report also shows flat-1-unit staking side by side for reference.
+
+### Important caveats
+
+- **n < 400 is insufficient** for statistical significance on CLV.  One
+  NRL season produces ≈ 200 non-draw matches; two seasons give ≈ 400.
+  The evaluation harness notes this explicitly.
+- **Positive CLV ≠ positive PnL** on small samples.  Random variance at
+  n=200 is large enough to produce multi-unit losses even from a +1 pp
+  mean CLV signal.
+- Closing odds coverage depends on the aussportsbetting xlsx being merged
+  via `merge-closing-lines`.  Rows without odds are excluded from CLV
+  metrics and counted separately in the `n (odds)` column.
+
+### Usage
+
+```bash
+python -m fantasy_coach evaluate \
+  --model xgboost --model elo \
+  --seasons 2024,2025 \
+  --closing-lines data/odds/nrl.xlsx \
+  --profit \
+  --report reports/evaluation.md
+```

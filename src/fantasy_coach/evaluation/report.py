@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fantasy_coach.evaluation.harness import EvaluationResult
+from fantasy_coach.evaluation.profit import CLVReport, render_profit_section
 from fantasy_coach.models.calibration import reliability_bins
 
 
@@ -15,6 +16,7 @@ def render_markdown(
     *,
     seasons: Sequence[int],
     generated_at: datetime | None = None,
+    clv_reports: Sequence[CLVReport] | None = None,
 ) -> str:
     generated_at = generated_at or datetime.now()
     lines = [
@@ -63,6 +65,12 @@ def render_markdown(
             lines.append(f"| {b['lo']:.1f}–{b['hi']:.1f} | {conf} | {acc} | {b['n']} |")
         lines.append("")
 
+    if clv_reports:
+        profit_md = render_profit_section(list(clv_reports))
+        if profit_md:
+            lines.append("")
+            lines.append(profit_md)
+
     return "\n".join(lines)
 
 
@@ -71,6 +79,7 @@ def write_markdown(
     results: Sequence[EvaluationResult],
     *,
     seasons: Sequence[int],
+    clv_reports: Sequence[CLVReport] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_markdown(results, seasons=seasons))
+    path.write_text(render_markdown(results, seasons=seasons, clv_reports=clv_reports))

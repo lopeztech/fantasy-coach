@@ -164,6 +164,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the aussportsbetting NRL xlsx. Required when --model bookmaker is used.",
     )
     ev.add_argument(
+        "--profit",
+        action="store_true",
+        default=False,
+        help=(
+            "Append CLV + PnL market-efficiency section to the report. "
+            "Requires --closing-lines to be set."
+        ),
+    )
+    ev.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -539,6 +548,13 @@ def _run_train_xgboost(args: argparse.Namespace) -> int:
 def _run_evaluate(args: argparse.Namespace) -> int:
     seasons = [int(s) for s in args.seasons.split(",") if s.strip()]
 
+    if getattr(args, "profit", False) and args.closing_lines is None:
+        print(
+            "error: --profit requires --closing-lines PATH",
+            file=sys.stderr,
+        )
+        return 2
+
     factories = {}
     for name in args.model:
         if name == "bookmaker":
@@ -558,10 +574,14 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         results = []
         for model_name in args.model:
             results.append(walk_forward_from_repo(repo, seasons, factories[model_name]))
+
+        clv_reports = None
+        if getattr(args, "profit", False):
+            clv_reports = _compute_clv_reports(results, repo, seasons, args.closing_lines)
     finally:
         repo.close()
 
-    write_markdown(args.report, results, seasons=seasons)
+    write_markdown(args.report, results, seasons=seasons, clv_reports=clv_reports)
     for r in results:
         m = r.metrics()
         print(
@@ -570,6 +590,73 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         )
     print(f"Report written to {args.report}")
     return 0
+
+
+def _compute_clv_reports(
+    results: list,
+    repo: Any,
+    seasons: list[int],
+    closing_lines_path: Any,
+) -> list:
+    """Join walk-forward predictions with closing-line odds and compute CLV."""
+    from fantasy_coach.bookmaker.lines import devig_two_way, load_closing_lines  # noqa: PLC0415
+    from fantasy_coach.bookmaker.team_names import canonicalize  # noqa: PLC0415
+    from fantasy_coach.evaluation.profit import CLVEntry, compute_clv  # noqa: PLC0415
+
+    lines = load_closing_lines(closing_lines_path)
+
+    # Build match_id → MatchRow lookup for closing odds.
+    match_lookup: dict[int, Any] = {}
+    for season in seasons:
+        try:
+            for m in repo.list_matches(season):
+                match_lookup[m.match_id] = m
+        except Exception:
+            pass
+
+    clv_reports = []
+    for result in results:
+        entries: list[CLVEntry] = []
+        for pred in result.predictions:
+            match = match_lookup.get(pred.match_id)
+            if match is None:
+                continue
+            home_odds = match.home.odds
+            away_odds = match.away.odds
+            if home_odds is None or away_odds is None:
+                # Fall back to closing-line file lookup
+                match_date = match.start_time.date()
+                home_can = canonicalize(match.home.name)
+                away_can = canonicalize(match.away.name)
+                if home_can and away_can:
+                    cl = lines.get((match_date, home_can, away_can))
+                    if cl is not None:
+                        home_odds = cl.home_odds_close
+                        away_odds = cl.away_odds_close
+            if home_odds is None or away_odds is None or home_odds <= 1.0 or away_odds <= 1.0:
+                continue
+            try:
+                p_close = devig_two_way(home_odds, away_odds)
+            except ValueError:
+                continue
+            predicted_home = pred.p_home_win >= 0.5
+            entries.append(
+                CLVEntry(
+                    match_id=pred.match_id,
+                    season=pred.season,
+                    round=pred.round,
+                    p_model=pred.p_home_win,
+                    p_close=p_close,
+                    home_decimal_odds=home_odds,
+                    away_decimal_odds=away_odds,
+                    actual_home_win=pred.actual_home_win,
+                    predicted_home=predicted_home,
+                )
+            )
+        clv_reports.append(
+            compute_clv(entries, result.predictor_name, n_total=result.n)
+        )
+    return clv_reports
 
 
 def _detect_upcoming_round(year: int) -> int | None:
