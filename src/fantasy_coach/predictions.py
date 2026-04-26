@@ -610,7 +610,7 @@ _CONFIDENCE_MEDIUM_THRESHOLD = 0.20
 def _compute_uncertainty(
     prob: float,
     alternatives: AlternativeModels | None,
-) -> tuple[Literal['low', 'medium', 'high'] | None, tuple[float, float] | None, float | None]:
+) -> tuple[Literal["low", "medium", "high"] | None, tuple[float, float] | None, float | None]:
     """Return (confidence_band, win_probability_80ci, base_model_spread).
 
     base_model_spread is the range of home-win probabilities across all
