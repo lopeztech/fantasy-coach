@@ -29,6 +29,17 @@ DEFAULT_K_STARTER = 20.0
 DEFAULT_K_BENCH = 10.0  # bench plays ~20-30 minutes on average — half-weight update
 DEFAULT_SEASON_REGRESSION = 0.25
 
+# Position-group membership for the matchup-differential features (#210).
+# Groups are disjoint subsets of the NRL starting XIII.
+# Bench / Interchange players are not included — we only want the starters
+# contesting each position battle.
+POSITION_GROUPS: dict[str, frozenset[str]] = {
+    "halves": frozenset({"Halfback", "Five-Eighth"}),
+    "forwards": frozenset({"Prop", "Lock", "2nd Row"}),
+    "hooker": frozenset({"Hooker"}),
+    "outside_backs": frozenset({"Fullback", "Winger", "Centre"}),
+}
+
 
 @dataclass
 class PlayerRatings:

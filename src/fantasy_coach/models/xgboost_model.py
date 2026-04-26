@@ -54,6 +54,12 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
     "form_diff_pa_adjusted": -1,
     "player_strength_diff": 1,
     "odds_home_win_prob": 1,
+    # Position-group matchup differentials (#210): positive diff = home stronger.
+    "halves_strength_diff": 1,
+    "forwards_strength_diff": 1,
+    "hooker_strength_diff": 1,
+    "outside_backs_strength_diff": 1,
+    "halves_x_forwards_diff": 1,
 }
 
 

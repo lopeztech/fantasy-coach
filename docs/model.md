@@ -529,10 +529,10 @@ features so XGBoost can't carve perverse local splits:
 
 | Feature | Constraint |
 |---|---:|
-| `elo_diff`, `form_diff_pf`, `h2h_recent_diff`, `venue_home_win_rate`, `form_diff_pf_adjusted`, `player_strength_diff`, `odds_home_win_prob` | +1 |
+| `elo_diff`, `form_diff_pf`, `h2h_recent_diff`, `venue_home_win_rate`, `form_diff_pf_adjusted`, `player_strength_diff`, `odds_home_win_prob`, `halves_strength_diff`, `forwards_strength_diff`, `hooker_strength_diff`, `outside_backs_strength_diff`, `halves_x_forwards_diff` | +1 |
 | `form_diff_pa`, `key_absence_diff`, `form_diff_pa_adjusted` | −1 |
 
-The other 15 features stay unconstrained — weather, rest, travel, and
+The other features stay unconstrained — weather, rest, travel, and
 `missing_*` flags all have genuinely ambiguous relationships to home win
 or depend on interactions.
 
@@ -763,6 +763,33 @@ doesn't have an artefact shape yet. Walk-forward evaluation uses an
 in-memory EloMOV that replays the match history; a production
 `train-stacked` CLI would need a small EloMOV serialiser first.
 Filed as a follow-up if/when we decide to promote.
+
+## Position-pair matchup features (#210)
+
+`player_strength_diff` collapses the full roster into a single scalar. The
+position-pair features disaggregate it into four position-group differentials
+(home − away sum of per-player Elo ratings for starters in each group):
+
+| Feature | Positions |
+|---|---|
+| `halves_strength_diff` | Halfback, Five-Eighth |
+| `forwards_strength_diff` | Prop, Lock, 2nd Row |
+| `hooker_strength_diff` | Hooker |
+| `outside_backs_strength_diff` | Fullback, Winger, Centre |
+| `halves_x_forwards_diff` | Interaction: `fwds_diff` when `halves_diff` and `fwds_diff` share the same sign, else 0 |
+
+The interaction term captures "dominant on both axes" — a team with both an
+elite halves pairing and a dominant forward pack compounds their advantages in
+a way linear combinations don't express. XGBoost can exploit the disaggregated
+signals via axis-aligned splits that `player_strength_diff` alone prevents.
+
+All five features use `POSITION_GROUPS` from `models/player_ratings.py` and the
+same `PlayerRatings` book as `player_strength_diff`. They default to `0.0` when
+no `is_on_field` data exists (same no-data contract as `missing_player_strength`).
+Monotone constraints (+1) are applied to all five: positive diff = home group
+stronger = monotonically higher home-win probability.
+
+Walk-forward ablation pending retrain with new feature schema.
 
 ## Player-strength cap + market shrinkage (#203)
 

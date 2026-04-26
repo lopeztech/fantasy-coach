@@ -8,9 +8,10 @@ import pytest
 
 from fantasy_coach.feature_engineering import (
     FEATURE_NAMES,
+    FeatureBuilder,
     build_training_frame,
 )
-from fantasy_coach.features import MatchRow, TeamRow
+from fantasy_coach.features import MatchRow, PlayerRow, TeamRow
 
 
 def _match(
@@ -408,3 +409,113 @@ def test_line_move_computed_when_opening_odds_present() -> None:
     assert row["odds_line_move_magnitude"] == pytest.approx(abs(expected_move), rel=1e-6)
     # Market moved toward home (shorter close price) → positive move.
     assert row["odds_line_move_home_prob"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Position-pair matchup features (#210)
+# ---------------------------------------------------------------------------
+
+def _player(player_id: int, position: str, *, is_on_field: bool = True) -> PlayerRow:
+    return PlayerRow(
+        player_id=player_id,
+        jersey_number=player_id,
+        position=position,
+        first_name="F",
+        last_name="L",
+        is_on_field=is_on_field,
+    )
+
+
+def _make_match_with_players(
+    home_players: list[PlayerRow],
+    away_players: list[PlayerRow],
+    *,
+    match_id: int = 1,
+    home_id: int = 10,
+    away_id: int = 20,
+) -> MatchRow:
+    when = datetime(2025, 3, 1, tzinfo=UTC)
+    return MatchRow(
+        match_id=match_id,
+        season=2025,
+        round=1,
+        start_time=when,
+        match_state="FullTime",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(
+            team_id=home_id,
+            name="H",
+            nick_name="H",
+            score=24,
+            players=home_players,
+        ),
+        away=TeamRow(
+            team_id=away_id,
+            name="A",
+            nick_name="A",
+            score=18,
+            players=away_players,
+        ),
+        team_stats=[],
+    )
+
+
+def test_position_pair_features_zero_without_roster_data() -> None:
+    """When neither team has is_on_field data all group diffs are 0.0."""
+    frame = build_training_frame([_make_match_with_players([], [])])
+    row = dict(zip(FEATURE_NAMES, frame.X[0], strict=True))
+    for feat in (
+        "halves_strength_diff",
+        "forwards_strength_diff",
+        "hooker_strength_diff",
+        "outside_backs_strength_diff",
+        "halves_x_forwards_diff",
+    ):
+        assert row[feat] == pytest.approx(0.0), f"{feat} should be 0.0 with no roster data"
+
+
+def test_position_pair_halves_diff_reflects_rating_gap() -> None:
+    """Home has a halfback and away has none → positive halves_strength_diff."""
+    builder = FeatureBuilder()
+    home_players = [_player(101, "Halfback"), _player(102, "Five-Eighth")]
+    away_players = [_player(201, "Prop"), _player(202, "Prop")]
+    match = _make_match_with_players(home_players, away_players)
+
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+
+    # Home has 2 halves at default rating; away has 0 → positive diff.
+    assert row["halves_strength_diff"] > 0
+    assert row["forwards_strength_diff"] < 0  # away has 2 props
+    assert row["hooker_strength_diff"] == pytest.approx(0.0)
+    assert row["outside_backs_strength_diff"] == pytest.approx(0.0)
+
+
+def test_halves_x_forwards_diff_fires_only_on_same_sign() -> None:
+    """Interaction term is non-zero only when halves and forwards push the same way."""
+    builder = FeatureBuilder()
+
+    # Home dominant on halves AND forwards → interaction fires.
+    home_both = [_player(1, "Halfback"), _player(2, "Prop")]
+    away_neither = [_player(3, "Winger"), _player(4, "Winger")]
+    match_same = _make_match_with_players(home_both, away_neither, match_id=1)
+    row_same = dict(zip(FEATURE_NAMES, builder.feature_row(match_same), strict=True))
+    assert row_same["halves_x_forwards_diff"] != pytest.approx(0.0)
+
+    # Home strong halves, away strong forwards → opposing signs → interaction = 0.
+    home_halves_only = [_player(5, "Halfback"), _player(6, "Five-Eighth")]
+    away_forwards_only = [_player(7, "Prop"), _player(8, "Lock")]
+    match_opp = _make_match_with_players(
+        home_halves_only, away_forwards_only, match_id=2, home_id=11, away_id=21
+    )
+    row_opp = dict(zip(FEATURE_NAMES, builder.feature_row(match_opp), strict=True))
+    assert row_opp["halves_x_forwards_diff"] == pytest.approx(0.0)
+
+
+def test_position_pair_feature_count_matches_feature_names() -> None:
+    """Smoke test: feature_row length matches FEATURE_NAMES."""
+    builder = FeatureBuilder()
+    match = _make_match_with_players([], [])
+    row = builder.feature_row(match)
+    assert len(row) == len(FEATURE_NAMES)
