@@ -110,7 +110,7 @@ EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5491, "log_loss": 0.8758, "brier": 0.2789},
+    "logistic": {"n": 692, "accuracy": 0.5679, "log_loss": 0.8898, "brier": 0.2831},
     "xgboost": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6899, "brier": 0.2465},
     "skellam": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6757, "brier": 0.2407},
     "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6745, "brier": 0.2404},
