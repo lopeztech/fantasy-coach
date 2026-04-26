@@ -415,6 +415,7 @@ def test_line_move_computed_when_opening_odds_present() -> None:
 # Position-pair matchup features (#210)
 # ---------------------------------------------------------------------------
 
+
 def _player(player_id: int, position: str, *, is_on_field: bool = True) -> PlayerRow:
     return PlayerRow(
         player_id=player_id,

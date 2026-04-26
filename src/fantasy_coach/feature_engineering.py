@@ -542,9 +542,7 @@ class FeatureBuilder:
         )
         return composite, True
 
-    def _position_group_strength(
-        self, players: list[PlayerRow], group: frozenset[str]
-    ) -> float:
+    def _position_group_strength(self, players: list[PlayerRow], group: frozenset[str]) -> float:
         """Sum of player ratings for starters in the given position group.
 
         Returns 0.0 when no starters with is_on_field data exist in the group —
