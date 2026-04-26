@@ -99,3 +99,19 @@ No documented rate limit. No `robots.txt` permission statement for these endpoin
 ## Samples
 
 - [`samples/draw-round-8-2026.json`](samples/draw-round-8-2026.json) — trimmed fixtures-endpoint response
+
+
+## HTTP caching behaviour (#155)
+
+Observed caching headers per endpoint (update as new data arrives):
+
+| Endpoint | ETag | Last-Modified | Cache-Control |
+|---|---|---|---|
+| `/draw/data` (fixtures) | Unknown | Unknown | Unknown |
+| `/draw/nrl-premiership/…/data` (match detail) | Unknown | Unknown | Unknown |
+
+Until live observations are recorded here, `InMemoryScraperCache` falls back to
+SHA-256 content-hash dedup for all endpoints. Pass the cache instance to
+`fetch_match` / `fetch_round` / `fetch_match_from_url` to enable it.
+
+Update this table after observing real `curl -I` responses from the endpoints.

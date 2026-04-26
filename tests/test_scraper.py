@@ -186,3 +186,99 @@ def test_fetch_match_from_url_accepts_full_url() -> None:
     respx.get(full + "data").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     assert scraper.fetch_match_from_url(full) == {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# HTTP caching tests (#155)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_cache_stores_etag_on_200() -> None:
+    payload = {"matchId": 999}
+    respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(200, json=payload, headers={"ETag": '"abc123"'})
+    )
+    cache = scraper.InMemoryScraperCache()
+    result = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+
+    assert result == payload
+    # One entry stored, keyed by url-hash.
+    assert len(cache._store) == 1
+    entry = next(iter(cache._store.values()))
+    assert entry.etag == '"abc123"'
+    assert cache.new == 1
+
+
+@respx.mock
+def test_cache_sends_if_none_match_on_second_fetch() -> None:
+    payload = {"matchId": 999}
+    route = respx.get(MATCH_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=payload, headers={"ETag": '"abc123"'}),
+            httpx.Response(304),
+        ]
+    )
+    cache = scraper.InMemoryScraperCache()
+
+    # First fetch: populates cache.
+    first = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+    assert first == payload
+
+    # Second fetch: sends If-None-Match, receives 304, returns None.
+    second = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+    assert second is None
+    assert route.call_count == 2
+    second_request = route.calls[1].request
+    assert second_request.headers.get("if-none-match") == '"abc123"'
+    assert cache.unchanged == 1
+
+
+@respx.mock
+def test_cache_no_store_header_prevents_caching() -> None:
+    payload = {"matchId": 7}
+    respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(
+            200, json=payload, headers={"Cache-Control": "no-store", "ETag": '"xyz"'}
+        )
+    )
+    cache = scraper.InMemoryScraperCache()
+    result = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+
+    assert result == payload
+    assert len(cache._store) == 0  # no-store → nothing cached
+
+
+@respx.mock
+def test_cache_content_hash_fallback_skips_unchanged_body() -> None:
+    payload = {"matchId": 5}
+    body_bytes = b'{"matchId": 5}'
+    # No ETag or Last-Modified on either response.
+    route = respx.get(MATCH_URL).mock(
+        side_effect=[
+            httpx.Response(200, content=body_bytes, headers={"Content-Type": "application/json"}),
+            httpx.Response(200, content=body_bytes, headers={"Content-Type": "application/json"}),
+        ]
+    )
+    cache = scraper.InMemoryScraperCache()
+
+    first = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+    assert first == payload
+    assert cache.new == 1
+
+    # Same body → content-hash dedup → returns None.
+    second = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=cache)
+    assert second is None
+    assert route.call_count == 2
+    assert cache.unchanged == 1
+
+
+@respx.mock
+def test_cache_uncached_without_cache_arg() -> None:
+    """Callers that don't pass a cache get the normal response, unchanged."""
+    payload = {"matchId": 1}
+    respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(200, json=payload, headers={"ETag": '"v1"'})
+    )
+    result = scraper.fetch_match(2026, 8, "wests-tigers", "raiders")
+    assert result == payload
