@@ -1259,3 +1259,173 @@ def test_compute_alternatives_absent_when_same_path(
     pred = result[0]
     if pred.alternatives is not None:
         assert pred.alternatives.logistic is None
+
+
+# ---------------------------------------------------------------------------
+# _compute_uncertainty — confidence-band and 80% CI derivation (#146)
+# ---------------------------------------------------------------------------
+
+
+from fantasy_coach.predictions import (  # noqa: E402
+    _compute_uncertainty,
+)
+
+
+def test_compute_uncertainty_high_confidence_when_models_agree() -> None:
+    """All models within 0.05 of each other → high confidence band."""
+    alts = AlternativeModels(
+        logistic=PickSummary(predictedWinner="home", homeWinProbability=0.68),
+        bookmaker=PickSummary(predictedWinner="home", homeWinProbability=0.70),
+    )
+    band, ci, spread = _compute_uncertainty(0.69, alts)
+    assert band == "high"
+    assert spread is not None and spread < 0.10
+    assert ci is not None
+    lo, hi = ci
+    assert lo < 0.69 < hi
+
+
+def test_compute_uncertainty_medium_confidence_moderate_spread() -> None:
+    alts = AlternativeModels(
+        logistic=PickSummary(predictedWinner="home", homeWinProbability=0.60),
+        bookmaker=PickSummary(predictedWinner="home", homeWinProbability=0.72),
+    )
+    band, ci, spread = _compute_uncertainty(0.65, alts)
+    assert band == "medium"
+    assert spread is not None and 0.10 <= spread < 0.20
+
+
+def test_compute_uncertainty_low_confidence_high_spread() -> None:
+    alts = AlternativeModels(
+        logistic=PickSummary(predictedWinner="away", homeWinProbability=0.42),
+        bookmaker=PickSummary(predictedWinner="home", homeWinProbability=0.71),
+    )
+    band, ci, spread = _compute_uncertainty(0.56, alts)
+    assert band == "low"
+    assert spread is not None and spread >= 0.20
+
+
+def test_compute_uncertainty_returns_none_when_no_alternatives() -> None:
+    band, ci, spread = _compute_uncertainty(0.65, None)
+    assert band is None
+    assert ci is None
+    assert spread is None
+
+
+def test_compute_uncertainty_returns_none_when_only_primary() -> None:
+    """Only XGBoost primary, no logistic or bookmaker → can't compute spread."""
+    alts = AlternativeModels(logistic=None, bookmaker=None)
+    band, ci, spread = _compute_uncertainty(0.65, alts)
+    assert band is None
+    assert ci is None
+    assert spread is None
+
+
+def test_compute_uncertainty_ci_clipped_to_unit_interval() -> None:
+    """Extreme probabilities near 0 or 1 should not produce CI below 0 or above 1."""
+    alts = AlternativeModels(
+        logistic=PickSummary(predictedWinner="home", homeWinProbability=0.95),
+        bookmaker=PickSummary(predictedWinner="home", homeWinProbability=0.98),
+    )
+    band, ci, spread = _compute_uncertainty(0.97, alts)
+    assert ci is not None
+    lo, hi = ci
+    assert lo >= 0.0
+    assert hi <= 1.0
+
+
+def test_store_roundtrips_uncertainty_fields(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=77,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.68,
+        modelVersion="mv",
+        featureHash="fh",
+        confidenceBand="high",
+        winProbability80ci=(0.62, 0.74),
+        baseModelSpread=0.06,
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 1
+    out = loaded[0]
+    assert out.confidenceBand == "high"
+    assert out.winProbability80ci == pytest.approx((0.62, 0.74))
+    assert out.baseModelSpread == pytest.approx(0.06)
+    assert out.trainingDataSimilarity is None
+
+
+def test_store_roundtrips_null_uncertainty(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=78,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="away",
+        homeWinProbability=0.35,
+        modelVersion="mv",
+        featureHash="fh",
+        # no uncertainty fields
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    out = loaded[0]
+    assert out.confidenceBand is None
+    assert out.winProbability80ci is None
+    assert out.baseModelSpread is None
+
+
+def test_compute_populates_uncertainty_when_alternatives_present(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    """When logistic + bookmaker alternatives are present, uncertainty fields are populated."""
+    from fantasy_coach.feature_engineering import FEATURE_NAMES, TrainingFrame
+    from fantasy_coach.models.logistic import save_model, train_logistic
+
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+
+    primary_model = _make_mock_model(0.72)
+    primary_path = tmp_path / "primary.joblib"
+    primary_path.write_bytes(b"primary-bytes")
+
+    rng = np.random.default_rng(2)
+    n = 60
+    X = rng.standard_normal((n, len(FEATURE_NAMES)))
+    y = (X[:, 0] > 0).astype(int)
+    frame = TrainingFrame(
+        X=X,
+        y=y,
+        match_ids=np.arange(n),
+        start_times=np.arange(n, dtype=float),
+        feature_names=FEATURE_NAMES,
+    )
+    logistic_result = train_logistic(frame, test_fraction=0.0)
+    logistic_path = tmp_path / "logistic.joblib"
+    save_model(logistic_result, logistic_path)
+
+    with patch("fantasy_coach.models.loader.load_model", return_value=primary_model):
+        result = compute_predictions(
+            2026,
+            8,
+            sqlite_repo,
+            store,
+            model_path=primary_path,
+            logistic_path=logistic_path,
+            fetch_round_fn=mock_round,
+            fetch_match_fn=mock_match,
+        )
+
+    assert len(result) == 1
+    pred = result[0]
+    # baseModelSpread is populated when logistic is available.
+    assert pred.baseModelSpread is not None
+    assert 0.0 <= pred.baseModelSpread <= 1.0
+    assert pred.confidenceBand in ("low", "medium", "high")
+    assert pred.winProbability80ci is not None
+    lo, hi = pred.winProbability80ci
+    assert 0.0 <= lo <= pred.homeWinProbability <= hi <= 1.0

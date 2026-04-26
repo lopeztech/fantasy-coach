@@ -21,7 +21,7 @@ import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -143,6 +143,14 @@ class PredictionOut(BaseModel):
     # Three-way consensus (#140): logistic + bookmaker picks alongside the
     # primary XGBoost pick. Absent on predictions cached before #140 shipped.
     alternatives: AlternativeModels | None = None
+    # Uncertainty / confidence (#146): additive fields — absent on predictions
+    # cached before this shipped; existing SPA clients ignore unknown fields.
+    confidenceBand: Literal["low", "medium", "high"] | None = None
+    winProbability80ci: tuple[float, float] | None = None
+    baseModelSpread: float | None = None
+    # trainingDataSimilarity requires a training-set centroid stored in the
+    # model artifact; populated once that metadata lands.
+    trainingDataSimilarity: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +178,8 @@ class PredictionStore:
             self._conn.execute("ALTER TABLE predictions ADD COLUMN contributions TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self._conn.execute("ALTER TABLE predictions ADD COLUMN alternatives TEXT")
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE predictions ADD COLUMN uncertainty TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -193,6 +203,7 @@ class PredictionStore:
                 alts_json = (
                     json.dumps(p.alternatives.model_dump()) if p.alternatives is not None else None
                 )
+                uncertainty_json = _uncertainty_to_json(p)
                 self._conn.execute(
                     """
                     INSERT OR REPLACE INTO predictions
@@ -200,8 +211,8 @@ class PredictionStore:
                          home_id, home_name, away_id, away_name,
                          kickoff, predicted_winner, home_win_prob,
                          model_version, feature_hash, created_at,
-                         contributions, alternatives)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         contributions, alternatives, uncertainty)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         season,
@@ -219,6 +230,7 @@ class PredictionStore:
                         now,
                         contribs_json,
                         alts_json,
+                        uncertainty_json,
                     ),
                 )
 
@@ -232,6 +244,8 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
     )
     alts_raw = r["alternatives"] if "alternatives" in cols else None
     alternatives = AlternativeModels(**json.loads(alts_raw)) if alts_raw else None
+    uncertainty_raw = r["uncertainty"] if "uncertainty" in cols else None
+    uncertainty = json.loads(uncertainty_raw) if uncertainty_raw else {}
     return PredictionOut(
         matchId=r["match_id"],
         home=TeamInfo(id=r["home_id"], name=r["home_name"]),
@@ -243,6 +257,12 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
         featureHash=r["feature_hash"],
         contributions=contribs,
         alternatives=alternatives,
+        confidenceBand=uncertainty.get("confidenceBand"),
+        winProbability80ci=tuple(uncertainty["winProbability80ci"])  # type: ignore[arg-type]
+        if uncertainty.get("winProbability80ci")
+        else None,
+        baseModelSpread=uncertainty.get("baseModelSpread"),
+        trainingDataSimilarity=uncertainty.get("trainingDataSimilarity"),
     )
 
 
@@ -556,6 +576,77 @@ def _xgboost_raw_contribs(loaded: Any, x: Any) -> Any | None:
     return shap_contributions(loaded, x)
 
 
+def _uncertainty_to_json(p: PredictionOut) -> str | None:
+    """Serialise the uncertainty fields to a JSON string for SQLite storage."""
+    if all(
+        f is None
+        for f in (
+            p.confidenceBand,
+            p.winProbability80ci,
+            p.baseModelSpread,
+            p.trainingDataSimilarity,
+        )
+    ):
+        return None
+    return json.dumps(
+        {
+            "confidenceBand": p.confidenceBand,
+            "winProbability80ci": list(p.winProbability80ci) if p.winProbability80ci else None,
+            "baseModelSpread": p.baseModelSpread,
+            "trainingDataSimilarity": p.trainingDataSimilarity,
+        }
+    )
+
+
+# Confidence-band thresholds (on base_model_spread). These are best-effort
+# defaults; tune with a held-out season once enough predictions are logged.
+# spread < LOW_THRESHOLD  → high confidence (models strongly agree)
+# spread < HIGH_THRESHOLD → medium confidence
+# spread ≥ HIGH_THRESHOLD → low confidence
+_CONFIDENCE_HIGH_THRESHOLD = 0.10
+_CONFIDENCE_MEDIUM_THRESHOLD = 0.20
+
+
+def _compute_uncertainty(
+    prob: float,
+    alternatives: AlternativeModels | None,
+) -> tuple[Literal['low', 'medium', 'high'] | None, tuple[float, float] | None, float | None]:
+    """Return (confidence_band, win_probability_80ci, base_model_spread).
+
+    base_model_spread is the range of home-win probabilities across all
+    available base models (XGBoost primary, logistic, bookmaker implied). The
+    80% CI is a heuristic: ±1.28 × (spread/2), treating the model spread as a
+    proxy for the predictive standard deviation.
+
+    Returns (None, None, None) when no alternatives are available — this keeps
+    the prediction backward-compatible.
+    """
+    probs: list[float] = [prob]
+    if alternatives is not None:
+        if alternatives.logistic is not None:
+            probs.append(alternatives.logistic.homeWinProbability)
+        if alternatives.bookmaker is not None:
+            probs.append(alternatives.bookmaker.homeWinProbability)
+
+    if len(probs) < 2:
+        return None, None, None
+
+    spread = round(max(probs) - min(probs), 4)
+
+    if spread < _CONFIDENCE_HIGH_THRESHOLD:
+        band: Literal["low", "medium", "high"] = "high"
+    elif spread < _CONFIDENCE_MEDIUM_THRESHOLD:
+        band = "medium"
+    else:
+        band = "low"
+
+    half_width = round(1.28 * spread / 2, 4)
+    lo = round(max(0.0, prob - half_width), 4)
+    hi = round(min(1.0, prob + half_width), 4)
+
+    return band, (lo, hi), spread
+
+
 def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, Any] | None:
     """Return per-feature structured narrative detail, or None."""
     if builder is None or match is None:
@@ -804,6 +895,7 @@ def compute_predictions(
             else None
         )
 
+        confidence_band, ci_80, spread = _compute_uncertainty(prob, alternatives)
         predictions.append(
             PredictionOut(
                 matchId=match.match_id,
@@ -816,6 +908,9 @@ def compute_predictions(
                 featureHash=fh,
                 contributions=_compute_contributions(loaded, x, builder=builder, match=match),
                 alternatives=alternatives,
+                confidenceBand=confidence_band,
+                winProbability80ci=ci_80,
+                baseModelSpread=spread,
             )
         )
 
