@@ -1259,3 +1259,140 @@ def test_compute_alternatives_absent_when_same_path(
     pred = result[0]
     if pred.alternatives is not None:
         assert pred.alternatives.logistic is None
+
+
+# ---------------------------------------------------------------------------
+# Prediction uncertainty (#146)
+# ---------------------------------------------------------------------------
+
+
+from fantasy_coach.predictions import (  # noqa: E402
+    _confidence_band,
+    _cosine_similarity,
+)
+
+
+def test_confidence_band_high_when_low_spread_and_in_distribution() -> None:
+    assert _confidence_band(0.05, 0.90) == "high"
+
+
+def test_confidence_band_medium_when_moderate_spread() -> None:
+    assert _confidence_band(0.15, 0.70) == "medium"
+
+
+def test_confidence_band_low_when_high_spread() -> None:
+    assert _confidence_band(0.25, 0.90) == "low"
+
+
+def test_confidence_band_low_when_ood() -> None:
+    # Tight spread but OOD → low confidence.
+    assert _confidence_band(0.05, 0.30) == "low"
+
+
+def test_confidence_band_boundary_spread_high() -> None:
+    # Exactly at the high-spread threshold (≤ 0.10).
+    assert _confidence_band(0.10, 0.80) == "high"
+
+
+def test_confidence_band_boundary_spread_medium() -> None:
+    # Just above high threshold → at most medium.
+    assert _confidence_band(0.11, 0.80) == "medium"
+
+
+def test_cosine_similarity_identical_vectors() -> None:
+    v = np.array([1.0, 2.0, 3.0])
+    assert _cosine_similarity(v, v) == pytest.approx(1.0)
+
+
+def test_cosine_similarity_orthogonal_vectors() -> None:
+    v1 = np.array([1.0, 0.0])
+    v2 = np.array([0.0, 1.0])
+    assert _cosine_similarity(v1, v2) == pytest.approx(0.0)
+
+
+def test_cosine_similarity_zero_vector_returns_zero() -> None:
+    assert _cosine_similarity(np.zeros(3), np.array([1.0, 2.0, 3.0])) == 0.0
+
+
+def test_store_roundtrips_uncertainty_fields(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=77,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="home",
+        homeWinProbability=0.65,
+        modelVersion="mv",
+        featureHash="fh",
+        baseModelSpread=0.08,
+        winProbability80ci=(0.61, 0.69),
+        trainingDataSimilarity=0.87,
+        confidenceBand="high",
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    assert len(loaded) == 1
+    out = loaded[0]
+    assert out.baseModelSpread == pytest.approx(0.08)
+    assert out.winProbability80ci is not None
+    assert out.winProbability80ci[0] == pytest.approx(0.61)
+    assert out.winProbability80ci[1] == pytest.approx(0.69)
+    assert out.trainingDataSimilarity == pytest.approx(0.87)
+    assert out.confidenceBand == "high"
+
+
+def test_store_roundtrips_null_uncertainty(store: PredictionStore) -> None:
+    pred = PredictionOut(
+        matchId=78,
+        home=TeamInfo(id=1, name="A"),
+        away=TeamInfo(id=2, name="B"),
+        kickoff="2026-05-01T08:00:00+00:00",
+        predictedWinner="away",
+        homeWinProbability=0.38,
+        modelVersion="mv",
+        featureHash="fh",
+        # no uncertainty fields
+    )
+    store.put(2026, 8, [pred])
+    loaded = store.get(2026, 8)
+    out = loaded[0]
+    assert out.baseModelSpread is None
+    assert out.winProbability80ci is None
+    assert out.trainingDataSimilarity is None
+    assert out.confidenceBand is None
+
+
+def test_compute_populates_uncertainty_fields(
+    store: PredictionStore, sqlite_repo: SQLiteRepository, tmp_path: Path
+) -> None:
+    """compute_predictions populates all four uncertainty fields on every result."""
+    raw_match = _load_fixture(UPCOMING_FIXTURE)
+    mock_round = MagicMock(return_value=_sample_round_payload("/match/url"))
+    mock_match = MagicMock(return_value=raw_match)
+    mock_model = _make_mock_model(0.68)
+    model_path = tmp_path / "model.joblib"
+    model_path.write_bytes(b"bytes")
+
+    with patch("fantasy_coach.models.loader.load_model", return_value=mock_model):
+        result = compute_predictions(
+            2026,
+            8,
+            sqlite_repo,
+            store,
+            model_path=model_path,
+            logistic_path=model_path,  # same path → no secondary model
+            fetch_round_fn=mock_round,
+            fetch_match_fn=mock_match,
+        )
+
+    assert len(result) == 1
+    pred = result[0]
+    # All four uncertainty fields must be populated.
+    assert pred.baseModelSpread is not None
+    assert 0.0 <= pred.baseModelSpread <= 1.0
+    assert pred.winProbability80ci is not None
+    ci_lo, ci_hi = pred.winProbability80ci
+    assert 0.0 <= ci_lo <= ci_hi <= 1.0
+    # OOD similarity — no history so centroid is None → default 1.0.
+    assert pred.trainingDataSimilarity == pytest.approx(1.0)
+    assert pred.confidenceBand in ("low", "medium", "high")

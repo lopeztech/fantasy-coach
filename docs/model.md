@@ -949,3 +949,45 @@ report with mean CLV per model and a cumulative CLV curve table.
 equal positive PnL on a small sample — both are reported side by side.
 Statistical significance requires ≥ 400 predictions; Wald-test p < 0.05
 is the criterion used to declare a model "statistically edge-positive".
+
+## Prediction uncertainty (#146)
+
+Every prediction from `compute_predictions` now carries four optional fields
+that expose the model's confidence in the output:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `baseModelSpread` | `float` | `max − min` probability across XGBoost + logistic + bookmaker for this match. Higher = more model disagreement. |
+| `winProbability80ci` | `[float, float]` | Proxy 80% interval `[prob − spread/2, prob + spread/2]` clipped to `[0, 1]`. Not a Bayesian credible interval — use it as a rough disagreement band pending calibration. |
+| `trainingDataSimilarity` | `float` | Cosine similarity between this match's feature vector and the mean training-set feature vector. Values close to 1.0 indicate an in-distribution matchup; values below ~0.5 flag unusual team/context combinations. |
+| `confidenceBand` | `"low"` \| `"medium"` \| `"high"` | 3-level label derived from `baseModelSpread` and `trainingDataSimilarity`. |
+
+### Confidence band thresholds
+
+These are heuristic — pending held-out calibration against realised outcomes.
+
+| Band | Condition |
+|------|-----------|
+| `"high"` | `spread ≤ 0.10` **and** `ood_similarity ≥ 0.80` |
+| `"medium"` | `spread ≤ 0.20` **and** `ood_similarity ≥ 0.50` |
+| `"low"` | any other case |
+
+### Storage
+
+The four fields are serialised together as a single `uncertainty` JSON column
+in the SQLite `predictions` table (Firestore stores the full `model_dump()`).
+Predictions written before this feature shipped deserialise with all four
+fields as `None` — the response schema is additive.
+
+### Known limitations
+
+- The 80% CI is a proxy (disagreement band), not a calibrated interval. A
+  proper Bayesian or bootstrap interval would require re-running the model
+  many times or holding out a calibration set by season.
+- `trainingDataSimilarity` uses cosine similarity in raw feature space (no
+  whitening). Features with large absolute magnitudes (e.g. Elo ratings in
+  the hundreds) dominate the dot product. A PCA-whitened space or
+  Mahalanobis distance would be more principled.
+- `baseModelSpread` reflects the number of secondary models available: a
+  single-model deployment (no logistic + no odds) always has spread = 0 and
+  will appear `"high"` confidence regardless of the true uncertainty.

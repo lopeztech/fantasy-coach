@@ -143,6 +143,20 @@ class PredictionOut(BaseModel):
     # Three-way consensus (#140): logistic + bookmaker picks alongside the
     # primary XGBoost pick. Absent on predictions cached before #140 shipped.
     alternatives: AlternativeModels | None = None
+    # Prediction uncertainty fields (#146). All optional so predictions
+    # written before this feature shipped still deserialise correctly.
+    # `baseModelSpread` is max − min probability across available base models
+    # (XGBoost + logistic + bookmaker). `winProbability80ci` is a proxy 80%
+    # interval derived from the spread (clipped to [0, 1]).
+    # `trainingDataSimilarity` is cosine similarity between this match's
+    # feature vector and the training-set centroid — low values flag
+    # out-of-distribution matchups. `confidenceBand` is a 3-level label
+    # derived from spread + OOD similarity; thresholds are heuristic
+    # pending held-out calibration (see docs/model.md).
+    baseModelSpread: float | None = None
+    winProbability80ci: tuple[float, float] | None = None
+    trainingDataSimilarity: float | None = None
+    confidenceBand: str | None = None  # "low" | "medium" | "high"
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +184,8 @@ class PredictionStore:
             self._conn.execute("ALTER TABLE predictions ADD COLUMN contributions TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self._conn.execute("ALTER TABLE predictions ADD COLUMN alternatives TEXT")
+        with contextlib.suppress(sqlite3.OperationalError):
+            self._conn.execute("ALTER TABLE predictions ADD COLUMN uncertainty TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -193,6 +209,7 @@ class PredictionStore:
                 alts_json = (
                     json.dumps(p.alternatives.model_dump()) if p.alternatives is not None else None
                 )
+                uncertainty_json = _uncertainty_json(p)
                 self._conn.execute(
                     """
                     INSERT OR REPLACE INTO predictions
@@ -200,8 +217,8 @@ class PredictionStore:
                          home_id, home_name, away_id, away_name,
                          kickoff, predicted_winner, home_win_prob,
                          model_version, feature_hash, created_at,
-                         contributions, alternatives)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         contributions, alternatives, uncertainty)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         season,
@@ -219,6 +236,7 @@ class PredictionStore:
                         now,
                         contribs_json,
                         alts_json,
+                        uncertainty_json,
                     ),
                 )
 
@@ -232,6 +250,9 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
     )
     alts_raw = r["alternatives"] if "alternatives" in cols else None
     alternatives = AlternativeModels(**json.loads(alts_raw)) if alts_raw else None
+    unc_raw = r["uncertainty"] if "uncertainty" in cols else None
+    unc = json.loads(unc_raw) if unc_raw else {}
+    ci = unc.get("winProbability80ci")
     return PredictionOut(
         matchId=r["match_id"],
         home=TeamInfo(id=r["home_id"], name=r["home_name"]),
@@ -243,6 +264,10 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
         featureHash=r["feature_hash"],
         contributions=contribs,
         alternatives=alternatives,
+        baseModelSpread=unc.get("baseModelSpread"),
+        winProbability80ci=tuple(ci) if ci else None,
+        trainingDataSimilarity=unc.get("trainingDataSimilarity"),
+        confidenceBand=unc.get("confidenceBand"),
     )
 
 
@@ -661,6 +686,83 @@ def _try_load_secondary_model(path: Path, gcs_uri_env: str) -> Any | None:
         return None
 
 
+def _uncertainty_json(p: PredictionOut) -> str | None:
+    """Serialise uncertainty fields to a JSON string for SQLite storage."""
+    if all(
+        v is None
+        for v in (
+            p.baseModelSpread,
+            p.winProbability80ci,
+            p.trainingDataSimilarity,
+            p.confidenceBand,
+        )
+    ):
+        return None
+    return json.dumps(
+        {
+            "baseModelSpread": p.baseModelSpread,
+            "winProbability80ci": list(p.winProbability80ci) if p.winProbability80ci else None,
+            "trainingDataSimilarity": p.trainingDataSimilarity,
+            "confidenceBand": p.confidenceBand,
+        }
+    )
+
+
+def _compute_training_centroid(history: list[MatchRow]) -> Any:
+    """Return the mean feature vector across completed historical matches.
+
+    Used as the reference point for training-data similarity (OOD detection).
+    Returns None when history is empty. Re-processes history via
+    ``build_training_frame`` — acceptable because history is already in memory
+    and the walk is O(n) with no I/O.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    from fantasy_coach.feature_engineering import build_training_frame  # noqa: PLC0415
+
+    frame = build_training_frame(history)
+    if frame.X.shape[0] == 0:
+        return None
+    return np.mean(frame.X, axis=0)
+
+
+def _cosine_similarity(x: Any, centroid: Any) -> float:
+    """Cosine similarity between a 1-d feature vector and the training centroid.
+
+    Returns 1.0 when vectors are identical, 0.0 when orthogonal. Clipped to
+    [0, 1] since feature vectors are mostly non-negative and near-orthogonal
+    vectors are rare in practice.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    v = np.asarray(x, dtype=float).flatten()
+    c = np.asarray(centroid, dtype=float).flatten()
+    norm_v = np.linalg.norm(v)
+    norm_c = np.linalg.norm(c)
+    if norm_v == 0 or norm_c == 0:
+        return 0.0
+    return float(np.clip(np.dot(v, c) / (norm_v * norm_c), 0.0, 1.0))
+
+
+# Uncertainty thresholds — heuristic pending held-out calibration.
+# At `high`: spread ≤ 0.10 and OOD similarity ≥ 0.80 → model is confident
+#            and the matchup is in-distribution.
+# At `low`: spread > 0.20 or OOD similarity < 0.50 → either base models
+#           strongly disagree or the matchup is unusual.
+_SPREAD_HIGH = 0.10
+_SPREAD_MEDIUM = 0.20
+_OOD_HIGH = 0.80
+_OOD_MEDIUM = 0.50
+
+
+def _confidence_band(spread: float, ood_similarity: float) -> str:
+    if spread <= _SPREAD_HIGH and ood_similarity >= _OOD_HIGH:
+        return "high"
+    if spread <= _SPREAD_MEDIUM and ood_similarity >= _OOD_MEDIUM:
+        return "medium"
+    return "low"
+
+
 def _build_inference_state(history: list[MatchRow]) -> Any:
     from fantasy_coach.feature_engineering import FeatureBuilder  # noqa: PLC0415
 
@@ -783,6 +885,12 @@ def compute_predictions(
 
     _fn = getattr(loaded, "feature_names", None)
     feature_names: tuple[str, ...] = _fn if isinstance(_fn, tuple) else FEATURE_NAMES
+
+    # Training centroid for OOD / uncertainty estimation (#146).
+    # Computed from the same history used for the inference builder so there
+    # is no leakage — the centroid only sees completed pre-round matches.
+    training_centroid = _compute_training_centroid(history)
+
     predictions: list[PredictionOut] = []
     for match in sorted(round_matches, key=lambda m: (m.start_time, m.match_id)):
         x = np.asarray([builder.feature_row(match)], dtype=float)
@@ -804,6 +912,22 @@ def compute_predictions(
             else None
         )
 
+        # Uncertainty estimation (#146).
+        all_probs = [prob]
+        if logistic_pick is not None:
+            all_probs.append(logistic_pick.homeWinProbability)
+        if bm_pick is not None:
+            all_probs.append(bm_pick.homeWinProbability)
+        spread = round(float(max(all_probs) - min(all_probs)), 4)
+        ci_lo = round(max(0.0, prob - spread / 2), 4)
+        ci_hi = round(min(1.0, prob + spread / 2), 4)
+        ood_sim = (
+            round(_cosine_similarity(x[0], training_centroid), 4)
+            if training_centroid is not None
+            else 1.0
+        )
+        band = _confidence_band(spread, ood_sim)
+
         predictions.append(
             PredictionOut(
                 matchId=match.match_id,
@@ -816,6 +940,10 @@ def compute_predictions(
                 featureHash=fh,
                 contributions=_compute_contributions(loaded, x, builder=builder, match=match),
                 alternatives=alternatives,
+                baseModelSpread=spread,
+                winProbability80ci=(ci_lo, ci_hi),
+                trainingDataSimilarity=ood_sim,
+                confidenceBand=band,
             )
         )
 
