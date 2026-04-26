@@ -4,19 +4,29 @@ Thin wrappers around the two `nrl.com` JSON endpoints documented in
 `docs/nrl-endpoints.md`. Throttled to be polite and retrying on transient
 failures; 404s return None because a wrong slug order (away-v-home vs
 home-v-away) is a common caller bug, not a server error worth crashing on.
+
+HTTP caching via conditional requests (ETag / If-None-Match and
+Last-Modified / If-Modified-Since) is supported when a ``ScraperCache``
+is passed to the public fetch functions. On 304 Not Modified, functions
+return ``None`` and downstream processing is skipped. See
+``src/fantasy_coach/scraper_cache.py`` for backend implementations.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import random
 import threading
 import time
-from typing import Any
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlencode, urlparse
 
 import httpx
+
+if TYPE_CHECKING:
+    from fantasy_coach.scraper_cache import ScraperCache
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +83,7 @@ def fetch_match(
     *,
     client: httpx.Client | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    cache: ScraperCache | None = None,
 ) -> dict[str, Any] | None:
     """Fetch a single regular-season match's per-match JSON.
 
@@ -84,7 +95,7 @@ def fetch_match(
     """
 
     path = _match_path(year, round_, home_slug, away_slug)
-    return _fetch_json(path, client=client, max_retries=max_retries)
+    return _fetch_json(path, client=client, max_retries=max_retries, cache=cache)
 
 
 def fetch_match_from_url(
@@ -92,6 +103,7 @@ def fetch_match_from_url(
     *,
     client: httpx.Client | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    cache: ScraperCache | None = None,
 ) -> dict[str, Any] | None:
     """Fetch a per-match payload using a `matchCentreUrl` from the fixtures list.
 
@@ -101,7 +113,7 @@ def fetch_match_from_url(
     """
 
     path = _normalize_match_path(match_centre_url)
-    return _fetch_json(path, client=client, max_retries=max_retries)
+    return _fetch_json(path, client=client, max_retries=max_retries, cache=cache)
 
 
 def fetch_round(
@@ -111,6 +123,7 @@ def fetch_round(
     competition: int = 111,
     client: httpx.Client | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    cache: ScraperCache | None = None,
 ) -> dict[str, Any] | None:
     """Fetch the fixtures-list payload for a given round.
 
@@ -120,7 +133,7 @@ def fetch_round(
 
     path = "/draw/data"
     params = {"competition": competition, "round": round_, "season": year}
-    return _fetch_json(path, params=params, client=client, max_retries=max_retries)
+    return _fetch_json(path, params=params, client=client, max_retries=max_retries, cache=cache)
 
 
 def _normalize_match_path(match_centre_url: str) -> str:
@@ -133,15 +146,32 @@ def _normalize_match_path(match_centre_url: str) -> str:
     return path + "data"
 
 
+def _cache_url(path: str, params: dict[str, Any] | None) -> str:
+    """Build a stable string key for the cache from path + sorted query params."""
+    if params:
+        return path + "?" + urlencode(sorted((str(k), str(v)) for k, v in params.items()))
+    return path
+
+
 def _fetch_json(
     path: str,
     *,
     params: dict[str, Any] | None = None,
     client: httpx.Client | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    cache: ScraperCache | None = None,
 ) -> dict[str, Any] | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     interval = _min_interval_seconds()
+
+    cache_url = _cache_url(path, params)
+    entry = cache.get(cache_url) if cache is not None else None
+
+    if entry is not None:
+        if entry.etag:
+            headers["If-None-Match"] = entry.etag
+        elif entry.last_modified:
+            headers["If-Modified-Since"] = entry.last_modified
 
     owns_client = client is None
     http = client or httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT)
@@ -171,6 +201,18 @@ def _fetch_json(
                 time.sleep(delay)
                 continue
 
+            if response.status_code == 304:
+                logger.debug("304 Not Modified for %s — skipping downstream processing", path)
+                if cache is not None and entry is not None:
+                    cache.put(
+                        cache_url,
+                        etag=entry.etag,
+                        last_modified=entry.last_modified,
+                        content_hash=entry.content_hash,
+                        status=304,
+                    )
+                return None
+
             if response.status_code == 404:
                 logger.warning("404 for %s", path)
                 return None
@@ -190,7 +232,41 @@ def _fetch_json(
                 continue
 
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+
+            if cache is not None:
+                cc = response.headers.get("Cache-Control", "")
+                if "no-store" not in cc:
+                    etag = response.headers.get("ETag")
+                    last_modified = response.headers.get("Last-Modified")
+                    content_hash: str | None = None
+                    if not etag and not last_modified:
+                        content_hash = hashlib.sha256(response.content).hexdigest()
+                        if entry is not None and entry.content_hash == content_hash:
+                            logger.debug(
+                                "Content hash unchanged for %s — skipping downstream processing",
+                                path,
+                            )
+                            cache.put(
+                                cache_url,
+                                etag=None,
+                                last_modified=None,
+                                content_hash=content_hash,
+                                status=200,
+                            )
+                            return None
+                        logger.warning(
+                            "No ETag or Last-Modified from %s; using content-hash fallback", path
+                        )
+                    cache.put(
+                        cache_url,
+                        etag=etag,
+                        last_modified=last_modified,
+                        content_hash=content_hash,
+                        status=200,
+                    )
+
+            return body
 
         raise RuntimeError(f"fetch retry loop exited without resolution for {path}")
     finally:

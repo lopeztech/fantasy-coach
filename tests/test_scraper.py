@@ -5,6 +5,13 @@ import pytest
 import respx
 
 from fantasy_coach import scraper
+from fantasy_coach.scraper_cache import SQLiteScraperCache
+
+
+@pytest.fixture()
+def mem_cache() -> SQLiteScraperCache:
+    """In-memory SQLite scraper cache for tests."""
+    return SQLiteScraperCache(":memory:")
 
 
 @pytest.fixture(autouse=True)
@@ -186,3 +193,125 @@ def test_fetch_match_from_url_accepts_full_url() -> None:
     respx.get(full + "data").mock(return_value=httpx.Response(200, json={"ok": True}))
 
     assert scraper.fetch_match_from_url(full) == {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# HTTP caching tests
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_cache_first_fetch_stores_etag(mem_cache: SQLiteScraperCache) -> None:
+    """First 200 with an ETag stores it in the cache for the next request."""
+    payload = {"matchId": 1}
+    respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(200, json=payload, headers={"ETag": '"abc123"'})
+    )
+
+    result = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+
+    assert result == payload
+    entry = mem_cache.get("/draw/nrl-premiership/2026/round-8/wests-tigers-v-raiders/data")
+    assert entry is not None
+    assert entry.etag == '"abc123"'
+    assert entry.last_status == 200
+
+
+@respx.mock
+def test_cache_second_fetch_sends_if_none_match(mem_cache: SQLiteScraperCache) -> None:
+    """Second fetch for the same URL sends If-None-Match; 304 returns None."""
+    payload = {"matchId": 1}
+    route = respx.get(MATCH_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=payload, headers={"ETag": '"v1"'}),
+            httpx.Response(304),
+        ]
+    )
+
+    # First fetch — populates cache.
+    first = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert first == payload
+
+    # Second fetch — should send If-None-Match and return None on 304.
+    second = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert second is None
+
+    # The 304 request must have sent the conditional header.
+    second_request = route.calls[1].request
+    assert second_request.headers.get("if-none-match") == '"v1"'
+
+    # Cache entry must still be present (last_fetched_at updated).
+    entry = mem_cache.get("/draw/nrl-premiership/2026/round-8/wests-tigers-v-raiders/data")
+    assert entry is not None
+    assert entry.etag == '"v1"'
+    assert entry.last_status == 304
+
+
+@respx.mock
+def test_cache_content_hash_fallback_unchanged(mem_cache: SQLiteScraperCache) -> None:
+    """For endpoints without validators, content-hash dedup returns None on match."""
+    body = b'{"matchId": 99}'
+    respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(200, content=body, headers={"Content-Type": "application/json"})
+    )
+
+    # First fetch — stores content hash.
+    first = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert first == {"matchId": 99}
+
+    # Second fetch — same body, no ETag/Last-Modified → hash match → None.
+    second = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert second is None
+
+
+@respx.mock
+def test_cache_etag_mismatch_returns_new_body(mem_cache: SQLiteScraperCache) -> None:
+    """When the server returns a new ETag + new body, cache is updated and body returned."""
+    route = respx.get(MATCH_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"version": 1}, headers={"ETag": '"v1"'}),
+            httpx.Response(200, json={"version": 2}, headers={"ETag": '"v2"'}),
+        ]
+    )
+
+    first = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert first == {"version": 1}
+
+    second = scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    assert second == {"version": 2}
+
+    # Second request must have sent If-None-Match with old ETag.
+    assert route.calls[1].request.headers.get("if-none-match") == '"v1"'
+
+    # Cache entry must have the new ETag.
+    entry = mem_cache.get("/draw/nrl-premiership/2026/round-8/wests-tigers-v-raiders/data")
+    assert entry is not None
+    assert entry.etag == '"v2"'
+
+
+@respx.mock
+def test_cache_no_store_skips_caching(mem_cache: SQLiteScraperCache) -> None:
+    """Cache-Control: no-store responses are not cached (no conditional headers on retry)."""
+    route = respx.get(MATCH_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"live": True},
+            headers={"ETag": '"live"', "Cache-Control": "no-store"},
+        )
+    )
+
+    scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+    scraper.fetch_match(2026, 8, "wests-tigers", "raiders", cache=mem_cache)
+
+    # Both requests must NOT have sent If-None-Match.
+    for call in route.calls:
+        assert "if-none-match" not in call.request.headers
+
+
+@respx.mock
+def test_cache_without_cache_param_behaves_as_before() -> None:
+    """Callers that don't pass cache= get the original behaviour (no cache interaction)."""
+    payload = {"matchId": 5}
+    respx.get(MATCH_URL).mock(return_value=httpx.Response(200, json=payload))
+
+    assert scraper.fetch_match(2026, 8, "wests-tigers", "raiders") == payload
