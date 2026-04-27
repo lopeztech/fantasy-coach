@@ -81,6 +81,14 @@ class TeamInfo(BaseModel):
     name: str
 
 
+class ScorelineProb(BaseModel):
+    """One (home_score, away_score) outcome with its predicted probability."""
+
+    homeScore: int  # noqa: N815
+    awayScore: int  # noqa: N815
+    probability: float
+
+
 class FeatureContribution(BaseModel):
     """One feature's signed push on the model's log-odds for a match.
 
@@ -157,6 +165,21 @@ class PredictionOut(BaseModel):
     winProbability80ci: tuple[float, float] | None = None
     trainingDataSimilarity: float | None = None
     confidenceBand: str | None = None  # "low" | "medium" | "high"
+    # Joint score-distribution / multi-task fields (#209, #215). Optional so
+    # predictions from other model types still deserialise correctly.
+    predictedTotal: float | None = None  # noqa: N815
+    drawProbability: float | None = None  # noqa: N815
+    topScorelines: list[ScorelineProb] | None = None  # noqa: N815
+    predictedLineBreakDiff: float | None = None  # noqa: N815  multi-task #215
+    # OOD detection fields (#216). Optional; absent on predictions from models
+    # without a fitted OOD detector.
+    oodScore: float | None = None  # noqa: N815  0–100 percentile
+    oodFlag: str | None = None  # noqa: N815  "in_distribution" | "edge" | "out_of_distribution"
+    # Conformal prediction intervals (#214). Guaranteed-coverage intervals
+    # derived from calibration-set residuals; absence means conformalizer was
+    # not fitted or the model type doesn't support it.
+    homeWinProbabilityCi80: tuple[float, float] | None = None  # noqa: N815
+    marginCi80: tuple[float, float] | None = None  # noqa: N815
 
 
 # ---------------------------------------------------------------------------
