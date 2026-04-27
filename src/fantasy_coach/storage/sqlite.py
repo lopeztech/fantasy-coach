@@ -141,9 +141,7 @@ class SQLiteRepository:
                 (match_id, fetched_at.isoformat(), rain_mm_3h, wind_kph, temperature_c, source),
             )
 
-    def get_latest_weather_forecast(
-        self, match_id: int
-    ) -> dict | None:
+    def get_latest_weather_forecast(self, match_id: int) -> dict | None:
         """Return the most recent forecast snapshot for *match_id*, or ``None``."""
         row = self._conn.execute(
             """
