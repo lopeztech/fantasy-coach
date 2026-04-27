@@ -37,7 +37,7 @@ from fantasy_coach.bookmaker.lines import devig_two_way
 from fantasy_coach.features import MatchRow, PlayerRow, TeamStat
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
-from fantasy_coach.models.player_ratings import PlayerRatings
+from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
 from fantasy_coach.travel import compute_rest_features, travel_features
 from fantasy_coach.weather import parse_weather
 
@@ -168,6 +168,19 @@ FEATURE_NAMES = (
     "is_magic_round",
     "origin_callups_diff",
     "is_test_window",
+    # Position-group matchup differentials (#210). Each is the sum of per-player
+    # Elo ratings for starters in that position group, home minus away. Uses the
+    # same player_ratings book as player_strength_diff but disaggregates by
+    # position group so XGBoost can learn group-specific dominance effects.
+    # Returns 0.0 when neither team has starters with is_on_field data (same
+    # no-data behaviour as player_strength_diff → missing_player_strength).
+    # Interaction: halves_x_forwards_diff captures "dominant on both axes" —
+    # sign(halves_diff) × |forwards_diff| when same sign, else 0.
+    "halves_strength_diff",
+    "forwards_strength_diff",
+    "hooker_strength_diff",
+    "outside_backs_strength_diff",
+    "halves_x_forwards_diff",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -405,6 +418,22 @@ class FeatureBuilder:
         # to 0.0 until squad data is backfilled via `representative.fetch_origin_squads`.
         origin_callups = 0.0
 
+        # Position-group matchup differentials (#210).
+        halves_diff = self._position_group_strength(
+            match.home.players, POSITION_GROUPS["halves"]
+        ) - self._position_group_strength(match.away.players, POSITION_GROUPS["halves"])
+        fwds_diff = self._position_group_strength(
+            match.home.players, POSITION_GROUPS["forwards"]
+        ) - self._position_group_strength(match.away.players, POSITION_GROUPS["forwards"])
+        hooker_diff = self._position_group_strength(
+            match.home.players, POSITION_GROUPS["hooker"]
+        ) - self._position_group_strength(match.away.players, POSITION_GROUPS["hooker"])
+        backs_diff = self._position_group_strength(
+            match.home.players, POSITION_GROUPS["outside_backs"]
+        ) - self._position_group_strength(match.away.players, POSITION_GROUPS["outside_backs"])
+        # Interaction: fires only when both groups push in the same direction.
+        halves_x_fwds = fwds_diff if halves_diff * fwds_diff > 0 else 0.0
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -451,6 +480,11 @@ class FeatureBuilder:
             magic_flag,
             origin_callups,
             test_flag,
+            halves_diff,
+            fwds_diff,
+            hooker_diff,
+            backs_diff,
+            halves_x_fwds,
         ]
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
@@ -507,6 +541,18 @@ class FeatureBuilder:
             starters, bench, position_weights=POSITION_WEIGHTS
         )
         return composite, True
+
+    def _position_group_strength(self, players: list[PlayerRow], group: frozenset[str]) -> float:
+        """Sum of player ratings for starters in the given position group.
+
+        Returns 0.0 when no starters with is_on_field data exist in the group —
+        same neutral-value contract as player_strength_diff.
+        """
+        total = 0.0
+        for p in players:
+            if p.is_on_field and p.position in group:
+                total += self.player_ratings.rating(p.player_id)
+        return total
 
     def _key_absence(self, team_id: int, current_players: list[PlayerRow]) -> float:
         """Return Σ ``POSITION_WEIGHTS[pos]`` for regular starters missing today.
