@@ -317,24 +317,53 @@ XGBoost via the same feature vector. See `test_baseline_metrics.py` for the
 pinned metrics; the multi-metric XGBoost win tightens the case for issue
 #25's revisit once the third season lands.
 
-### Ablation notes — referee features (#57)
+### Ablation notes — referee features (#57, revisited #161)
 
-Walk-forward evaluation on the 2024–2025 baseline DB (424 predictions) after
-adding `ref_avg_total_points`, `ref_home_penalty_diff`, and `missing_referee`:
+**Original (#57) ablation — 2024–2025 only, 424 predictions, referee_id = NULL for all rows:**
 
-| Metric   | Before #57 | After #57 | Δ      |
-|----------|------------|-----------|--------|
+| Metric   | Before #57 | After #57 | Δ       |
+|----------|------------|-----------|---------|
 | accuracy | 0.5637     | 0.5660    | +0.23pp |
 | log_loss | 0.7636     | 0.7640    | −0.0004 |
 | brier    | 0.2655     | 0.2654    | +0.0001 |
 
-**Result: no meaningful signal** — the change is within noise. The root cause is
-that the 2024–2025 baseline DB was built at schema v1 (before referee IDs were
-extracted), so `referee_id = NULL` for every historical match; all predictions
-fall back to `missing_referee = 1.0` and the league-mean prior for
-`ref_avg_total_points`. The features are structurally correct and will accumulate
-signal as new rounds are ingested with referee data. They remain active in the
-feature vector; revisit with at least one full season of referee-annotated matches.
+Inconclusive: all `referee_id = NULL` in that DB snapshot — every match fell
+back to the league-mean prior so the features carried no information.
+
+**Revisit (#161) — 2023–2026 baseline, 692 predictions, referee data populated:**
+
+Fixture coverage at time of ablation: 2023 100%, 2024 100%, 2025 99%, 2026 31%.
+Ablation method: `scripts/ablate_referee_features.py`. "Without" condition forces
+`_referee_features` to return the `referee_id = None` fallback for every match
+(league-mean total-points, `ref_home_penalty_diff = 0`, `missing_referee = 1`).
+
+| Model    | Metric   | With refs | Without refs | Δ       |
+|----------|----------|-----------|--------------|---------|
+| Logistic | accuracy | 0.5694    | 0.5679       | +0.15pp |
+| Logistic | log_loss | 0.8906    | 0.8825       | +0.0081 ↑ (worse) |
+| Logistic | brier    | 0.2831    | 0.2814       | +0.0017 ↑ (worse) |
+| XGBoost  | accuracy | 0.6055    | 0.5838       | +2.17pp |
+| XGBoost  | log_loss | 0.6938    | 0.6854       | +0.0084 ↑ (worse) |
+| XGBoost  | brier    | 0.2476    | 0.2438       | +0.0038 ↑ (worse) |
+
+**Result: accuracy signal exists (especially XGBoost +2.17pp), but proper
+scoring rules worsen for both models.** The features are teaching the model
+referee-specific correlations that flip some borderline predictions correctly
+while widening probability estimates beyond what the data supports — a
+calibration cost that log_loss and brier both capture.
+
+The most likely cause is data sparsity per referee: even with referee IDs
+populated for 2023–2025, the rolling-20 window per referee hits the
+`REF_SHRINKAGE_N` threshold for many referees, so the shrinkage toward league
+mean is aggressive. As referee-annotated data accumulates (2+ full seasons of
+refs with ≥ 20 observed matches each), calibration should improve.
+
+**Decision (post #161):** features remain active. The XGBoost accuracy signal
+is non-trivial; removing the features now would cost 2.17pp on the evaluation
+pool. Revisit calibration specifically for referee-driven predictions once at
+least 2 full seasons (2024 + 2025 complete) have ≥ 20 obs per active referee.
+Track via the `missing_referee` rate in production predictions — when it drops
+below 20%, the calibration concern diminishes.
 
 ## MOV-weighted Elo (EloMOV) — #106
 
