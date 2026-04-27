@@ -4,6 +4,8 @@ import logging
 import os
 import pathlib
 import time
+from collections import deque
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,9 +15,11 @@ from pydantic import BaseModel
 from fantasy_coach import __version__
 from fantasy_coach.config import get_repository
 from fantasy_coach.predictions import (
+    FeatureContribution,
     FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
+    compute_whatif_base,
     get_prediction_store,
 )
 from fantasy_coach.storage.repository import Repository
@@ -955,6 +959,151 @@ def get_season_simulation(season: int) -> dict:
     }
     _sim_cache[season] = (time.monotonic(), out)
     return out
+
+
+# ---------------------------------------------------------------------------
+# What-if prediction explorer (#150)
+# ---------------------------------------------------------------------------
+
+# Feature names the what-if endpoint accepts as overrides. Deliberately
+# restricted to the human-interpretable subset that has a direct UI knob.
+_WHATIF_ALLOWED_OVERRIDES = frozenset(
+    {
+        "is_wet",
+        "wind_kph",
+        "temperature_c",
+        "rain_intensity",
+        "days_rest_diff",
+    }
+)
+
+# Per-user rate limiter: at most 20 requests per 60-second sliding window.
+_WHATIF_RATE_LIMIT = 20
+_WHATIF_RATE_WINDOW = 60.0
+_whatif_rate: dict[str, deque[float]] = {}
+
+# Short-lived result cache keyed by (match_id, sorted_overrides_str).
+_WHATIF_RESULT_CACHE_TTL = 300.0
+_whatif_result_cache: dict[tuple[int, str], tuple[float, "WhatIfOut"]] = {}
+
+
+class WhatIfIn(BaseModel):
+    season: int
+    round: int  # noqa: A003
+    overrides: dict[str, float] = {}
+
+
+class WhatIfOut(BaseModel):  # noqa: N815 (camelCase fields match API convention)
+    baseHomeWinProbability: float
+    homeWinProbability: float
+    predictedWinner: str
+    contributions: list[FeatureContribution] | None = None
+
+
+@app.post(
+    "/predictions/{match_id}/whatif",
+    response_model=WhatIfOut,
+    summary="What-if prediction explorer",
+    description=(
+        "Re-runs the model for a specific match with one or more feature overrides "
+        "applied. Accepts weather and rest-days adjustments and returns the updated "
+        "home-win probability alongside the per-feature contribution breakdown. "
+        "Throttled to 20 calls/minute per authenticated user. "
+        "Results are cached for 5 minutes by (match_id, overrides)."
+    ),
+)
+def get_whatif_prediction(
+    match_id: int,
+    body: WhatIfIn,
+    request: Request,
+) -> WhatIfOut:
+    uid = _require_auth(request)
+
+    # Sliding-window rate limit.
+    now = time.monotonic()
+    window = _whatif_rate.setdefault(uid, deque())
+    while window and now - window[0] > _WHATIF_RATE_WINDOW:
+        window.popleft()
+    if len(window) >= _WHATIF_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: 20 what-if requests per minute.",
+        )
+    window.append(now)
+
+    # Reject unknown override keys immediately so callers get a clear error.
+    unknown = set(body.overrides) - _WHATIF_ALLOWED_OVERRIDES
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown override feature(s): {sorted(unknown)}. "
+            f"Allowed: {sorted(_WHATIF_ALLOWED_OVERRIDES)}",
+        )
+
+    # Check short-lived result cache.
+    overrides_key = str(sorted(body.overrides.items()))
+    result_key = (match_id, overrides_key)
+    cached_result = _whatif_result_cache.get(result_key)
+    if cached_result is not None and now - cached_result[0] < _WHATIF_RESULT_CACHE_TTL:
+        return cached_result[1]
+
+    # We require a stored base prediction to (a) confirm the match exists in the
+    # prediction cache and (b) provide the baseline probability for the response.
+    stored_preds = _get_store().get(body.season, body.round)
+    base_pred = next((p for p in stored_preds if p.matchId == match_id), None)
+    if base_pred is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No stored prediction for match {match_id} in {body.season} r{body.round}.",
+        )
+
+    from fantasy_coach.feature_engineering import FEATURE_NAMES  # noqa: PLC0415
+    from fantasy_coach.models.loader import load_model  # noqa: PLC0415
+    from fantasy_coach.predictions import (  # noqa: PLC0415
+        DEFAULT_MODEL_PATH,
+        MODEL_PATH_ENV,
+        _apply_market_shrinkage,
+        _compute_contributions,
+    )
+
+    model_path = Path(os.getenv(MODEL_PATH_ENV, DEFAULT_MODEL_PATH))
+
+    try:
+        x, _ = compute_whatif_base(match_id, body.season, body.round, _get_repo(), model_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    loaded = load_model(model_path)
+    feature_names: tuple[str, ...] = getattr(loaded, "feature_names", None) or FEATURE_NAMES
+
+    x_overridden = x.copy()
+    weather_overridden = any(
+        k in body.overrides for k in ("is_wet", "wind_kph", "temperature_c", "rain_intensity")
+    )
+
+    for feat, value in body.overrides.items():
+        if feat in feature_names:
+            x_overridden[0, feature_names.index(feat)] = float(value)
+
+    # When any weather feature is overridden, clear missing_weather so the
+    # model treats the provided values as real data, not imputed defaults.
+    if weather_overridden and "missing_weather" in feature_names:
+        x_overridden[0, feature_names.index("missing_weather")] = 0.0
+
+    raw_prob = round(float(loaded.predict_home_win_prob(x_overridden)[0]), 4)
+    new_prob, _ = _apply_market_shrinkage(raw_prob, x_overridden, feature_names)
+
+    contribs = _compute_contributions(loaded, x_overridden)
+
+    result = WhatIfOut(
+        baseHomeWinProbability=base_pred.homeWinProbability,
+        homeWinProbability=new_prob,
+        predictedWinner="home" if new_prob >= 0.5 else "away",
+        contributions=contribs,
+    )
+
+    _whatif_result_cache[result_key] = (now, result)
+    return result
 
 
 _VENUES_CSV = pathlib.Path(__file__).parents[3] / "data" / "venues.csv"

@@ -182,6 +182,13 @@ export type SeasonSimulation = {
   teams: SeasonTeamOutcome[];
 };
 
+export type WhatIfOut = {
+  baseHomeWinProbability: number;
+  homeWinProbability: number;
+  predictedWinner: string;
+  contributions?: FeatureContribution[] | null;
+};
+
 export type DashboardOut = {
   season: number;
   currentRound: number | null;

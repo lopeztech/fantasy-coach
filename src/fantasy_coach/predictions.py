@@ -776,6 +776,66 @@ def _build_inference_state(history: list[MatchRow]) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# What-if feature vector computation (used by POST /predictions/{id}/whatif)
+# ---------------------------------------------------------------------------
+
+_WHATIF_BASE_CACHE_TTL = 300.0  # seconds
+# key: (match_id, model_version_str)  value: (monotonic_timestamp, x_2d_array)
+_whatif_base_cache: dict[tuple[int, str], tuple[float, Any]] = {}
+
+
+def compute_whatif_base(
+    match_id: int,
+    season: int,
+    round_: int,
+    repo: Any,
+    model_path: Path,
+) -> tuple[Any, str]:
+    """Return the (1, N) feature vector for a match for what-if analysis.
+
+    Rebuilds from FeatureBuilder state using all completed matches prior to
+    ``round_`` as history — the same walk used in ``compute_predictions``.
+    Result is cached for ``_WHATIF_BASE_CACHE_TTL`` seconds keyed by
+    ``(match_id, model_version)`` so repeated slider moves are cheap.
+
+    Returns ``(x, model_version)`` where ``x`` is a ``(1, N)`` float64 array.
+    Raises ``ValueError`` when the match is not found in the repository.
+    """
+    import time as _time  # noqa: PLC0415
+
+    import numpy as np  # noqa: PLC0415
+
+    _ensure_model(model_path)
+    mv = _model_version(model_path)
+
+    cache_key = (match_id, mv)
+    now = _time.monotonic()
+    cached = _whatif_base_cache.get(cache_key)
+    if cached is not None and now - cached[0] < _WHATIF_BASE_CACHE_TTL:
+        return cached[1], mv
+
+    target = repo.get_match(match_id)
+    if target is None:
+        raise ValueError(f"Match {match_id} not found in repository")
+
+    history: list[MatchRow] = []
+    for s in range(max(2020, season - 3), season + 1):
+        try:
+            season_matches = repo.list_matches(s)
+        except Exception:
+            continue
+        for m in season_matches:
+            if m.season < season or (m.season == season and m.round < round_):
+                history.append(m)
+
+    builder = _build_inference_state(history)
+    x = np.asarray([builder.feature_row(target)], dtype=float)
+
+    _whatif_base_cache[cache_key] = (now, x)
+    return x, mv
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
