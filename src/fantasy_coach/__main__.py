@@ -792,6 +792,35 @@ def _run_precompute(args: argparse.Namespace) -> int:
         refreshed = refresh_stale_matches(repo, season)
         if refreshed:
             print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
+
+        # Run Monte Carlo season simulation (#217). Failures are non-fatal.
+        try:
+            from fantasy_coach.simulation import simulate_season  # noqa: PLC0415
+
+            all_matches = repo.list_matches(season)
+            preds_dict = {p.matchId: p.homeWinProbability for p in predictions}
+            sim_result = simulate_season(season, all_matches, preds_dict)
+            print(
+                f"Season simulation: {len(sim_result.teams)} teams, {sim_result.n_simulations} sims"
+            )
+            for t in sorted(sim_result.teams, key=lambda x: -x.premiership_prob)[:3]:
+                print(
+                    f"  {t.team_name}: {t.premiership_prob:.1%} premiership, "
+                    f"{t.playoff_prob:.1%} top-8"
+                )
+            # Persist to Firestore when running in production.
+            if os.getenv("STORAGE_BACKEND", "sqlite").lower() == "firestore":
+                from google.cloud import firestore as _fs  # noqa: PLC0415
+
+                project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+                _fs_db = _fs.Client(project=project)
+                payload = sim_result.as_dict() | {
+                    "computedAt": datetime.now(UTC).isoformat(),
+                }
+                _fs_db.collection("season_simulation").document(str(season)).set(payload)
+                print(f"Persisted season simulation to Firestore for season {season}")
+        except Exception as _sim_exc:  # noqa: BLE001
+            print(f"Season simulation failed (non-fatal): {_sim_exc}")
     finally:
         if _profiler is not None:
             import pstats  # noqa: PLC0415

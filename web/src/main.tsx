@@ -7,6 +7,7 @@ import App from "./App";
 import GroupDetail from "./routes/GroupDetail";
 import Groups from "./routes/Groups";
 import Home from "./routes/Home";
+import Ladder from "./routes/Ladder";
 import Leaderboard from "./routes/Leaderboard";
 import MatchDetail from "./routes/MatchDetail";
 import Round from "./routes/Round";
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
       { path: "round/:season/:round/:matchId", element: <MatchDetail /> },
       { path: "scoreboard", element: <Scoreboard /> },
       { path: "accuracy", element: <Accuracy /> },
+      { path: "ladder", element: <Ladder /> },
       { path: "team/:teamId", element: <Team /> },
       { path: "leaderboard", element: <Leaderboard /> },
       { path: "groups", element: <Groups /> },

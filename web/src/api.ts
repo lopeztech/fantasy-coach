@@ -1,5 +1,5 @@
 import { getFirebaseAuth, API_BASE_URL } from "./firebase";
-import type { DashboardOut, TeamOption } from "./types";
+import type { DashboardOut, SeasonSimulation, TeamOption } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -37,6 +37,10 @@ export async function getDashboard(
     params.set("favourite_team_id", String(favouriteTeamId));
   }
   return apiFetch<DashboardOut>(`/me/dashboard?${params.toString()}`);
+}
+
+export async function getSimulation(season: number): Promise<SeasonSimulation> {
+  return apiFetch<SeasonSimulation>(`/season/${season}/simulation`);
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
