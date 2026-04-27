@@ -7,7 +7,14 @@ import { ShareButton } from "../components/ShareButton";
 import { TeamFormChart } from "../components/TeamFormChart";
 import { labelFor } from "../features";
 import { SignInRequired } from "../components/SignInRequired";
-import type { AlternativeModels, PickSummary, Prediction, TeamFormHistory } from "../types";
+import type {
+  AlternativeModels,
+  FeatureContribution,
+  PickSummary,
+  Prediction,
+  TeamFormHistory,
+  WhatIfOut,
+} from "../types";
 
 type Status =
   | { kind: "loading" }
@@ -206,6 +213,242 @@ function ConsensusPanel({
   );
 }
 
+function getContribValue(contributions: FeatureContribution[], name: string, fallback: number) {
+  return contributions.find((c) => c.feature === name)?.value ?? fallback;
+}
+
+function WhatIfPanel({
+  matchId,
+  season,
+  round,
+  homeTeam,
+  awayTeam,
+  baseProb,
+  contributions,
+}: {
+  matchId: number;
+  season: number;
+  round: number;
+  homeTeam: string;
+  awayTeam: string;
+  baseProb: number;
+  contributions: FeatureContribution[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const initWet = getContribValue(contributions, "is_wet", 0) > 0.5;
+  const initWind = Math.round(getContribValue(contributions, "wind_kph", 0));
+  const initTemp = Math.round(getContribValue(contributions, "temperature_c", 20));
+  const baseRestDiff = getContribValue(contributions, "days_rest_diff", 0);
+
+  const [isWet, setIsWet] = useState(initWet);
+  const [wind, setWind] = useState(initWind);
+  const [temp, setTemp] = useState(initTemp);
+  const [restDelta, setRestDelta] = useState(0);
+
+  const [result, setResult] = useState<WhatIfOut | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasOverrides =
+    isWet !== initWet || wind !== initWind || temp !== initTemp || restDelta !== 0;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const overrides: Record<string, number> = {
+      is_wet: isWet ? 1 : 0,
+      wind_kph: wind,
+      temperature_c: temp,
+      rain_intensity: isWet ? 2 : 0,
+      days_rest_diff: baseRestDiff + restDelta,
+    };
+
+    setLoading(true);
+    setError(null);
+
+    const timer = setTimeout(() => {
+      apiFetch<WhatIfOut>(`/predictions/${matchId}/whatif`, {
+        method: "POST",
+        body: JSON.stringify({ season, round, overrides }),
+      })
+        .then((r) => {
+          setResult(r);
+          setLoading(false);
+        })
+        .catch((e: unknown) => {
+          setError(e instanceof Error ? e.message : "Request failed");
+          setLoading(false);
+        });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [open, isWet, wind, temp, restDelta, matchId, season, round, baseRestDiff]);
+
+  const handleReset = () => {
+    setIsWet(initWet);
+    setWind(initWind);
+    setTemp(initTemp);
+    setRestDelta(0);
+    setResult(null);
+  };
+
+  const displayResult = result;
+  const finalProb = displayResult?.homeWinProbability ?? baseProb;
+  const basePct = Math.round(baseProb * 100);
+  const finalPct = Math.round(finalProb * 100);
+  const delta = finalPct - basePct;
+
+  return (
+    <section className="whatif-panel" aria-labelledby="whatif-heading">
+      <button
+        className="whatif-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span id="whatif-heading">Try it yourself</span>
+        <span aria-hidden="true">{open ? " ▲" : " ▼"}</span>
+      </button>
+
+      {open && (
+        <div className="whatif-body">
+          <div className="whatif-controls">
+            <fieldset className="whatif-fieldset">
+              <legend>Conditions</legend>
+              <label className="whatif-label">
+                <span>Wet weather</span>
+                <input
+                  type="checkbox"
+                  checked={isWet}
+                  onChange={(e) => setIsWet(e.target.checked)}
+                  aria-label={`Wet weather: currently ${isWet ? "on" : "off"}`}
+                />
+              </label>
+              <label className="whatif-label">
+                <span>Wind: {wind} km/h</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={60}
+                  step={5}
+                  value={wind}
+                  onChange={(e) => setWind(Number(e.target.value))}
+                  aria-label={`Wind speed: ${wind} km/h`}
+                />
+              </label>
+              <label className="whatif-label">
+                <span>Temperature: {temp}°C</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={35}
+                  step={1}
+                  value={temp}
+                  onChange={(e) => setTemp(Number(e.target.value))}
+                  aria-label={`Temperature: ${temp}°C`}
+                />
+              </label>
+            </fieldset>
+
+            <fieldset className="whatif-fieldset">
+              <legend>Scheduling</legend>
+              <label className="whatif-label">
+                <span>
+                  Home rest edge:{" "}
+                  {restDelta > 0 ? `+${restDelta}` : String(restDelta)} days
+                </span>
+                <input
+                  type="range"
+                  min={-3}
+                  max={3}
+                  step={1}
+                  value={restDelta}
+                  onChange={(e) => setRestDelta(Number(e.target.value))}
+                  aria-label={`Home rest advantage relative to actual: ${restDelta} days`}
+                />
+              </label>
+            </fieldset>
+          </div>
+
+          {loading && (
+            <p className="whatif-status muted" role="status">
+              Recalculating…
+            </p>
+          )}
+          {error && (
+            <p className="whatif-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <div className="whatif-result" aria-live="polite">
+            <div className="whatif-row">
+              <span className="whatif-label-sm muted">Baseline</span>
+              <div className="prob-dial-bar">
+                <span
+                  className="prob-bar-home"
+                  style={{ width: `${basePct}%` }}
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="prob-dial-labels">
+                <span>
+                  <strong>{homeTeam}</strong> {basePct}%
+                </span>
+                <span>
+                  {100 - basePct}% <strong>{awayTeam}</strong>
+                </span>
+              </div>
+            </div>
+
+            {displayResult && (
+              <div className="whatif-row">
+                <span className="whatif-label-sm muted">What-if</span>
+                <div className="prob-dial-bar">
+                  <span
+                    className="prob-bar-home"
+                    style={{ width: `${finalPct}%` }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="prob-dial-labels">
+                  <span>
+                    <strong>{homeTeam}</strong> {finalPct}%
+                    {delta !== 0 && (
+                      <span
+                        className={delta > 0 ? "whatif-delta-pos" : "whatif-delta-neg"}
+                        aria-label={`change of ${delta > 0 ? "+" : ""}${delta} percentage points`}
+                      >
+                        {" "}
+                        ({delta > 0 ? "+" : ""}
+                        {delta}pp)
+                      </span>
+                    )}
+                  </span>
+                  <span>
+                    {100 - finalPct}% <strong>{awayTeam}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {hasOverrides && (
+            <button className="whatif-reset" onClick={handleReset}>
+              Reset to actual
+            </button>
+          )}
+
+          <p className="muted fine-print">
+            Adjusts model inputs and reruns the prediction. Other factors may dominate —
+            a pick flip is not guaranteed.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MatchDetailBody({
   prediction,
   season,
@@ -364,6 +607,16 @@ function MatchDetailBody({
             away={prediction.away.name}
           />
         )}
+
+      <WhatIfPanel
+        matchId={prediction.matchId}
+        season={season}
+        round={round}
+        homeTeam={prediction.home.name}
+        awayTeam={prediction.away.name}
+        baseProb={prediction.homeWinProbability}
+        contributions={prediction.contributions ?? []}
+      />
     </article>
   );
 }
