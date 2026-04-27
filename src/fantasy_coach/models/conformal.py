@@ -59,8 +59,8 @@ import numpy as np
 class ProbabilityInterval:
     """A distribution-free probability interval for the home-win probability."""
 
-    lo: float   # lower bound in [0, 1]
-    hi: float   # upper bound in [0, 1]
+    lo: float  # lower bound in [0, 1]
+    hi: float  # upper bound in [0, 1]
     point: float  # original point estimate
 
 
@@ -177,9 +177,7 @@ class MarginConformalizer:
             point=float(predicted_margin),
         )
 
-    def coverage_fraction(
-        self, predicted_margins: np.ndarray, actual_margins: np.ndarray
-    ) -> float:
+    def coverage_fraction(self, predicted_margins: np.ndarray, actual_margins: np.ndarray) -> float:
         """Empirical coverage on a held-out set."""
         pred = np.asarray(predicted_margins, dtype=float)
         actual = np.asarray(actual_margins, dtype=float)

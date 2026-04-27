@@ -33,17 +33,20 @@ def _ood_data(n: int = 10, n_feat: int = 10, seed: int = 99) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("pct,expected", [
-    (0.0, "in_distribution"),
-    (50.0, "in_distribution"),
-    (89.9, "in_distribution"),
-    (90.0, "edge"),
-    (95.0, "edge"),
-    (98.9, "edge"),
-    (99.0, "out_of_distribution"),
-    (99.9, "out_of_distribution"),
-    (100.0, "out_of_distribution"),
-])
+@pytest.mark.parametrize(
+    "pct,expected",
+    [
+        (0.0, "in_distribution"),
+        (50.0, "in_distribution"),
+        (89.9, "in_distribution"),
+        (90.0, "edge"),
+        (95.0, "edge"),
+        (98.9, "edge"),
+        (99.0, "out_of_distribution"),
+        (99.9, "out_of_distribution"),
+        (100.0, "out_of_distribution"),
+    ],
+)
 def test_percentile_to_flag(pct: float, expected: str) -> None:
     assert _percentile_to_flag(pct) == expected
 

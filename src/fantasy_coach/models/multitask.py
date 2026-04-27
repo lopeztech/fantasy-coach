@@ -52,10 +52,10 @@ _MARGIN_DEADBAND = 2.0
 class MultiTaskFrame:
     """Feature matrix paired with three supervised targets."""
 
-    X: np.ndarray           # shape (n, n_features)
-    y_winner: np.ndarray    # binary float: 1.0 = home won, 0.0 = away won
-    y_margin: np.ndarray    # float: home_score − away_score
-    y_total: np.ndarray     # float: home_score + away_score
+    X: np.ndarray  # shape (n, n_features)
+    y_winner: np.ndarray  # binary float: 1.0 = home won, 0.0 = away won
+    y_margin: np.ndarray  # float: home_score − away_score
+    y_total: np.ndarray  # float: home_score + away_score
     match_ids: np.ndarray
     start_times: np.ndarray  # dtype datetime64[s]
     feature_names: tuple[str, ...] = field(default_factory=lambda: FEATURE_NAMES)
@@ -134,9 +134,9 @@ def build_multitask_frame(
 class MultiTaskPrediction:
     """Coherent four-field prediction from the multi-task model."""
 
-    home_win_prob: float      # P(home wins) — coherent with margin sign
-    predicted_margin: float   # E[home_score − away_score]
-    predicted_total: float    # E[home_score + away_score]
+    home_win_prob: float  # P(home wins) — coherent with margin sign
+    predicted_margin: float  # E[home_score − away_score]
+    predicted_total: float  # E[home_score + away_score]
 
 
 # ---------------------------------------------------------------------------
@@ -186,11 +186,13 @@ class MultiTaskXGBoostModel:
 
             # Clip to valid probability range
             prob = float(np.clip(prob, 1e-6, 1 - 1e-6))
-            results.append(MultiTaskPrediction(
-                home_win_prob=prob,
-                predicted_margin=mar,
-                predicted_total=max(tot, 0.0),
-            ))
+            results.append(
+                MultiTaskPrediction(
+                    home_win_prob=prob,
+                    predicted_margin=mar,
+                    predicted_total=max(tot, 0.0),
+                )
+            )
         return results
 
     def predict_home_win_prob(self, X: np.ndarray) -> np.ndarray:
@@ -200,9 +202,7 @@ class MultiTaskXGBoostModel:
     def coherence_fraction(self, X: np.ndarray) -> float:
         """Fraction of predictions where winner and margin sign agree."""
         preds = self.predict(X)
-        coherent = sum(
-            (p.home_win_prob >= 0.5) == (p.predicted_margin >= 0) for p in preds
-        )
+        coherent = sum((p.home_win_prob >= 0.5) == (p.predicted_margin >= 0) for p in preds)
         return coherent / len(preds) if preds else 1.0
 
 
@@ -306,9 +306,7 @@ def save_multitask(path: Path | str, result: MultiTaskTrainResult) -> None:
 def load_multitask(path: Path | str) -> MultiTaskXGBoostModel:
     blob = joblib.load(Path(path))
     if blob.get("model_type") != "multitask":
-        raise ValueError(
-            f"Expected model_type='multitask', got {blob.get('model_type')!r}"
-        )
+        raise ValueError(f"Expected model_type='multitask', got {blob.get('model_type')!r}")
     return _from_blob(blob)
 
 

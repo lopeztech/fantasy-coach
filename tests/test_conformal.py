@@ -77,7 +77,9 @@ def test_probability_conformalizer_coverage_at_least_nominal() -> None:
         cp.fit(probs_calib, outcomes_calib)
         cov = cp.coverage_fraction(probs_test, outcomes_test)
         # Allow a 3pp slack for finite-sample noise
-        assert cov >= 1 - alpha - 0.03, f"alpha={alpha}: coverage={cov:.3f} < {1-alpha-0.03:.3f}"
+        assert cov >= 1 - alpha - 0.03, (
+            f"alpha={alpha}: coverage={cov:.3f} < {1 - alpha - 0.03:.3f}"
+        )
 
 
 def test_probability_conformalizer_smaller_alpha_wider_interval() -> None:
@@ -132,7 +134,7 @@ def test_margin_conformalizer_coverage() -> None:
     mc = MarginConformalizer(alpha=alpha)
     mc.fit(pred_c, act_c)
     cov = mc.coverage_fraction(pred_t, act_t)
-    assert cov >= 1 - alpha - 0.03, f"coverage={cov:.3f} < {1-alpha-0.03:.3f}"
+    assert cov >= 1 - alpha - 0.03, f"coverage={cov:.3f} < {1 - alpha - 0.03:.3f}"
 
 
 def test_margin_conformalizer_symmetric_interval() -> None:

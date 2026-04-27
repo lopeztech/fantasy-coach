@@ -61,8 +61,8 @@ class OODResult:
     """OOD detection result for a single match."""
 
     percentile: float  # 0–100; high = unusual
-    flag: str          # "in_distribution" | "edge" | "out_of_distribution"
-    raw_score: float   # raw anomaly score from the backend (lower = more anomalous)
+    flag: str  # "in_distribution" | "edge" | "out_of_distribution"
+    raw_score: float  # raw anomaly score from the backend (lower = more anomalous)
 
 
 def _percentile_to_flag(percentile: float) -> str:
@@ -137,11 +137,13 @@ class OODDetector:
             # raw score).  A new point with score lower than 90% of training scores is
             # in the 90th anomaly percentile.
             pct = float(np.mean(self._train_scores > rs) * 100.0)
-            results.append(OODResult(
-                percentile=round(pct, 2),
-                flag=_percentile_to_flag(pct),
-                raw_score=float(rs),
-            ))
+            results.append(
+                OODResult(
+                    percentile=round(pct, 2),
+                    flag=_percentile_to_flag(pct),
+                    raw_score=float(rs),
+                )
+            )
         return results
 
 

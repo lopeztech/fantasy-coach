@@ -69,8 +69,12 @@ def _log_bp_pmf(h: int, a: int, l1: float, l2: float, l3: float) -> float:
     k = np.arange(min(h, a) + 1, dtype=float)
     # log C(h,k)·C(a,k)·k! · (l3/(l1·l2))^k
     log_terms = (
-        gammaln(h + 1) - gammaln(h - k + 1) - gammaln(k + 1)
-        + gammaln(a + 1) - gammaln(a - k + 1) - gammaln(k + 1)
+        gammaln(h + 1)
+        - gammaln(h - k + 1)
+        - gammaln(k + 1)
+        + gammaln(a + 1)
+        - gammaln(a - k + 1)
+        - gammaln(k + 1)
         + gammaln(k + 1)
         + k * (np.log(l3) - np.log(l1) - np.log(l2))
     )
@@ -134,10 +138,16 @@ def _score_grid(lh: float, la: float, l3: float, tau: float) -> np.ndarray:
     log_r = float(np.log(l3c) - np.log(l1) - np.log(l2))
     log_terms = np.where(
         valid,
-        (gammaln(HH3 + 1) - gammaln(safe_h_k + 1) - gammaln(K3 + 1)
-         + gammaln(AA3 + 1) - gammaln(safe_a_k + 1) - gammaln(K3 + 1)
-         + gammaln(K3 + 1)
-         + K3 * log_r),
+        (
+            gammaln(HH3 + 1)
+            - gammaln(safe_h_k + 1)
+            - gammaln(K3 + 1)
+            + gammaln(AA3 + 1)
+            - gammaln(safe_a_k + 1)
+            - gammaln(K3 + 1)
+            + gammaln(K3 + 1)
+            + K3 * log_r
+        ),
         -np.inf,
     )
     log_corr_sum = _logsumexp(log_terms, axis=0)  # shape (H+1, A+1)
@@ -172,8 +182,8 @@ def _score_grid(lh: float, la: float, l3: float, tau: float) -> np.ndarray:
 class BivariateTrainingFrame:
     """Feature matrix with home + away score targets (same layout as Skellam)."""
 
-    X: np.ndarray          # shape (n, n_features)
-    y_home: np.ndarray     # int scores
+    X: np.ndarray  # shape (n, n_features)
+    y_home: np.ndarray  # int scores
     y_away: np.ndarray
     match_ids: np.ndarray
     start_times: np.ndarray
@@ -218,11 +228,11 @@ class BivariatePrediction:
     lambda_home: float
     lambda_away: float
     lambda3: float
-    score_grid: np.ndarray   # shape (81, 81)
+    score_grid: np.ndarray  # shape (81, 81)
     home_win_prob: float
     draw_prob: float
     predicted_margin: float  # E[H − A]
-    predicted_total: float   # E[H + A]
+    predicted_total: float  # E[H + A]
     top_scorelines: list[ScoreLine]  # top-5 most probable outcomes
 
 
@@ -342,8 +352,8 @@ def _nll(
     tau = float(params[2 * n_feat + 3])
 
     l3 = float(np.exp(np.clip(log_l3, -6.0, 3.0)))
-    lh_arr = np.exp(X @ w_h + b_h)        # shape (N,)
-    la_arr = np.exp(-X @ w_a + b_a)       # shape (N,)
+    lh_arr = np.exp(X @ w_h + b_h)  # shape (N,)
+    la_arr = np.exp(-X @ w_a + b_a)  # shape (N,)
 
     n = len(y_home)
     h_arr = y_home.astype(int)
@@ -371,10 +381,16 @@ def _nll(
 
     log_terms = np.where(
         valid,
-        (gammaln(H2 + 1) - gammaln(safe_h_k + 1) - gammaln(K2 + 1)
-         + gammaln(A2 + 1) - gammaln(safe_a_k + 1) - gammaln(K2 + 1)
-         + gammaln(K2 + 1)
-         + K2 * (np.log(L3c_2) - np.log(L1_2) - np.log(L2_2))),
+        (
+            gammaln(H2 + 1)
+            - gammaln(safe_h_k + 1)
+            - gammaln(K2 + 1)
+            + gammaln(A2 + 1)
+            - gammaln(safe_a_k + 1)
+            - gammaln(K2 + 1)
+            + gammaln(K2 + 1)
+            + K2 * (np.log(L3c_2) - np.log(L1_2) - np.log(L2_2))
+        ),
         -np.inf,
     )
     log_corr = _logsumexp(log_terms, axis=0)  # shape (N,)
@@ -462,10 +478,10 @@ def train_bivariate_poisson(
 
     # Bounds: tau bounded to avoid invalid DC-correction factors
     bounds = (
-        [(None, None)] * (n_feat + 1)   # w_h, b_h
+        [(None, None)] * (n_feat + 1)  # w_h, b_h
         + [(None, None)] * (n_feat + 1)  # w_a, b_a
-        + [(-6.0, 3.0)]                  # log_l3
-        + [(-0.1, 0.1)]                  # tau (small for NRL)
+        + [(-6.0, 3.0)]  # log_l3
+        + [(-0.1, 0.1)]  # tau (small for NRL)
     )
 
     result = minimize(
@@ -533,9 +549,7 @@ def save_bivariate_poisson(path: Path | str, result: BivariateTrainResult) -> No
 def load_bivariate_poisson(path: Path | str) -> BivariatePoissonModel:
     blob = joblib.load(Path(path))
     if blob.get("model_type") != "bivariate_poisson":
-        raise ValueError(
-            f"Expected model_type='bivariate_poisson', got {blob.get('model_type')!r}"
-        )
+        raise ValueError(f"Expected model_type='bivariate_poisson', got {blob.get('model_type')!r}")
     return _from_blob(blob)
 
 
