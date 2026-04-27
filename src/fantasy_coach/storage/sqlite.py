@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _PLAYER_STAT_COLS = (
     "minutes_played",
@@ -121,6 +121,42 @@ class SQLiteRepository:
             ).fetchall()
         return [self._hydrate(r) for r in rows]
 
+    def upsert_weather_forecast(
+        self,
+        match_id: int,
+        fetched_at: datetime,
+        rain_mm_3h: float,
+        wind_kph: float,
+        temperature_c: float,
+        source: str,
+    ) -> None:
+        """Insert (or replace) a weather forecast snapshot for *match_id*."""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO match_weather_forecasts
+                    (match_id, fetched_at, rain_mm_3h, wind_kph, temperature_c, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (match_id, fetched_at.isoformat(), rain_mm_3h, wind_kph, temperature_c, source),
+            )
+
+    def get_latest_weather_forecast(self, match_id: int) -> dict | None:
+        """Return the most recent forecast snapshot for *match_id*, or ``None``."""
+        row = self._conn.execute(
+            """
+            SELECT rain_mm_3h, wind_kph, temperature_c, source, fetched_at
+            FROM match_weather_forecasts
+            WHERE match_id = ?
+            ORDER BY fetched_at DESC
+            LIMIT 1
+            """,
+            (match_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
     # ----- internals -----
 
     def _migrate(self) -> None:
@@ -184,6 +220,11 @@ class SQLiteRepository:
                 # are both created by executescript() via CREATE TABLE IF NOT EXISTS,
                 # so no work needed beyond bumping the version marker.
                 self._conn.execute("UPDATE schema_version SET version = 6")
+        if from_version < 7:
+            with self._conn:
+                # v6 → v7: match_weather_forecasts table (#207). Created by
+                # executescript() via CREATE TABLE IF NOT EXISTS above.
+                self._conn.execute("UPDATE schema_version SET version = 7")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:

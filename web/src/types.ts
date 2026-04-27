@@ -146,6 +146,42 @@ export type AccuracyOut = {
   modelVersions: string[];
 };
 
+// ---------------------------------------------------------------------------
+// Season simulation (#217)
+// ---------------------------------------------------------------------------
+
+export type LadderEntry = {
+  teamId: number;
+  teamName: string;
+  position: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  points: number;
+  pctFor: number;
+  pctAgainst: number;
+  percentage: number;
+};
+
+export type SeasonTeamOutcome = {
+  teamId: number;
+  teamName: string;
+  playoffProb: number;
+  top4Prob: number;
+  top2Prob: number;
+  minorPremiershipProb: number;
+  grandFinalProb: number;
+  premiershipProb: number;
+};
+
+export type SeasonSimulation = {
+  season: number;
+  nSimulations: number;
+  computedAt: string;
+  standings: LadderEntry[];
+  teams: SeasonTeamOutcome[];
+};
+
 export type DashboardOut = {
   season: number;
   currentRound: number | null;

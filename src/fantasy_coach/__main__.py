@@ -629,6 +629,71 @@ def _detect_upcoming_round(year: int) -> int | None:
     return None
 
 
+def _fetch_weather_forecasts(season: int, round_: int, repo: Any) -> dict:
+    """Fetch Open-Meteo forecasts for upcoming matches in *season/round_*.
+
+    Returns a ``{match_id: WeatherForecast}`` dict.  On any failure the
+    entry is simply absent and the model falls back to ``missing_weather=1.0``.
+    Venues are looked up from ``data/venues.csv`` (which carries lat/lon).
+    """
+    import csv  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    from fantasy_coach.weather_forecast import fetch_forecast  # noqa: PLC0415
+
+    # Load venue lat/lon lookup.
+    try:
+        import contextlib  # noqa: PLC0415
+
+        venues_path = Path(__file__).parent.parent.parent / "data" / "venues.csv"
+        venue_coords: dict[str, tuple[float, float]] = {}
+        with venues_path.open(newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                key = row["name"].lower()
+                with contextlib.suppress(KeyError, ValueError):
+                    venue_coords[key] = (float(row["lat"]), float(row["lon"]))
+    except Exception:
+        import logging  # noqa: PLC0415
+
+        logging.getLogger(__name__).warning("Could not load venues.csv; skipping weather forecasts")
+        return {}
+
+    try:
+        matches = repo.list_matches(season, round_)
+    except Exception:
+        return {}
+
+    forecasts: dict = {}
+    for match in matches:
+        if match.venue is None:
+            continue
+        coords = venue_coords.get(match.venue.lower())
+        if coords is None:
+            continue
+        lat, lon = coords
+        try:
+            fc = fetch_forecast(lat, lon, match.start_time)
+        except Exception:
+            continue
+        if fc is not None:
+            forecasts[match.match_id] = fc
+            # Persist the snapshot to SQLite for auditing (best-effort).
+            try:
+                if hasattr(repo, "upsert_weather_forecast"):
+                    repo.upsert_weather_forecast(
+                        match.match_id,
+                        fc.fetched_at,
+                        fc.rain_mm_3h,
+                        fc.wind_kph,
+                        fc.temperature_c,
+                        fc.source,
+                    )
+            except Exception:
+                pass
+
+    return forecasts
+
+
 def _rss_sampler(stop_event) -> None:  # type: ignore[type-arg]
     """Log current and peak RSS every 5 s until stop_event is set."""
     try:
@@ -703,6 +768,9 @@ def _run_precompute(args: argparse.Namespace) -> int:
         print("[profile] cProfile + RSS sampler started")
 
     try:
+        # Fetch pre-kickoff weather forecasts for upcoming matches (#207).
+        # Failures are non-fatal — missing_weather=1.0 falls back gracefully.
+        weather_forecasts = _fetch_weather_forecasts(season, round_, repo)
         predictions = compute_predictions(
             season,
             round_,
@@ -710,6 +778,7 @@ def _run_precompute(args: argparse.Namespace) -> int:
             store,
             force=not args.no_force,
             team_list_repo=team_list_repo,
+            weather_forecasts=weather_forecasts,
         )
         # Refresh any previously-scraped matches whose outcomes should be
         # known by now but weren't captured — the precompute flow only
@@ -723,6 +792,35 @@ def _run_precompute(args: argparse.Namespace) -> int:
         refreshed = refresh_stale_matches(repo, season)
         if refreshed:
             print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
+
+        # Run Monte Carlo season simulation (#217). Failures are non-fatal.
+        try:
+            from fantasy_coach.simulation import simulate_season  # noqa: PLC0415
+
+            all_matches = repo.list_matches(season)
+            preds_dict = {p.matchId: p.homeWinProbability for p in predictions}
+            sim_result = simulate_season(season, all_matches, preds_dict)
+            print(
+                f"Season simulation: {len(sim_result.teams)} teams, {sim_result.n_simulations} sims"
+            )
+            for t in sorted(sim_result.teams, key=lambda x: -x.premiership_prob)[:3]:
+                print(
+                    f"  {t.team_name}: {t.premiership_prob:.1%} premiership, "
+                    f"{t.playoff_prob:.1%} top-8"
+                )
+            # Persist to Firestore when running in production.
+            if os.getenv("STORAGE_BACKEND", "sqlite").lower() == "firestore":
+                from google.cloud import firestore as _fs  # noqa: PLC0415
+
+                project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+                _fs_db = _fs.Client(project=project)
+                payload = sim_result.as_dict() | {
+                    "computedAt": datetime.now(UTC).isoformat(),
+                }
+                _fs_db.collection("season_simulation").document(str(season)).set(payload)
+                print(f"Persisted season simulation to Firestore for season {season}")
+        except Exception as _sim_exc:  # noqa: BLE001
+            print(f"Season simulation failed (non-fatal): {_sim_exc}")
     finally:
         if _profiler is not None:
             import pstats  # noqa: PLC0415

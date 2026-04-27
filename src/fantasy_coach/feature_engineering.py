@@ -20,6 +20,9 @@ Features (all home-minus-away unless noted):
 - `timezone_delta_diff`: absolute timezone-shift hours, home − away.
 - `back_to_back_short_week_diff`: +1/−1/0 flag for (days_rest < 6 AND travel > 1 000 km).
 - `is_wet`, `wind_kph`, `temperature_c`, `missing_weather`: parsed from the weather block.
+- `rain_intensity`: 4-level ordinal (0=dry, 1=light, 2=moderate, 3=heavy) from forecast mm/3h
+  when a pre-kickoff forecast is available; derived from `is_wet` for post-match actuals.
+- `weather_source`: 1.0 when weather came from a pre-kickoff forecast, 0.0 for post-match actual.
 - `venue_avg_total_points`: rolling-10 average total points at this venue (history-only).
 - `venue_home_win_rate`: rolling-20 home win rate at this venue (history-only).
 """
@@ -39,7 +42,8 @@ from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
 from fantasy_coach.travel import compute_rest_features, travel_features
-from fantasy_coach.weather import parse_weather
+from fantasy_coach.weather import WeatherInfo, parse_weather
+from fantasy_coach.weather_forecast import WeatherForecast, bin_rain_mm_3h
 
 FEATURE_NAMES = (
     "elo_diff",
@@ -181,6 +185,24 @@ FEATURE_NAMES = (
     "hooker_strength_diff",
     "outside_backs_strength_diff",
     "halves_x_forwards_diff",
+    # Pre-kickoff weather forecast features (#207). Close the train/serve skew
+    # where ``is_wet`` / ``wind_kph`` / ``temperature_c`` were only populated
+    # from post-match NRL data (unavailable at inference time for upcoming
+    # matches). When a forecast is available via ``WeatherForecast``, the
+    # existing is_wet/wind/temp values are overridden with forecast-derived
+    # equivalents and these two new features fire.
+    #
+    # ``rain_intensity``: 4-level ordinal derived from forecast rain_mm_3h —
+    # 0 = dry (<0.5 mm), 1 = light (0.5–5 mm), 2 = moderate (5–15 mm),
+    # 3 = heavy (>15 mm). For post-match actual weather where we only have the
+    # binary ``is_wet`` flag, maps to 2 (moderate) when wet, 0 when dry.
+    #
+    # ``weather_source``: 1.0 when weather came from a pre-kickoff Open-Meteo
+    # forecast; 0.0 for post-match NRL data. Lets the model learn a bias
+    # correction for forecast vs actual (forecasts have their own calibration
+    # error independent of the underlying weather signal).
+    "rain_intensity",
+    "weather_source",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -343,7 +365,9 @@ class FeatureBuilder:
         # Used to determine whether a venue is a home ground for neutral-venue detection.
         self._team_venue_season_counts: dict[tuple[int, str, int], int] = defaultdict(int)
 
-    def feature_row(self, match: MatchRow) -> list[float]:
+    def feature_row(
+        self, match: MatchRow, *, weather_forecast: WeatherForecast | None = None
+    ) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
         elo_diff = self.elo.rating(h_id) + self.elo.home_advantage - self.elo.rating(a_id)
         form_pf_h = _avg(self._points_for[h_id])
@@ -369,7 +393,7 @@ class FeatureBuilder:
             rest_h,
             rest_a,
         )
-        wx = parse_weather(match.weather)
+        wx, rain_intensity, weather_source = _merge_weather(match.weather, weather_forecast)
         vkey = (match.venue or "").lower()
         venue_avg_tp = _avg(self._venue_total[vkey]) if vkey else 0.0
         # Neutral prior (0.5) when no history available for this venue.
@@ -485,6 +509,8 @@ class FeatureBuilder:
             hooker_diff,
             backs_diff,
             halves_x_fwds,
+            rain_intensity,
+            weather_source,
         ]
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
@@ -966,3 +992,36 @@ def _penalty_diff(match: MatchRow) -> float | None:
         ):
             return float(stat.home_value) - float(stat.away_value)
     return None
+
+
+def _merge_weather(
+    raw_weather: str | None,
+    forecast: WeatherForecast | None,
+) -> tuple[WeatherInfo, float, float]:
+    """Two-source weather merge (#207).
+
+    Priority: post-match NRL actual > pre-kickoff forecast > missing.
+    Returns ``(WeatherInfo, rain_intensity, weather_source)``.
+
+    ``rain_intensity`` is a 4-level ordinal (0–3).  For actual weather we only
+    have the binary ``is_wet`` flag, so we conservatively map wet→2 (moderate).
+    ``weather_source`` is 0.0 for actual/missing, 1.0 for forecast.
+    """
+    wx = parse_weather(raw_weather)
+    if wx.missing == 0.0:
+        # Post-match NRL data: no rain_mm_3h, derive intensity from is_wet.
+        rain_intensity = 2.0 if wx.is_wet else 0.0
+        return wx, rain_intensity, 0.0
+
+    if forecast is not None:
+        is_wet = 1.0 if forecast.rain_mm_3h >= 0.5 else 0.0
+        wx_forecast = WeatherInfo(
+            is_wet=is_wet,
+            wind_kph=forecast.wind_kph,
+            temperature_c=forecast.temperature_c,
+            missing=0.0,
+        )
+        return wx_forecast, bin_rain_mm_3h(forecast.rain_mm_3h), 1.0
+
+    # No data at all — return the missing sentinel.
+    return wx, 0.0, 0.0

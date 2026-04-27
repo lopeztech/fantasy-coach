@@ -158,6 +158,10 @@ _repo: Repository | None = None
 _PROFILE_CACHE_TTL = 60  # seconds
 _profile_cache: dict[tuple[int, int], tuple[float, TeamProfile]] = {}
 
+# In-process cache for simulation results: key=season, value=(timestamp, result_dict)
+_SIM_CACHE_TTL = 300  # 5 minutes
+_sim_cache: dict[int, tuple[float, dict]] = {}
+
 # In-process cache for dashboard responses: key=(uid, season), value=(timestamp, data)
 _DASHBOARD_CACHE_TTL = 60  # seconds
 _dashboard_cache: dict[tuple[str, int], tuple[float, DashboardOut]] = {}
@@ -856,6 +860,101 @@ def get_dashboard(
 
     _dashboard_cache[cache_key] = (time.monotonic(), dashboard)
     return dashboard
+
+
+@app.get(
+    "/season/{season}/simulation",
+    summary="Monte Carlo season simulation",
+    description=(
+        "Runs (or serves a cached) 10 000-simulation Monte Carlo season forecast. "
+        "Returns per-team probabilities for top-8 / top-4 / minor-premiership / "
+        "grand-final / premiership, plus the current regular-season ladder derived "
+        "from completed matches. Cached for 5 minutes in-process."
+    ),
+)
+def get_season_simulation(season: int) -> dict:
+    cache_hit = _sim_cache.get(season)
+    if cache_hit is not None:
+        ts, cached = cache_hit
+        if time.monotonic() - ts < _SIM_CACHE_TTL:
+            return cached
+
+    from datetime import UTC  # noqa: PLC0415
+    from datetime import datetime as _dt  # noqa: PLC0415
+
+    from fantasy_coach.simulation import simulate_season  # noqa: PLC0415
+
+    try:
+        all_matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    # Collect precomputed win probabilities from the prediction store.
+    predictions: dict[int, float] = {}
+    rounds = {m.round for m in all_matches}
+    for round_ in rounds:
+        try:
+            for p in _get_store().get(season, round_):
+                predictions[p.matchId] = p.homeWinProbability
+        except Exception:
+            pass
+
+    sim = simulate_season(season, all_matches, predictions)
+
+    # Build current standings from completed matches.
+    standings_data: dict[int, dict] = {}
+    for m in all_matches:
+        for tid, name in ((m.home.team_id, m.home.name), (m.away.team_id, m.away.name)):
+            if tid not in standings_data:
+                standings_data[tid] = {
+                    "teamId": tid,
+                    "teamName": name,
+                    "wins": 0,
+                    "losses": 0,
+                    "draws": 0,
+                    "points": 0,
+                    "pctFor": 0,
+                    "pctAgainst": 0,
+                }
+        if m.home.score is not None and m.away.score is not None:
+            h, a = standings_data[m.home.team_id], standings_data[m.away.team_id]
+            hs, as_ = int(m.home.score), int(m.away.score)
+            h["pctFor"] += hs
+            h["pctAgainst"] += as_
+            a["pctFor"] += as_
+            a["pctAgainst"] += hs
+            if hs > as_:
+                h["wins"] += 1
+                h["points"] += 2
+                a["losses"] += 1
+            elif hs < as_:
+                a["wins"] += 1
+                a["points"] += 2
+                h["losses"] += 1
+            else:
+                h["draws"] += 1
+                h["points"] += 1
+                a["draws"] += 1
+                a["points"] += 1
+
+    def _pct(row: dict) -> float:
+        return (row["pctFor"] / row["pctAgainst"] * 100.0) if row["pctAgainst"] else 0.0
+
+    standings = sorted(
+        standings_data.values(),
+        key=lambda r: (-r["points"], -_pct(r)),
+    )
+    for pos, row in enumerate(standings, start=1):
+        row["position"] = pos
+        row["percentage"] = round(_pct(row), 1)
+
+    out = {
+        **sim.as_dict(),
+        "computedAt": _dt.now(UTC).isoformat(),
+        "standings": standings,
+    }
+    _sim_cache[season] = (time.monotonic(), out)
+    return out
 
 
 _VENUES_CSV = pathlib.Path(__file__).parents[3] / "data" / "venues.csv"
