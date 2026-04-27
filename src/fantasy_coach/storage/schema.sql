@@ -1,4 +1,4 @@
--- Schema version 6.
+-- Schema version 7.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`,
 -- `match_player_stats`) keyed by match_id + side ('home' | 'away'). Upserts are
@@ -9,6 +9,7 @@
 -- v4 adds home_odds / away_odds decimal closing-line columns (#26).
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
 -- v6 adds representative_callups (#211) and match_player_stats (#142) tables.
+-- v7 adds match_weather_forecasts table (#207).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -121,3 +122,20 @@ CREATE TABLE IF NOT EXISTS match_player_stats (
 
 CREATE INDEX IF NOT EXISTS idx_match_player_stats_player_match
     ON match_player_stats (player_id, match_id);
+
+-- Weather forecast snapshots (#207). Multiple snapshots per match are kept so
+-- we can audit forecast accuracy vs post-match actuals.  The precompute Job
+-- writes a new row each Tue/Thu run; feature_engineering uses the snapshot
+-- with the latest fetched_at before kickoff.
+CREATE TABLE IF NOT EXISTS match_weather_forecasts (
+    match_id        INTEGER NOT NULL REFERENCES matches(match_id) ON DELETE CASCADE,
+    fetched_at      TEXT    NOT NULL,  -- ISO 8601 UTC
+    rain_mm_3h      REAL    NOT NULL,
+    wind_kph        REAL    NOT NULL,
+    temperature_c   REAL    NOT NULL,
+    source          TEXT    NOT NULL,  -- "open-meteo"
+    PRIMARY KEY (match_id, fetched_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecasts_match
+    ON match_weather_forecasts (match_id, fetched_at);

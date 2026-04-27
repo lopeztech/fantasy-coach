@@ -792,6 +792,7 @@ def compute_predictions(
     fetch_match_fn: Any = fetch_match_from_url,
     force: bool = False,
     team_list_repo: Any = None,
+    weather_forecasts: dict[int, Any] | None = None,
 ) -> list[PredictionOut]:
     """Return predictions for season/round; compute and cache them on miss.
 
@@ -804,6 +805,12 @@ def compute_predictions(
     appends a snapshot per side so downstream model features (#27) can
     diff named-squad vs kickoff lineup across scrapes. Silently skipped
     when ``None`` — tests that don't exercise the snapshot path pass None.
+
+    ``weather_forecasts`` is an optional ``{match_id: WeatherForecast}`` dict
+    populated by the precompute Job (#207). When provided, upcoming matches
+    use the forecast for ``is_wet``, ``wind_kph``, ``temperature_c``, and the
+    new ``rain_intensity`` / ``weather_source`` features instead of the
+    post-match NRL payload (which is absent before kickoff).
 
     Raises ``FileNotFoundError`` if the model artefact does not exist (caller
     should surface this as HTTP 503).
@@ -892,8 +899,10 @@ def compute_predictions(
     training_centroid = _compute_training_centroid(history)
 
     predictions: list[PredictionOut] = []
+    _wx_forecasts = weather_forecasts or {}
     for match in sorted(round_matches, key=lambda m: (m.start_time, m.match_id)):
-        x = np.asarray([builder.feature_row(match)], dtype=float)
+        wx_forecast = _wx_forecasts.get(match.match_id)
+        x = np.asarray([builder.feature_row(match, weather_forecast=wx_forecast)], dtype=float)
         raw_prob = round(float(loaded.predict_home_win_prob(x)[0]), 4)
         prob, _ = _apply_market_shrinkage(raw_prob, x, feature_names)
 
