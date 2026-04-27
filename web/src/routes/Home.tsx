@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 import { getDashboard, ApiError, NotSignedInError } from "../api";
 import { useAuth } from "../auth";
 import { NotificationPrompt } from "../components/NotificationPrompt";
+import { OnboardingTour } from "../components/OnboardingTour";
 import { SignInRequired } from "../components/SignInRequired";
+import { getOnboardingCompleted, setOnboardingCompleted } from "../prefs";
 import type { DashboardOut } from "../types";
 
 const CURRENT_SEASON = 2026;
@@ -337,10 +339,27 @@ function LandingPage() {
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const [tourActive, setTourActive] = useState(false);
+
+  useEffect(() => {
+    if (user && !getOnboardingCompleted()) {
+      setTourActive(true);
+    }
+  }, [user]);
+
+  function handleTourComplete() {
+    setOnboardingCompleted();
+    setTourActive(false);
+  }
 
   if (loading) return <p role="status">Loading…</p>;
 
   if (!user) return <LandingPage />;
 
-  return <PersonalisedDashboard />;
+  return (
+    <>
+      {tourActive && <OnboardingTour onComplete={handleTourComplete} />}
+      <PersonalisedDashboard />
+    </>
+  );
 }
