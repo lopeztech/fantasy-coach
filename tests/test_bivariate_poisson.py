@@ -225,7 +225,6 @@ def test_predict_distribution_probabilities_sum_to_one() -> None:
     frame = _minimal_frame(25)
     model = train_bivariate_poisson(frame, max_iter=30).model
     pred = model.predict_distribution(frame.X[:1])
-    total = pred.home_win_prob + pred.draw_prob + (1.0 - pred.home_win_prob - pred.draw_prob)
     assert abs(pred.score_grid.sum() - 1.0) < 1e-5
 
 

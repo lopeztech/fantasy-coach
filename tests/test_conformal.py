@@ -157,8 +157,10 @@ def test_margin_conformalizer_input_validation() -> None:
 
 
 def test_mondrian_conformalizer_fit_and_transform() -> None:
+    def bin_fn(p: float, _: object) -> str:
+        return "high" if p >= 0.55 else "low"
+
     probs, outcomes = _calib_data(300)
-    bin_fn = lambda p, _: "high" if p >= 0.55 else "low"
     mc = MondrianConformalizer(bin_fn=bin_fn, alpha=0.1)
     mc.fit(probs, outcomes)
     iv = mc.transform(0.7)
@@ -184,7 +186,9 @@ def test_mondrian_conformalizer_different_quantiles_per_bin() -> None:
     probs = np.concatenate([p_low, p_high])
     outcomes = np.concatenate([o_low, o_high])
 
-    bin_fn = lambda p, _: "high" if p >= 0.5 else "low"
+    def bin_fn(p: float, _: object) -> str:
+        return "high" if p >= 0.5 else "low"
+
     mc = MondrianConformalizer(bin_fn=bin_fn, alpha=0.1)
     mc.fit(probs, outcomes)
 
