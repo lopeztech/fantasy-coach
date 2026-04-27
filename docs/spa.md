@@ -101,6 +101,42 @@ token (see `src/fantasy_coach/auth.py`).
 6. Sign-out calls `firebase/auth.signOut()`; `onAuthStateChanged` then
    clears `user` in context, which flips the UI back to the signed-out state.
 
+### Auth providers
+
+- **Google** — `GoogleAuthProvider` with `signInWithPopup`. Enabled in Firebase
+  console → Authentication → Sign-in providers.
+- **Apple** — deferred until an Apple Developer account is provisioned.
+
+## First-run onboarding tour
+
+`<OnboardingTour>` (`web/src/components/OnboardingTour.tsx`) is a 4-step
+in-house overlay shown to signed-in users who have not yet completed it.
+
+**Trigger**: when `user` becomes non-null and `localStorage.getItem("fc:onboarding_v1")`
+is absent, `Home.tsx` renders the tour. On completion *or* skip,
+`setOnboardingCompleted()` (`src/prefs.ts`) writes `"1"` to
+`"fc:onboarding_v1"` and the tour is never shown again.
+
+**Steps**:
+
+| Step | Title | Content |
+|------|-------|---------|
+| 1 | This week's round | Predictions list + win probability |
+| 2 | Dig into the why | MatchDetail feature contributions |
+| 3 | Tip against the model | Tipping + accuracy tracking |
+| 4 | Set your favourite team | Team picker on Home |
+
+**Accessibility**:
+- `role="dialog" aria-modal="true"` on the backdrop.
+- `aria-live="assertive" aria-atomic="true"` on the step content so screen
+  readers announce each step on advance.
+- Focus trapped within the card; `Tab` wraps at both ends.
+- `Escape` skips the tour (same as clicking "Skip tour").
+- `prefers-reduced-motion: reduce` disables CSS transitions.
+
+**Reset for testing**: `localStorage.removeItem("fc:onboarding_v1")` then
+reload the page.
+
 ## CORS (SPA origin ≠ API origin)
 
 The SPA is served from `https://fantasy.lopezcloud.dev`; the API runs on a
