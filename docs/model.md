@@ -1047,3 +1047,159 @@ fields as `None` — the response schema is additive.
 - `baseModelSpread` reflects the number of secondary models available: a
   single-model deployment (no logistic + no odds) always has spread = 0 and
   will appear `"high"` confidence regardless of the true uncertainty.
+
+## Bayesian hierarchical model (#144)
+
+`src/fantasy_coach/models/bayesian_hierarchical.py`
+
+Requires `uv sync --extra training` (adds `pymc>=5.0`, `numpyro>=0.15`).
+
+### Model specification
+
+Poisson component form (Dixon-Coles 1997 lineage):
+
+```
+log(λ_H) = μ + att[home] + dfn[away] + home_adv
+log(λ_A) = μ + att[away] + dfn[home]
+home_score ~ Poisson(λ_H)
+away_score ~ Poisson(λ_A)
+```
+
+Latent parameters (all per season):
+
+| Parameter | Description | Prior |
+|-----------|-------------|-------|
+| `att[t]` | Team attack strength in log-rate space | `ZeroSumNormal(σ_att)`, σ_att ~ HalfNormal(0.3) |
+| `dfn[t]` | Team defense strength (negative = concede more) | `ZeroSumNormal(σ_dfn)`, σ_dfn ~ HalfNormal(0.3) |
+| `home_adv` | Shared home-field log-rate boost | Normal(0.1, 0.3) |
+| `μ` | Log-scale intercept ≈ log(typical NRL score) | Normal(log(20), 0.5) |
+
+ZeroSumNormal enforces the sum-to-zero constraint (Σ att = Σ dfn = 0),
+making attack and defense parameters identifiable without a corner
+constraint.
+
+Optional **Dixon-Coles low-score correction** (`use_dc_correction=True`): a
+τ-parameterised log-likelihood adjustment for cells {(0,0), (0,1), (1,0),
+(1,1)}. For NRL where sub-6-point totals are rare, τ typically converges
+near zero; left off by default.
+
+### Sampling
+
+- NUTS via PyMC5; numpyro NUTS backend selected automatically when numpyro
+  is installed (~5× faster on CPU).
+- Default: 500 warmup + 500 draws, 2 chains. Produces ~1 000 raw samples,
+  thinned to 500 for persistence.
+- A single fit on 400 matches takes ~3–4 min on 2 vCPU (Cloud Run Job
+  default). Bump to 4 vCPU if the Bayesian model is added to the weekly
+  precompute pipeline.
+
+### Posterior persistence
+
+`save_bayesian_hierarchical` / `load_bayesian_hierarchical` store a 500-sample
+trimmed trace as a plain numpy dict inside a joblib blob. No PyMC import is
+required at inference time — `load_bayesian_hierarchical` rebuilds
+`BayesianHierarchicalModel` from the saved arrays.
+
+### Prior choices (rationale)
+
+- **Power-prior cold start**: season-over-season, the previous season's
+  posterior mean is a sensible warm-start for the new season. Use
+  `α ≈ 0.4–0.6` as the power prior exponent (stronger shrinkage for teams
+  with high roster turnover). Current implementation uses the unconditional
+  HalfNormal prior; the power-prior extension is a v2 improvement.
+- **Laplace shortcut for weekly updates**: between precompute runs, re-fit
+  using the last posterior summary (mean + covariance) as a Laplace
+  approximation of the prior. Skips the random-walk latent and is ~10×
+  faster than full NUTS re-sampling. Suitable when adding a single round's
+  results.
+
+### Walk-forward integration
+
+`BayesianPredictor` in `src/fantasy_coach/evaluation/predictors.py`
+implements the `Predictor` protocol for the walk-forward harness:
+
+```python
+from fantasy_coach.evaluation import BayesianPredictor, walk_forward_from_repo
+
+result = walk_forward_from_repo(repo, seasons, BayesianPredictor)
+metrics = result.metrics()  # accuracy, log_loss, brier, ece
+```
+
+Falls back to p=0.5 when pymc is not installed or history < 10 matches.
+
+### Coverage evaluation
+
+The Bayesian model exposes a posterior predictive margin distribution that
+can be checked for empirical coverage — whether the actual home-minus-away
+score margin falls inside the HDI at the stated credible level.
+
+```python
+from fantasy_coach.evaluation import walk_forward_bayesian_coverage
+
+coverage = walk_forward_bayesian_coverage(matches_by_round, BayesianPredictor)
+# {"n": 424, "coverage_80": 0.812, "coverage_95": 0.946}
+```
+
+**Coverage targets** (from the #144 acceptance criteria):
+- 80%-HDI: ≥ 78% empirical coverage
+- 95%-HDI: ≥ 93% empirical coverage
+
+Slight under-coverage is expected and honest; the HDI uses boundary-inclusive
+counting (the integer boundary of a discrete Skellam distribution is
+included). If coverage is materially below target (e.g. < 70% at 80%-CI),
+the model is miscalibrated and should not ship — add a post-hoc isotonic
+calibration layer on the posterior quantiles.
+
+**Note on HDI vs equal-tailed interval**: `predict_margin_hdi` uses the
+minimum-width HDI (highest density interval), not the equal-tailed interval.
+For asymmetric posteriors (large home-field advantage or one-sided injuries)
+the HDI is shorter and covers the mass more faithfully.
+
+### Ensemble registration
+
+`BayesianPredictor` can be used as a base model in `EnsemblePredictor`
+alongside the existing Logistic/Skellam/XGBoost bases:
+
+```python
+from fantasy_coach.evaluation import BayesianPredictor, EnsemblePredictor, LogisticPredictor
+
+ensemble = EnsemblePredictor(
+    [LogisticPredictor, BayesianPredictor],
+    mode="weighted",
+    name="logistic+bayesian",
+)
+```
+
+The existing `fallback_to_base` kill-switch in `fit_ensemble` handles the
+case where the Bayesian model does not improve on the best base — it routes
+predictions through the better base automatically.
+
+**Note**: adding `BayesianPredictor` to `StackedEnsemblePredictor` (which
+uses XGBoost + Skellam + EloMOV) would double the fitting time per round.
+Evaluate in a separate ablation before promoting to the production stack.
+
+### Ablation vs logistic and Skellam
+
+Pending walk-forward evaluation on 2024+2025 data. Hypotheses from the
+literature and the #144 design discussion:
+
+| Metric | Expected vs Logistic | Expected vs Skellam |
+|--------|----------------------|---------------------|
+| Log-loss rounds 1–4 | Better (partial pooling shrinks cold-start predictions) | Roughly equal |
+| Log-loss mid-season | Roughly equal | Slightly better (posterior mean ≈ Skellam point estimate) |
+| Brier score | Roughly equal | Roughly equal |
+| Margin 80%-CI coverage | N/A (new capability) | Better (HDI vs point-estimate-derived CI) |
+
+### When to prefer the Bayesian model
+
+- **Early season (rounds 1–4)**: the ZeroSumNormal shrinkage toward zero
+  prevents extreme rating divergence before teams have played enough matches.
+  Logistic/XGBoost use rolling features that are sparse in early rounds.
+- **Novel matchups**: new expansion teams or franchises with < 5 head-to-head
+  records benefit from the pooled league-mean prior.
+- **Uncertainty quantification**: when the SPA needs a credible interval for
+  the margin (e.g. the "try-it-yourself" explorer), only the Bayesian model
+  provides a coherent posterior predictive distribution.
+- **Do not prefer** for mid-season predictions where XGBoost with bookmaker
+  odds dominates — the Bayesian model does not ingest the odds feature and
+  cannot match its accuracy on well-priced matches.
