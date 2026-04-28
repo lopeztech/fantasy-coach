@@ -10,6 +10,7 @@ import Home from "./routes/Home";
 import Ladder from "./routes/Ladder";
 import Leaderboard from "./routes/Leaderboard";
 import MatchDetail from "./routes/MatchDetail";
+import Predictions from "./routes/Predictions";
 import Round from "./routes/Round";
 import Scoreboard from "./routes/Scoreboard";
 import Team from "./routes/Team";
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <Home /> },
+      { path: "predictions", element: <Predictions /> },
       { path: "round/:season/:round", element: <Round /> },
       { path: "round/:season/:round/:matchId", element: <MatchDetail /> },
       { path: "scoreboard", element: <Scoreboard /> },
