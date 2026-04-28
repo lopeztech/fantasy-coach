@@ -364,21 +364,12 @@ a:focus-visible {
 /* ── Match grid ────────────────────────────────────────────────────────── */
 
 .match-grid {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 640px) {
-  .match-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 960px) {
-  .match-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  max-width: 720px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 /* ── Match card skeleton ───────────────────────────────────────────────── */
