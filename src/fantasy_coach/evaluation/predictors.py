@@ -639,6 +639,71 @@ class StackedEnsemblePredictor:
         return float(self._ensemble.predict_home_win_prob(probs)[0])
 
 
+class BayesianPredictor:
+    """Walk-forward adapter for the Bayesian hierarchical Poisson model (#144).
+
+    Requires ``pymc>=5.0`` from the ``training`` extras group. Falls back to
+    a 0.5 home-win probability when pymc is not installed, so the harness
+    degrades cleanly in standard CI (no training extras).
+
+    Training is slow (NUTS sampling) — use only when the training extras are
+    available and a meaningful match history exists (≥ 10 completed matches).
+
+    Unlike the feature-vector models, this predictor trains directly on
+    (team_id, home_score, away_score) tuples — no FeatureBuilder needed.
+    """
+
+    name = "bayesian"
+
+    def __init__(
+        self,
+        *,
+        n_tune: int = 500,
+        n_samples: int = 500,
+        n_chains: int = 2,
+    ) -> None:
+        self._model = None
+        self._n_tune = n_tune
+        self._n_samples = n_samples
+        self._n_chains = n_chains
+        self._pymc_available = True
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        try:
+            from fantasy_coach.models.bayesian_hierarchical import (  # noqa: PLC0415
+                build_bayesian_frame,
+                train_bayesian_hierarchical,
+            )
+        except ImportError:
+            self._pymc_available = False
+            self._model = None
+            return
+
+        data = build_bayesian_frame(history)
+        if len(data.teams) < 2 or len(data.home_idx) < 10:
+            self._model = None
+            return
+
+        result = train_bayesian_hierarchical(
+            data,
+            n_tune=self._n_tune,
+            n_samples=self._n_samples,
+            n_chains=self._n_chains,
+        )
+        self._model = result.model
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        if self._model is None:
+            return 0.5
+        return self._model.predict_win_prob(match.home.team_id, match.away.team_id)
+
+    def predict_margin_hdi(self, match: MatchRow) -> dict[str, float] | None:
+        """Posterior predictive margin HDI (80% and 95%) for coverage evaluation."""
+        if self._model is None:
+            return None
+        return self._model.predict_margin_hdi(match.home.team_id, match.away.team_id)
+
+
 class Glicko2Predictor:
     """Walk-forward adapter for the Glicko-2 rating system (#162).
 
