@@ -54,6 +54,10 @@ def _from_blob(blob: dict) -> Model:
         from fantasy_coach.models.multitask import _from_blob as _mt
 
         return _mt(blob)
+    if kind == "bayesian_hierarchical":
+        from fantasy_coach.models.bayesian_hierarchical import _from_blob as _bh
+
+        return _bh(blob)
     raise RuntimeError(f"Unknown model_type in artifact: {kind!r}")
 
 

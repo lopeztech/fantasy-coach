@@ -35,6 +35,9 @@ packages = ["src/fantasy_coach"]
 # Install with: uv sync --extra training
 training = [
     "optuna>=3.5",   # HPO — only needed for tune-xgboost / rating-sweep
+    "pymc>=5.10",    # Bayesian hierarchical model (bayesian_hierarchical.py)
+    "jax[cpu]>=0.4.25",   # NUTS backend for PyMC (CPU-only; GPU not needed at NRL scale)
+    "numpyro>=0.14",      # Inner-loop NUTS sampler used via pm.sample(nuts_sampler="numpyro")
 ]
 
 [dependency-groups]
@@ -65,6 +68,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 "src/fantasy_coach/models/conformal.py" = ["N803", "N806"]
 "src/fantasy_coach/models/ood.py" = ["N803", "N806"]
 "src/fantasy_coach/models/multitask.py" = ["N803", "N806"]
+"src/fantasy_coach/models/bayesian_hierarchical.py" = ["N803", "N806"]
 "src/fantasy_coach/drift.py" = ["N803", "N806"]
 "src/fantasy_coach/retrain.py" = ["N803", "N806"]
 "tests/test_ensemble.py" = ["N806"]
