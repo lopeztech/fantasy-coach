@@ -414,24 +414,122 @@ a:focus-visible {
 }
 
 .match-card-head {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   gap: 0.75rem;
-  align-items: baseline;
-  flex-wrap: wrap;
+  align-items: center;
 }
 
-.teams {
-  font-size: 1.05rem;
+.match-team {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  cursor: pointer;
+  outline: none;
 }
 
-.team {
+.match-team--home {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.match-team--away {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.match-team:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+.match-team-name {
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.match-time-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 5.5rem;
+}
+
+.match-kickoff-time {
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.match-kickoff-date {
+  font-size: 0.75rem;
+}
+
+/* Bookmaker-odds row — three columns mirroring the team layout above. */
+.match-odds-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+
+.match-odds-pill {
+  background: var(--color-primary);
+  color: white;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md, 6px);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: center;
+  min-width: 4rem;
+}
+
+.match-odds-pill:first-child {
+  justify-self: end;
+  width: min(100%, 8rem);
+}
+
+.match-odds-pill:last-child {
+  justify-self: start;
+  width: min(100%, 8rem);
+}
+
+.match-odds-source {
+  font-size: 0.75rem;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.match-venue {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Day grouping heading above each set of matches. */
+.match-day-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.match-day-heading {
+  margin: 1.25rem 0 0.25rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+  text-align: center;
   font-weight: 600;
 }
 
-.kickoff {
-  font-size: 0.85rem;
-  white-space: nowrap;
+.match-day-group:first-child .match-day-heading {
+  margin-top: 0.25rem;
 }
 
 .prob-bar {
