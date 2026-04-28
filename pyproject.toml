@@ -35,6 +35,8 @@ packages = ["src/fantasy_coach"]
 # Install with: uv sync --extra training
 training = [
     "optuna>=3.5",   # HPO — only needed for tune-xgboost / rating-sweep
+    "pymc>=5.0",     # Bayesian hierarchical model (#144)
+    "numpyro>=0.15", # Fast NUTS backend for PyMC (nuts_sampler="numpyro")
 ]
 
 [dependency-groups]
