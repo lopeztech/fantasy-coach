@@ -1210,21 +1210,19 @@ def get_leaderboard(
     db = _get_firestore_client()
 
     if group_id:
-        # Collect UIDs in this group, then look up their stats.
+        # Collect UIDs in this group, then look up each member's stats doc by
+        # known path. The schema (match_sync._update_user_stats) writes stats
+        # to users/{uid}/stats/{season}, so a direct get_all is faster than a
+        # collection_group query and doesn't need a composite index.
         member_docs = db.collection("groups").document(group_id).collection("members").stream()
         member_uids = [d.id for d in member_docs]
         if not member_uids:
             return LeaderboardOut(season=season, groupId=group_id, entries=[])
-        stats_docs = []
-        # Firestore `in` operator supports up to 30 values; chunk if needed.
-        for i in range(0, len(member_uids), 30):
-            chunk = member_uids[i : i + 30]
-            q = (
-                db.collection_group("stats")
-                .where("season", "==", season)
-                .where("__name__", "in", chunk)
-            )
-            stats_docs.extend(q.stream())
+        refs = [
+            db.collection("users").document(uid).collection("stats").document(str(season))
+            for uid in member_uids
+        ]
+        stats_docs = [snap for snap in db.get_all(refs) if snap.exists]
     else:
         # Global top-50.
         stats_docs = list(
