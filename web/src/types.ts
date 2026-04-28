@@ -1,6 +1,9 @@
 export type Team = {
   id: number;
   name: string;
+  // Decimal bookmaker odds (e.g. 1.74). Optional — older cached predictions
+  // and predictions for fixtures without odds data don't carry this.
+  odds?: number | null;
 };
 
 // One entry in a starting-XIII "missing regulars" list — carried as
@@ -54,6 +57,10 @@ export type Prediction = {
   actualWinner?: "home" | "away" | null;
   // Three-way consensus (#140): absent on predictions cached before #140 shipped.
   alternatives?: AlternativeModels | null;
+  // NRL-draw-style display fields (optional — older cached predictions
+  // don't carry these; the SPA falls back gracefully).
+  venue?: string | null;
+  venueCity?: string | null;
 };
 
 export type RoundAccuracy = {

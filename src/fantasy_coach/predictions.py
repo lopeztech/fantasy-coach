@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS predictions (
 class TeamInfo(BaseModel):
     id: int
     name: str
+    # Decimal bookmaker odds at scrape time (e.g. 1.74). Optional — absent
+    # when the NRL feed didn't carry odds for this fixture, or for cached
+    # predictions written before this field shipped. Powers the NRL-draw-style
+    # odds pills in the SPA round view.
+    odds: float | None = None
 
 
 class ScorelineProb(BaseModel):
@@ -187,6 +192,10 @@ class PredictionOut(BaseModel):
     # FANTASY_COACH_BAYESIAN_MODEL_PATH. Absent on older cached predictions.
     bayesianMargin80ci: tuple[int, int] | None = None  # noqa: N815
     bayesianMargin95ci: tuple[int, int] | None = None  # noqa: N815
+    # Display metadata for the NRL-draw-style round view. Optional — older
+    # cached predictions don't carry these; the SPA falls back gracefully.
+    venue: str | None = None
+    venueCity: str | None = None  # noqa: N815
 
 
 # ---------------------------------------------------------------------------
@@ -970,8 +979,8 @@ def compute_predictions(
         predictions.append(
             PredictionOut(
                 matchId=match.match_id,
-                home=TeamInfo(id=match.home.team_id, name=match.home.name),
-                away=TeamInfo(id=match.away.team_id, name=match.away.name),
+                home=TeamInfo(id=match.home.team_id, name=match.home.name, odds=match.home.odds),
+                away=TeamInfo(id=match.away.team_id, name=match.away.name, odds=match.away.odds),
                 kickoff=match.start_time.isoformat(),
                 predictedWinner="home" if prob >= 0.5 else "away",
                 homeWinProbability=prob,
@@ -983,6 +992,8 @@ def compute_predictions(
                 winProbability80ci=(ci_lo, ci_hi),
                 trainingDataSimilarity=ood_sim,
                 confidenceBand=band,
+                venue=match.venue,
+                venueCity=match.venue_city,
             )
         )
 
