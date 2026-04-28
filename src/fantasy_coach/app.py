@@ -16,6 +16,7 @@ from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
+    compute_bayesian_uncertainty,
     get_prediction_store,
 )
 from fantasy_coach.storage.repository import Repository
@@ -107,6 +108,18 @@ class DashboardOut(BaseModel):
     seasonAccuracy: float | None
     totalTips: int
     correctTips: int
+
+
+class UncertaintyOut(BaseModel):
+    """Bayesian posterior predictive uncertainty for a single match (#144)."""
+
+    matchId: int  # noqa: N815
+    homeTeamId: int  # noqa: N815
+    awayTeamId: int  # noqa: N815
+    winProbability: float  # noqa: N815  posterior mean P(home wins)
+    margin80ci: list[int]  # noqa: N815  [lo, hi] 80% HDI integers
+    margin95ci: list[int]  # noqa: N815  [lo, hi] 95% HDI integers
+    source: str  # "bayesian" | "fallback"
 
 
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
@@ -236,6 +249,67 @@ def get_predictions(
             ),
         )
     return _annotate_results(cached, season, round)
+
+
+@app.get(
+    "/predictions/{match_id}/uncertainty",
+    response_model=UncertaintyOut,
+    summary="Bayesian posterior predictive uncertainty for a match",
+    description=(
+        "Returns the Bayesian hierarchical model's posterior predictive win probability "
+        "and 80%/95% margin HDI for the given match. Requires a saved Bayesian model "
+        "artefact at FANTASY_COACH_BAYESIAN_MODEL_PATH (or artifacts/bayesian.joblib). "
+        "Falls back to the stored XGBoost win probability and wide symmetric intervals "
+        "when the Bayesian model is unavailable."
+    ),
+)
+def get_match_uncertainty(
+    match_id: int,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+) -> UncertaintyOut:
+    try:
+        matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    match = next((m for m in matches if m.match_id == match_id), None)
+    if match is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Match {match_id} not found in season {season}.",
+        )
+
+    result = compute_bayesian_uncertainty(match.home.team_id, match.away.team_id)
+    if result is not None:
+        return UncertaintyOut(
+            matchId=match_id,
+            homeTeamId=match.home.team_id,
+            awayTeamId=match.away.team_id,
+            winProbability=result["win_probability"],
+            margin80ci=result["margin_80ci"],
+            margin95ci=result["margin_95ci"],
+            source="bayesian",
+        )
+
+    # Bayesian model unavailable — fall back to cached XGBoost prediction.
+    fallback_prob = 0.5
+    try:
+        stored = _get_store().get(season, match.round)
+        pred = next((p for p in stored if p.matchId == match_id), None)
+        if pred is not None:
+            fallback_prob = pred.homeWinProbability
+    except Exception:
+        pass
+
+    return UncertaintyOut(
+        matchId=match_id,
+        homeTeamId=match.home.team_id,
+        awayTeamId=match.away.team_id,
+        winProbability=fallback_prob,
+        margin80ci=[-15, 15],
+        margin95ci=[-25, 25],
+        source="fallback",
+    )
 
 
 @app.get(

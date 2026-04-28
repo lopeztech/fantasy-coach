@@ -35,6 +35,8 @@ MODEL_PATH_ENV = "FANTASY_COACH_MODEL_PATH"
 MODEL_GCS_URI_ENV = "FANTASY_COACH_MODEL_GCS_URI"
 LOGISTIC_PATH_ENV = "FANTASY_COACH_LOGISTIC_PATH"
 LOGISTIC_GCS_URI_ENV = "FANTASY_COACH_LOGISTIC_GCS_URI"
+BAYESIAN_MODEL_PATH_ENV = "FANTASY_COACH_BAYESIAN_MODEL_PATH"
+DEFAULT_BAYESIAN_MODEL_PATH = "artifacts/bayesian.joblib"
 DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
 DEFAULT_LOGISTIC_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
@@ -180,6 +182,11 @@ class PredictionOut(BaseModel):
     # not fitted or the model type doesn't support it.
     homeWinProbabilityCi80: tuple[float, float] | None = None  # noqa: N815
     marginCi80: tuple[float, float] | None = None  # noqa: N815
+    # Bayesian posterior predictive margin HDI (#144 PR C). Populated during
+    # precompute when a saved BayesianHierarchicalModel artefact is present at
+    # FANTASY_COACH_BAYESIAN_MODEL_PATH. Absent on older cached predictions.
+    bayesianMargin80ci: tuple[int, int] | None = None  # noqa: N815
+    bayesianMargin95ci: tuple[int, int] | None = None  # noqa: N815
 
 
 # ---------------------------------------------------------------------------
@@ -982,3 +989,53 @@ def compute_predictions(
     store.put(season, round_, predictions)
     logger.info("Computed and cached %d predictions for %d r%d", len(predictions), season, round_)
     return predictions
+
+
+# ---------------------------------------------------------------------------
+# Bayesian uncertainty helper (#144 PR C)
+# ---------------------------------------------------------------------------
+
+
+def compute_bayesian_uncertainty(
+    home_team_id: int,
+    away_team_id: int,
+    *,
+    bayesian_model_path: Path | None = None,
+) -> dict[str, object] | None:
+    """Compute posterior predictive win probability and margin HDI.
+
+    Loads the Bayesian hierarchical model from ``bayesian_model_path``
+    (defaults to ``FANTASY_COACH_BAYESIAN_MODEL_PATH`` env var, then
+    ``artifacts/bayesian.joblib``). Returns None when the artefact does
+    not exist or when the requested teams are not in the model's training
+    set (graceful degradation — no PyMC import required at inference time).
+
+    Returns a dict with:
+        win_probability   float   posterior mean P(home wins)
+        margin_80ci       [lo, hi]  80% HDI integers
+        margin_95ci       [lo, hi]  95% HDI integers
+    """
+    path = bayesian_model_path or Path(
+        os.getenv(BAYESIAN_MODEL_PATH_ENV, DEFAULT_BAYESIAN_MODEL_PATH)
+    )
+    if not path.exists():
+        return None
+
+    try:
+        from fantasy_coach.models.bayesian_hierarchical import (  # noqa: PLC0415
+            load_bayesian_hierarchical,
+        )
+
+        model = load_bayesian_hierarchical(path)
+    except Exception:
+        logger.exception("Failed to load Bayesian model from %s", path)
+        return None
+
+    win_prob = model.predict_win_prob(home_team_id, away_team_id)
+    hdi = model.predict_margin_hdi(home_team_id, away_team_id)
+
+    return {
+        "win_probability": round(win_prob, 4),
+        "margin_80ci": [int(hdi["hdi_80_lo"]), int(hdi["hdi_80_hi"])],
+        "margin_95ci": [int(hdi["hdi_95_lo"]), int(hdi["hdi_95_hi"])],
+    }
