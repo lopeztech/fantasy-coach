@@ -844,43 +844,35 @@ def get_dashboard(
     else:
         current_round = None
 
-    # Untipped = current-round matches that have no stored prediction.
+    # User's own tips for this season — keyed by match_id so we can
+    # diff against the fixture list and against actual results.
+    # Empty when uid is the dev fallback or when STORAGE_BACKEND != firestore
+    # (tips are only persisted client-side via the Firebase JS SDK).
+    user_tips = _fetch_user_tips(uid, season)
+
+    # Untipped = current-round matches the *user* hasn't picked yet.
+    # (Earlier this was wired to the prediction cache, which silently
+    # collapsed once the precompute job populated predictions.)
     untipped_match_ids: list[int] = []
     if current_round is not None:
         current_round_matches = [m for m in matches if m.round == current_round]
-        try:
-            preds = _get_store().get(season, current_round)
-            tipped_ids = {p.matchId for p in preds}
-        except Exception:
-            tipped_ids = set()
         untipped_match_ids = [
-            m.match_id for m in current_round_matches if m.match_id not in tipped_ids
+            m.match_id for m in current_round_matches if m.match_id not in user_tips
         ]
 
-    # Season-to-date tipping accuracy: compare stored predictions to FullTime results.
-    total_tips = 0
-    correct_tips = 0
-    completed = [
-        m
+    # Season-to-date tipping accuracy: compare *user tips* to FullTime results.
+    result_map: dict[int, str] = {
+        m.match_id: ("home" if m.home.score > m.away.score else "away")  # type: ignore[operator]
         for m in matches
         if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None
-    ]
-    completed_rounds = {m.round for m in completed}
-    for rnd in completed_rounds:
-        try:
-            preds = _get_store().get(season, rnd)
-        except Exception:
-            continue
-        result_map = {
-            m.match_id: ("home" if m.home.score > m.away.score else "away")  # type: ignore[operator]
-            for m in completed
-            if m.round == rnd
-        }
-        for p in preds:
-            if p.matchId in result_map:
-                total_tips += 1
-                if p.predictedWinner == result_map[p.matchId]:
-                    correct_tips += 1
+    }
+    total_tips = 0
+    correct_tips = 0
+    for mid, choice in user_tips.items():
+        if mid in result_map:
+            total_tips += 1
+            if choice == result_map[mid]:
+                correct_tips += 1
 
     season_accuracy = correct_tips / total_tips if total_tips > 0 else None
 
@@ -1155,6 +1147,38 @@ def _make_invite_code() -> str:
     import string  # noqa: PLC0415
 
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def _fetch_user_tips(uid: str, season: int) -> dict[int, str]:
+    """Return ``{match_id: tip_choice}`` for this user/season from Firestore.
+
+    Tips live at ``users/{uid}/tips/{matchId}`` (written by the SPA via the
+    Firebase JS SDK). Returns ``{}`` when there's no real authenticated user,
+    when the storage backend isn't Firestore, or on any Firestore error —
+    callers should treat that as "no tips" rather than 5xx.
+    """
+    if uid == "__dev__":
+        return {}
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        return {}
+    try:
+        db = _get_firestore_client()
+        tips_q = (
+            db.collection("users").document(uid).collection("tips").where("season", "==", season)
+        )
+        out: dict[int, str] = {}
+        for snap in tips_q.stream():
+            try:
+                mid = int(snap.id)
+            except (ValueError, TypeError):
+                continue
+            data = snap.to_dict() or {}
+            choice = data.get("tip")
+            if choice in ("home", "away"):
+                out[mid] = choice
+        return out
+    except Exception:
+        return {}
 
 
 @app.post(
