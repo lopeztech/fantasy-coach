@@ -767,6 +767,15 @@ def _run_precompute(args: argparse.Namespace) -> int:
         _profiler.enable()
         print("[profile] cProfile + RSS sampler started")
 
+    started_at = datetime.now(UTC)
+    # Snapshot prev predictions BEFORE compute_predictions overwrites them, so
+    # the job_runs writer (#244) can diff prev → new. Single Firestore read.
+    prev_predictions: list[Any] = []
+    try:
+        prev_predictions = list(store.get(season, round_) or [])
+    except Exception as _e:  # noqa: BLE001
+        print(f"job_runs: prev predictions snapshot skipped ({_e})")
+
     try:
         # Fetch pre-kickoff weather forecasts for upcoming matches (#207).
         # Failures are non-fatal — missing_weather=1.0 falls back gracefully.
@@ -821,6 +830,62 @@ def _run_precompute(args: argparse.Namespace) -> int:
                 print(f"Persisted season simulation to Firestore for season {season}")
         except Exception as _sim_exc:  # noqa: BLE001
             print(f"Season simulation failed (non-fatal): {_sim_exc}")
+
+        # Write the job-run audit log (#244). Firestore-only — local SQLite
+        # dev runs skip this path. Failures are non-fatal: the SPA's /jobs
+        # page just won't see this run.
+        if os.getenv("STORAGE_BACKEND", "sqlite").lower() == "firestore":
+            try:
+                from fantasy_coach.job_runs import (  # noqa: PLC0415
+                    JobRunRecord,
+                    JobRunStore,
+                    aggregate_summary,
+                    build_change_entries,
+                    hash_team_lists,
+                    weather_fetched_at_iso,
+                )
+
+                jr_store = JobRunStore(project=os.getenv("FIREBASE_PROJECT_ID"))
+                prev_changes_by_match = jr_store.latest_changes_by_match(season, round_)
+                prev_predictions_by_match = {p.matchId: p for p in prev_predictions}
+
+                team_list_hashes = {
+                    p.matchId: hash_team_lists(team_list_repo, p.matchId) for p in predictions
+                }
+                weather_at = {
+                    p.matchId: weather_fetched_at_iso(weather_forecasts.get(p.matchId))
+                    for p in predictions
+                }
+
+                changes = build_change_entries(
+                    new_predictions=predictions,
+                    prev_predictions_by_match=prev_predictions_by_match,
+                    prev_changes_by_match=prev_changes_by_match,
+                    new_team_list_hashes=team_list_hashes,
+                    new_weather_fetched_at=weather_at,
+                )
+                model_version = predictions[0].modelVersion if predictions else ""
+                record = JobRunRecord(
+                    started_at=started_at,
+                    finished_at=datetime.now(UTC),
+                    trigger=os.getenv("FANTASY_COACH_JOB_TRIGGER", "scheduled"),
+                    status="success",
+                    season=season,
+                    round=round_,
+                    matches_processed=len(predictions),
+                    model_version=model_version,
+                    error=None,
+                    summary=aggregate_summary(changes),
+                    changes=changes,
+                )
+                run_id = jr_store.add(record)
+                print(
+                    f"job_runs: wrote {run_id} "
+                    f"(flips={record.summary['flips']}, "
+                    f"max_abs_delta={record.summary['max_abs_delta']:.3f})"
+                )
+            except Exception as _jr_exc:  # noqa: BLE001
+                print(f"job_runs: write failed (non-fatal): {_jr_exc}")
     finally:
         if _profiler is not None:
             import pstats  # noqa: PLC0415
