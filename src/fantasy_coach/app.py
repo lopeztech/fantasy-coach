@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from fantasy_coach import __version__
 from fantasy_coach.config import get_repository
+from fantasy_coach.job_runs import JobRunStore
 from fantasy_coach.predictions import (
     FirestorePredictionStore,
     PredictionOut,
@@ -110,6 +111,46 @@ class DashboardOut(BaseModel):
     correctTips: int
 
 
+class JobRunChangeOut(BaseModel):
+    matchId: int
+    homeTeam: str
+    awayTeam: str
+    prevHomeProb: float | None
+    newHomeProb: float
+    delta: float
+    flipped: bool
+    triggerSignal: str | None
+    summary: str
+
+
+class JobRunSummaryOut(BaseModel):
+    flips: int
+    meanAbsDelta: float
+    maxAbsDelta: float
+
+
+class JobRunListItem(BaseModel):
+    id: str
+    startedAt: str
+    finishedAt: str | None
+    trigger: str
+    status: str
+    season: int
+    round: int
+    matchesProcessed: int
+    modelVersion: str
+    error: str | None
+    summary: JobRunSummaryOut
+
+
+class JobRunListOut(BaseModel):
+    runs: list[JobRunListItem]
+
+
+class JobRunDetail(JobRunListItem):
+    changes: list[JobRunChangeOut]
+
+
 class UncertaintyOut(BaseModel):
     """Bayesian posterior predictive uncertainty for a single match (#144)."""
 
@@ -166,6 +207,7 @@ app.add_middleware(
 # Module-level singletons — created lazily on first use.
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
+_job_run_store: JobRunStore | None = None
 
 # In-process cache for team profile responses: key=(team_id, season), value=(timestamp, data)
 _PROFILE_CACHE_TTL = 60  # seconds
@@ -192,6 +234,57 @@ def _get_repo() -> Repository:
     if _repo is None:
         _repo = get_repository()
     return _repo
+
+
+def _get_job_run_store() -> JobRunStore | None:
+    """Return the audit-log store, or None when running on SQLite (local dev).
+
+    The job_runs collection is Firestore-only (#244 PR A) so we can't surface
+    it from a local sqlite dev server — the endpoints respond with an empty
+    list / 404 in that case.
+    """
+    global _job_run_store
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        return None
+    if _job_run_store is None:
+        _job_run_store = JobRunStore(project=os.getenv("FIREBASE_PROJECT_ID"))
+    return _job_run_store
+
+
+def _job_run_doc_to_list_item(doc: dict) -> dict:
+    """Map a Firestore doc (snake_case) to the camelCase API shape, no changes[]."""
+    summary = doc.get("summary") or {}
+    return {
+        "id": doc["id"],
+        "startedAt": doc.get("started_at", ""),
+        "finishedAt": doc.get("finished_at"),
+        "trigger": doc.get("trigger", "scheduled"),
+        "status": doc.get("status", "success"),
+        "season": doc.get("season", 0),
+        "round": doc.get("round", 0),
+        "matchesProcessed": doc.get("matches_processed", 0),
+        "modelVersion": doc.get("model_version", ""),
+        "error": doc.get("error"),
+        "summary": {
+            "flips": summary.get("flips", 0),
+            "meanAbsDelta": summary.get("mean_abs_delta", 0.0),
+            "maxAbsDelta": summary.get("max_abs_delta", 0.0),
+        },
+    }
+
+
+def _job_run_change_to_out(change: dict) -> dict:
+    return {
+        "matchId": change.get("match_id", 0),
+        "homeTeam": change.get("home_team", ""),
+        "awayTeam": change.get("away_team", ""),
+        "prevHomeProb": change.get("prev_home_prob"),
+        "newHomeProb": change.get("new_home_prob", 0.0),
+        "delta": change.get("delta", 0.0),
+        "flipped": bool(change.get("flipped", False)),
+        "triggerSignal": change.get("trigger_signal"),
+        "summary": change.get("summary", ""),
+    }
 
 
 def _annotate_results(
@@ -1021,6 +1114,53 @@ def get_season_simulation(season: int) -> dict:
     }
     _sim_cache[season] = (time.monotonic(), out)
     return out
+
+
+@app.get(
+    "/job-runs",
+    response_model=JobRunListOut,
+    summary="List recent precompute job runs",
+    description=(
+        "Returns the most recent precompute Job invocations with their aggregate "
+        "summary (flips, mean/max absolute delta) but without the per-match "
+        "changes[] array. Use GET /job-runs/{run_id} for the detail view. "
+        "Empty list when running on local SQLite — the audit log is Firestore-only."
+    ),
+)
+def list_job_runs(
+    limit: int = Query(20, ge=1, le=100, description="Max number of runs to return."),
+) -> JobRunListOut:
+    store = _get_job_run_store()
+    if store is None:
+        return JobRunListOut(runs=[])
+    rows = store.list_recent(limit=limit)
+    return JobRunListOut(runs=[JobRunListItem(**_job_run_doc_to_list_item(r)) for r in rows])
+
+
+@app.get(
+    "/job-runs/{run_id}",
+    response_model=JobRunDetail,
+    summary="Get a single precompute job run with per-match change diffs",
+    description=(
+        "Returns the full job_runs doc, including the inline changes[] array. "
+        "Each change carries prev/new home win probability, delta, a flipped "
+        "flag, an optional trigger_signal label, and a deterministic one-line "
+        "human-readable summary."
+    ),
+)
+def get_job_run(run_id: str) -> JobRunDetail:
+    store = _get_job_run_store()
+    if store is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job-run audit log is unavailable on this backend.",
+        )
+    doc = store.get(run_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Job run {run_id} not found.")
+    list_item = _job_run_doc_to_list_item(doc)
+    changes = [JobRunChangeOut(**_job_run_change_to_out(c)) for c in doc.get("changes", [])]
+    return JobRunDetail(**list_item, changes=changes)
 
 
 _VENUES_CSV = pathlib.Path(__file__).parents[3] / "data" / "venues.csv"
