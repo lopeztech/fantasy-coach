@@ -189,6 +189,46 @@ export type SeasonSimulation = {
   teams: SeasonTeamOutcome[];
 };
 
+// ---------------------------------------------------------------------------
+// Precompute job-run audit log (#244)
+// ---------------------------------------------------------------------------
+
+export type JobRunSummary = {
+  flips: number;
+  meanAbsDelta: number;
+  maxAbsDelta: number;
+};
+
+export type JobRunListItem = {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  trigger: string;
+  status: string;
+  season: number;
+  round: number;
+  matchesProcessed: number;
+  modelVersion: string;
+  error: string | null;
+  summary: JobRunSummary;
+};
+
+export type JobRunChange = {
+  matchId: number;
+  homeTeam: string;
+  awayTeam: string;
+  prevHomeProb: number | null;
+  newHomeProb: number;
+  delta: number;
+  flipped: boolean;
+  triggerSignal: "team_list" | "weather" | "retrain" | null;
+  summary: string;
+};
+
+export type JobRunDetail = JobRunListItem & {
+  changes: JobRunChange[];
+};
+
 export type DashboardOut = {
   season: number;
   currentRound: number | null;

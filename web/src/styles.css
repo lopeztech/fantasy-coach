@@ -87,10 +87,51 @@ body {
 
 /* ── Layout ────────────────────────────────────────────────────────────── */
 
+:root {
+  --sidebar-width: 220px;
+}
+
 .app {
-  max-width: 960px;
-  margin: 0 auto;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
   padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  z-index: 50;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 40;
+}
+
+.app-body {
+  margin-left: var(--sidebar-width);
+  padding: 1rem;
+  max-width: calc(960px + var(--sidebar-width));
 }
 
 .app-header {
@@ -107,6 +148,7 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+  margin-left: auto;
 }
 
 .brand {
@@ -116,8 +158,49 @@ body {
   text-decoration: none;
 }
 
+.nav-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 0.35rem 0.6rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+
+.nav-toggle:hover {
+  background: var(--color-border);
+  border-color: var(--color-border);
+}
+
 .app-main h1 {
   margin-top: 0;
+}
+
+@media (max-width: 768px) {
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--shadow-card);
+  }
+
+  .app-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop.is-open {
+    display: block;
+  }
+
+  .app-body {
+    margin-left: 0;
+    max-width: 100%;
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+  }
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
@@ -809,14 +892,24 @@ a:focus-visible {
 /* ── Nav link ──────────────────────────────────────────────────────────── */
 
 .nav-link {
-  font-size: 0.9rem;
+  display: block;
+  font-size: 0.95rem;
   color: var(--color-text-muted);
   text-decoration: none;
   white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
 }
 
 .nav-link:hover {
   color: var(--color-text);
+  background: var(--color-border);
+}
+
+.nav-link.is-active {
+  color: var(--color-text);
+  background: var(--color-border);
+  font-weight: 600;
 }
 
 /* ── Tip entry ─────────────────────────────────────────────────────────── */
@@ -2025,4 +2118,194 @@ a:focus-visible {
   .onboarding-dot {
     transition: none;
   }
+}
+
+/* ── Jobs page (#244) ──────────────────────────────────────────────────── */
+
+.jobs-page h1 {
+  margin-bottom: 0.5rem;
+}
+
+.jobs-page > p.muted {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  max-width: 60ch;
+}
+
+.job-status-pill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.job-status-pill--ok {
+  background: #d4edda;
+  color: #155724;
+}
+
+.job-status-pill--warn {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.job-status-pill--err {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+[data-theme="dark"] .job-status-pill--ok {
+  background: #1f3b25;
+  color: #b8e0c1;
+}
+
+[data-theme="dark"] .job-status-pill--warn {
+  background: #3a3008;
+  color: #f5d97a;
+}
+
+.job-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.job-list-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.job-list-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.85rem 1rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.job-list-link:hover {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.job-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.job-list-time {
+  font-weight: 600;
+}
+
+.job-list-meta {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.job-list-summary {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.job-detail-meta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.job-detail-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.job-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.job-change-card {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.job-change-card--flipped {
+  border-left-color: var(--color-error);
+}
+
+.job-change-teams {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.job-flip-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.job-signal-badge {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.job-change-probs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+}
+
+.job-change-summary {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.back-link {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--color-text);
 }
