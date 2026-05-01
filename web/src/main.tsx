@@ -7,6 +7,7 @@ import App from "./App";
 import GroupDetail from "./routes/GroupDetail";
 import Groups from "./routes/Groups";
 import Home from "./routes/Home";
+import { JobDetail, Jobs } from "./routes/Jobs";
 import Ladder from "./routes/Ladder";
 import Leaderboard from "./routes/Leaderboard";
 import MatchDetail from "./routes/MatchDetail";
@@ -32,6 +33,8 @@ const router = createBrowserRouter([
       { path: "leaderboard", element: <Leaderboard /> },
       { path: "groups", element: <Groups /> },
       { path: "groups/:gid", element: <GroupDetail /> },
+      { path: "jobs", element: <Jobs /> },
+      { path: "jobs/:runId", element: <JobDetail /> },
     ],
   },
 ]);
