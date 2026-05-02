@@ -35,6 +35,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Activate the new SW on first reload after deploy. Without these the
+        // SW installs but stays "waiting" until every tab of the origin closes,
+        // which surfaces as users seeing the previous build for hours/days
+        // after a deploy.
+        skipWaiting: true,
+        clientsClaim: true,
         // Precache all built JS, CSS, HTML, and image assets.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
         runtimeCaching: [
