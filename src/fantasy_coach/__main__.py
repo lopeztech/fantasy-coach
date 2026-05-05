@@ -427,6 +427,49 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    wtl = sub.add_parser(
+        "watch-team-lists",
+        help=(
+            "Snapshot starting-XIIIs for kickoff-imminent matches and emit "
+            "LateTeamChange rows for any starting-XIII diff vs the most recent "
+            "pre-window snapshot (#208). Designed to run on a third Cloud Run "
+            "schedule (every 15 min on match days)."
+        ),
+    )
+    wtl.add_argument(
+        "--season",
+        type=int,
+        default=None,
+        help="Season to watch. Omit to autodetect the current year.",
+    )
+    wtl.add_argument(
+        "--round",
+        type=int,
+        default=None,
+        help="Round to watch. Omit to autodetect the next upcoming round.",
+    )
+    wtl.add_argument(
+        "--lead-minutes",
+        type=int,
+        default=90,
+        help="Look at matches whose kickoff is inside the next N minutes (default 90).",
+    )
+    wtl.add_argument(
+        "--cutoff-minutes",
+        type=int,
+        default=60,
+        help=(
+            "A snapshot must be at least N minutes before kickoff to be eligible "
+            "as the diff reference (default 60). Filters out other intra-window "
+            "watcher snapshots so each emit compares to the named team list."
+        ),
+    )
+    wtl.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -457,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_notify_round_published(args)
     if args.command == "clear-commentary-cache":
         return _run_clear_commentary_cache(args)
+    if args.command == "watch-team-lists":
+        return _run_watch_team_lists(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -1298,6 +1343,109 @@ def _run_notify_round_published(args: argparse.Namespace) -> int:
     from fantasy_coach.notifications import send_round_published  # noqa: PLC0415
 
     send_round_published(season=args.season, round_id=args.round_id)
+    return 0
+
+
+def _run_watch_team_lists(args: argparse.Namespace) -> int:
+    """Snapshot kickoff-imminent team lists + emit LateTeamChange rows (#208)."""
+    import os  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.late_change_watcher import (  # noqa: PLC0415
+        find_matches_in_window,
+        watch_match,
+    )
+    from fantasy_coach.scraper import (  # noqa: PLC0415
+        InMemoryScraperCache,
+        fetch_match_from_url,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreLateTeamChangeRepository,
+        SQLiteLateTeamChangeRepository,
+    )
+    from fantasy_coach.storage.team_list import (  # noqa: PLC0415
+        FirestoreTeamListRepository,
+        SQLiteTeamListRepository,
+    )
+
+    season = args.season or datetime.now(UTC).year
+    round_ = args.round
+    if round_ is None:
+        round_ = _detect_upcoming_round(season)
+        if round_ is None:
+            print(f"No upcoming round found in season {season} — nothing to watch.")
+            return 0
+        print(f"Autodetected upcoming round: season={season} round={round_}")
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        team_list_repo: Any = FirestoreTeamListRepository()
+        late_repo: Any = FirestoreLateTeamChangeRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("watch-team-lists: SQLite repo has no `_conn`; aborting.")
+            return 1
+        team_list_repo = SQLiteTeamListRepository(conn)
+        late_repo = SQLiteLateTeamChangeRepository(conn)
+
+    matches = repo.list_matches(season, round_)
+    now = datetime.now(UTC)
+    in_window = find_matches_in_window(matches=matches, now=now, lead_minutes=args.lead_minutes)
+
+    if not in_window:
+        print(
+            f"No matches kicking off in the next {args.lead_minutes} min "
+            f"(season={season}, round={round_}); nothing to watch."
+        )
+        return 0
+
+    cache = InMemoryScraperCache()
+
+    def _fetcher(match: Any) -> dict[str, Any] | None:
+        # The Cloud Run Job stores match objects with a stable matchCentreUrl
+        # only on the upcoming-fixture endpoint, not the per-match payload.
+        # Fall back to a constructed path when that's missing.
+        url = getattr(match, "match_centre_url", None)
+        if url is None:
+            from fantasy_coach.scraper import _match_path  # noqa: PLC0415
+
+            home_slug = getattr(match.home, "slug", None)
+            away_slug = getattr(match.away, "slug", None)
+            if home_slug and away_slug:
+                url = _match_path(season, round_, home_slug, away_slug)
+        if url is None:
+            print(f"watch-team-lists: no match URL for match_id={match.match_id}; skipping")
+            return None
+        return fetch_match_from_url(url, cache=cache)
+
+    total_changes = 0
+    for match in in_window:
+        try:
+            written = watch_match(
+                match=match,
+                fetch_match=_fetcher,
+                team_list_repo=team_list_repo,
+                late_repo=late_repo,
+                now=now,
+                cutoff_minutes_before_kickoff=args.cutoff_minutes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"watch-team-lists: match_id={match.match_id} failed: {exc}")
+            continue
+        if written:
+            total_changes += len(written)
+            print(
+                f"watch-team-lists: match_id={match.match_id} -> "
+                f"{len(written)} late changes ({[c.change_type for c in written]})"
+            )
+
+    print(
+        f"watch-team-lists: {len(in_window)} matches in window, "
+        f"{total_changes} late changes recorded."
+    )
     return 0
 
 
