@@ -1,4 +1,4 @@
--- Schema version 7.
+-- Schema version 8.
 --
 -- One row per match in `matches`, children (`match_players`, `match_team_stats`,
 -- `match_player_stats`) keyed by match_id + side ('home' | 'away'). Upserts are
@@ -10,6 +10,7 @@
 -- v5 adds home_odds_open / away_odds_open opening-line columns (#169).
 -- v6 adds representative_callups (#211) and match_player_stats (#142) tables.
 -- v7 adds match_weather_forecasts table (#207).
+-- v8 adds injury_reports + late_team_changes tables (#208).
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
@@ -139,3 +140,50 @@ CREATE TABLE IF NOT EXISTS match_weather_forecasts (
 
 CREATE INDEX IF NOT EXISTS idx_weather_forecasts_match
     ON match_weather_forecasts (match_id, fetched_at);
+
+-- Weekly injury list reports (#208). One row per (player, season, round, source)
+-- captures a player's injury-list status for the upcoming round. Multiple sources
+-- (e.g. "nrl.com", "nrl_physio") can co-exist for the same player+round and the
+-- feature builder shrinks/aggregates them at training time.
+-- status: 'out' | 'test' | '21_man_squad' | 'returning' | 'suspended'
+CREATE TABLE IF NOT EXISTS injury_reports (
+    player_id    INTEGER NOT NULL,
+    season       INTEGER NOT NULL,
+    round        INTEGER NOT NULL,
+    team_id      INTEGER NOT NULL,
+    status       TEXT    NOT NULL CHECK (
+        status IN ('out', 'test', '21_man_squad', 'returning', 'suspended')
+    ),
+    weeks_out    INTEGER,           -- estimated rounds remaining (NULL if unspecified)
+    body_part    TEXT,
+    source       TEXT    NOT NULL,  -- "nrl.com" | "nrl_physio" | "fox" | ...
+    scraped_at   TEXT    NOT NULL,  -- ISO 8601 UTC
+    PRIMARY KEY (player_id, season, round, source)
+);
+
+CREATE INDEX IF NOT EXISTS idx_injury_reports_season_round
+    ON injury_reports (season, round);
+
+CREATE INDEX IF NOT EXISTS idx_injury_reports_team_round
+    ON injury_reports (team_id, season, round);
+
+-- Late team-list changes (#208). One row per add/drop/position-change observed
+-- by the watch-team-lists job inside the kickoff hour. Append-only.
+-- change_type: 'withdrawn' (was starting, no longer starting), 'added' (came on
+-- to starting XIII), 'position_change' (still starting, different position).
+CREATE TABLE IF NOT EXISTS late_team_changes (
+    change_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id      INTEGER NOT NULL,
+    team_id       INTEGER NOT NULL,
+    player_id     INTEGER NOT NULL,
+    change_type   TEXT    NOT NULL CHECK (
+        change_type IN ('withdrawn', 'added', 'position_change')
+    ),
+    position      TEXT,
+    was_starting  INTEGER NOT NULL,  -- 0/1
+    is_starting   INTEGER NOT NULL,  -- 0/1
+    detected_at   TEXT    NOT NULL   -- ISO 8601 UTC; timestamp of the later snapshot
+);
+
+CREATE INDEX IF NOT EXISTS idx_late_team_changes_match
+    ON late_team_changes (match_id, team_id);

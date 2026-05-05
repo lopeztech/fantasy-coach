@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamRow, TeamStat
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _PLAYER_STAT_COLS = (
     "minutes_played",
@@ -225,6 +225,12 @@ class SQLiteRepository:
                 # v6 → v7: match_weather_forecasts table (#207). Created by
                 # executescript() via CREATE TABLE IF NOT EXISTS above.
                 self._conn.execute("UPDATE schema_version SET version = 7")
+        if from_version < 8:
+            with self._conn:
+                # v7 → v8: injury_reports + late_team_changes tables (#208).
+                # Both created by executescript() via CREATE TABLE IF NOT EXISTS
+                # above, so no work needed beyond bumping the version marker.
+                self._conn.execute("UPDATE schema_version SET version = 8")
 
     def _insert_players(self, match_id: int, side: str, players: list[PlayerRow]) -> None:
         if not players:
