@@ -427,6 +427,45 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    si = sub.add_parser(
+        "scrape-injuries",
+        help=(
+            "Fetch + parse an NRL.com injury-list article into structured "
+            "InjuryReport rows (#208). Uses Gemini (commentary client) to "
+            "extract names + statuses from the prose. The CLI takes a single "
+            "URL per run; auto-discovery + Wayback historical backfill are "
+            "follow-up issues."
+        ),
+    )
+    si.add_argument("--url", required=True, help="NRL.com injury-list article URL.")
+    si.add_argument("--season", type=int, required=True)
+    si.add_argument("--round", type=int, required=True)
+    si.add_argument(
+        "--match-season",
+        type=int,
+        default=None,
+        help=(
+            "Season(s) to read for the player-name → player_id index. "
+            "Defaults to --season; pass an earlier season when scraping a "
+            "round whose own match data hasn't been fetched yet."
+        ),
+    )
+    si.add_argument(
+        "--gemini-project",
+        default=None,
+        help="GCP project for the Gemini client. Defaults to FIREBASE_PROJECT_ID.",
+    )
+    si.add_argument(
+        "--source-label",
+        default="nrl.com",
+        help="Source label written to injury_reports.source.",
+    )
+    si.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     wtl = sub.add_parser(
         "watch-team-lists",
         help=(
@@ -502,6 +541,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_clear_commentary_cache(args)
     if args.command == "watch-team-lists":
         return _run_watch_team_lists(args)
+    if args.command == "scrape-injuries":
+        return _run_scrape_injuries(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -1343,6 +1384,73 @@ def _run_notify_round_published(args: argparse.Namespace) -> int:
     from fantasy_coach.notifications import send_round_published  # noqa: PLC0415
 
     send_round_published(season=args.season, round_id=args.round_id)
+    return 0
+
+
+def _run_scrape_injuries(args: argparse.Namespace) -> int:
+    """Scrape an NRL.com injury-list article into structured rows (#208 PR C)."""
+    import os  # noqa: PLC0415
+
+    from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.injury_scraper import (  # noqa: PLC0415
+        GeminiInjuryListParser,
+        HttpInjuryListSource,
+        build_player_index,
+        scrape_injury_list,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreInjuryReportRepository,
+        SQLiteInjuryReportRepository,
+    )
+
+    project = (
+        args.gemini_project or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    )
+    if not project:
+        print("scrape-injuries: --gemini-project or FIREBASE_PROJECT_ID is required.")
+        return 1
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        injury_repo: Any = FirestoreInjuryReportRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("scrape-injuries: SQLite repo has no `_conn`; aborting.")
+            return 1
+        injury_repo = SQLiteInjuryReportRepository(conn)
+
+    match_season = args.match_season or args.season
+    matches = repo.list_matches(match_season)
+    if not matches:
+        print(
+            f"scrape-injuries: no matches in season {match_season}; "
+            "player-name index will be empty so every report will be skipped. "
+            "Backfill the season or pass --match-season."
+        )
+    player_index = build_player_index(list(matches))
+
+    parser = GeminiInjuryListParser(
+        client=GeminiClient(project=project),
+        source_label=args.source_label,
+    )
+    reports = scrape_injury_list(
+        url=args.url,
+        season=args.season,
+        round=args.round,
+        source=HttpInjuryListSource(),
+        parser=parser,
+        player_index=player_index,
+    )
+    for report in reports:
+        injury_repo.record_report(report)
+
+    print(
+        f"scrape-injuries: parsed {len(reports)} reports for "
+        f"season={args.season} round={args.round} (source={args.source_label})."
+    )
     return 0
 
 
