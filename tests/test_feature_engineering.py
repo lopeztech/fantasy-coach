@@ -11,7 +11,7 @@ from fantasy_coach.feature_engineering import (
     FeatureBuilder,
     build_training_frame,
 )
-from fantasy_coach.features import MatchRow, PlayerRow, TeamRow
+from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamRow
 
 
 def _match(
@@ -693,3 +693,132 @@ def test_ladder_dead_rubber_when_top8_status_locked() -> None:
     row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
     assert row["missing_ladder"] == 0.0
     assert row["dead_rubber_indicator"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Player form-trajectory features (#251)
+# ---------------------------------------------------------------------------
+
+
+def _make_player_stat(
+    player_id: int,
+    *,
+    tackle_breaks: int = 0,
+    line_breaks: int = 0,
+    try_assists: int = 0,
+    tackles_made: int = 20,
+    errors: int = 0,
+) -> PlayerMatchStat:
+    return PlayerMatchStat(
+        player_id=player_id,
+        tackle_breaks=tackle_breaks,
+        line_breaks=line_breaks,
+        try_assists=try_assists,
+        tackles_made=tackles_made,
+        errors=errors,
+    )
+
+
+def test_trajectory_zero_with_no_player_data() -> None:
+    """When no player stats are available both trajectory diffs are 0.0."""
+    builder = FeatureBuilder()
+    home_players = [_player(1, "Halfback")]
+    away_players = [_player(2, "Halfback")]
+    match = _make_match_with_players(home_players, away_players)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+    assert row["player_form_trajectory_diff"] == pytest.approx(0.0)
+    assert row["key_player_trajectory_diff"] == pytest.approx(0.0)
+
+
+def test_trajectory_missing_flag_fires_when_roster_lacks_history() -> None:
+    """missing_player_trajectory=1.0 when ≥5 XIII players have < 3 recorded composites."""
+    builder = FeatureBuilder()
+    # 6 home starters, none with history → missing flag fires
+    home_players = [_player(i, "Prop") for i in range(1, 7)]
+    away_players = [_player(i, "Prop") for i in range(11, 17)]
+    match = _make_match_with_players(home_players, away_players)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+    assert row["missing_player_trajectory"] == 1.0
+
+
+def test_trajectory_strictly_walk_forward() -> None:
+    """Trajectory must not include the current match's own stats."""
+    builder = FeatureBuilder()
+    home_players = [_player(1, "Halfback")]
+    away_players = [_player(2, "Halfback")]
+
+    # Play 5 prior matches so player 1 has history.
+    for i in range(1, 6):
+        m = MatchRow(
+            match_id=i,
+            season=2025,
+            round=i,
+            start_time=datetime(2025, 3, 1, tzinfo=UTC) + timedelta(weeks=i - 1),
+            match_state="FullTime",
+            venue=None,
+            venue_city=None,
+            weather=None,
+            home=TeamRow(team_id=10, name="H", nick_name="H", score=20, players=home_players),
+            away=TeamRow(team_id=20, name="A", nick_name="A", score=10, players=away_players),
+            team_stats=[],
+            home_player_stats=[_make_player_stat(1, line_breaks=i)],
+            away_player_stats=[_make_player_stat(2, line_breaks=0)],
+        )
+        builder.advance_season_if_needed(m)
+        builder.record(m)
+
+    # In match 6, player 1 will have a huge line-break game; feature_row
+    # must only see rounds 1–5 (not round 6's stats).
+    query = MatchRow(
+        match_id=6,
+        season=2025,
+        round=6,
+        start_time=datetime(2025, 3, 1, tzinfo=UTC) + timedelta(weeks=5),
+        match_state="FullTime",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(team_id=10, name="H", nick_name="H", score=20, players=home_players),
+        away=TeamRow(team_id=20, name="A", nick_name="A", score=10, players=away_players),
+        team_stats=[],
+        home_player_stats=[_make_player_stat(1, line_breaks=100)],  # huge game
+        away_player_stats=[_make_player_stat(2, line_breaks=0)],
+    )
+    builder.advance_season_if_needed(query)
+    row_before = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    # Trajectory is based on rounds 1–5 only; the 100-line-break round hasn't
+    # been recorded yet → trajectory should be a small positive (rounds 3-5
+    # avg > season avg of rounds 1-5).
+    assert row_before["player_form_trajectory_diff"] < 50  # definitely not 100
+
+
+def test_improving_spine_produces_positive_key_trajectory() -> None:
+    """Team with improving spine (halves + hooker) has positive key_player_trajectory_diff."""
+    builder = FeatureBuilder()
+    halfback_home = _player(1, "Halfback")
+    halfback_away = _player(2, "Halfback")
+
+    # Play 6 matches: home halfback improves each round; away stays flat.
+    for i in range(1, 7):
+        m = MatchRow(
+            match_id=i,
+            season=2025,
+            round=i,
+            start_time=datetime(2025, 3, 1, tzinfo=UTC) + timedelta(weeks=i - 1),
+            match_state="FullTime",
+            venue=None,
+            venue_city=None,
+            weather=None,
+            home=TeamRow(team_id=10, name="H", nick_name="H", score=20, players=[halfback_home]),
+            away=TeamRow(team_id=20, name="A", nick_name="A", score=10, players=[halfback_away]),
+            team_stats=[],
+            home_player_stats=[_make_player_stat(1, line_breaks=i * 2)],  # trending up
+            away_player_stats=[_make_player_stat(2, line_breaks=1)],  # flat
+        )
+        builder.advance_season_if_needed(m)
+        builder.record(m)
+
+    query = _make_match_with_players([halfback_home], [halfback_away], match_id=7)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    # Home halfback is trending up → positive key_player_trajectory_diff.
+    assert row["key_player_trajectory_diff"] > 0
