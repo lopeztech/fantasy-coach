@@ -400,8 +400,10 @@ class FirestorePredictionStore:
                     self._cache[(season, round_)] = (time.monotonic(), preds)
             if snaps:
                 pairs = [
-                    (int((d.to_dict() or {}).get("season", 0)),
-                     int((d.to_dict() or {}).get("round", 0)))
+                    (
+                        int((d.to_dict() or {}).get("season", 0)),
+                        int((d.to_dict() or {}).get("round", 0)),
+                    )
                     for d in snaps
                 ]
                 logger.info("prefetch_recent warmed rounds=%s", pairs)
