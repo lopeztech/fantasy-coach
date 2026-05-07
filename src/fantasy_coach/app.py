@@ -181,9 +181,12 @@ def _prefetch_current_rounds() -> None:
     Non-fatal: the regular per-request Firestore path still works on failure.
     Only runs when STORAGE_BACKEND=firestore; SQLite dev is a no-op.
     """
-    store = _get_store()
-    if isinstance(store, FirestorePredictionStore):
-        store.prefetch_recent(n_rounds=2)
+    try:
+        store = _get_store()
+        if isinstance(store, FirestorePredictionStore):
+            store.prefetch_recent(n_rounds=2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("prefetch_current_rounds failed (non-fatal): %s", exc)
 
 
 @asynccontextmanager
