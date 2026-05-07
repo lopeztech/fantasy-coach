@@ -8,11 +8,12 @@ from fantasy_coach.commentary.cache import (
     TokenBudget,
     context_hash,
 )
-from fantasy_coach.commentary.client import GeminiClient, GeminiResponse
+from fantasy_coach.commentary.client import COMMENTARY_TIMEOUT, GeminiClient, GeminiResponse
 from fantasy_coach.commentary.preview import MatchContext, PreviewGenerator
 
 __all__ = [
     "CACHE_KEY_VERSION",
+    "COMMENTARY_TIMEOUT",
     "BudgetExceededError",
     "CachingGeminiClient",
     "GeminiClient",
