@@ -822,3 +822,126 @@ def test_improving_spine_produces_positive_key_trajectory() -> None:
     row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
     # Home halfback is trending up → positive key_player_trajectory_diff.
     assert row["key_player_trajectory_diff"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Cumulative fatigue index features (#252)
+# ---------------------------------------------------------------------------
+
+
+def test_fatigue_zero_with_no_prior_matches() -> None:
+    """Both teams have no prior matches → fatigue indices are 0.0."""
+    builder = FeatureBuilder()
+    match = _match(
+        match_id=1,
+        home_id=10,
+        away_id=20,
+        home_score=0,
+        away_score=0,
+        when=datetime(2025, 3, 1, tzinfo=UTC),
+    )
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+    assert row["team_fatigue_index_diff"] == pytest.approx(0.0)
+    assert row["spine_fatigue_index_diff"] == pytest.approx(0.0)
+    assert row["cumulative_origin_minutes_diff"] == pytest.approx(0.0)
+
+
+def test_fatigue_accumulates_after_matches() -> None:
+    """After recording several matches, at least one team has non-zero fatigue."""
+    builder = FeatureBuilder()
+    base = datetime(2025, 3, 1, tzinfo=UTC)
+
+    # Play 5 matches for team 10 on short rest intervals.
+    for i in range(5):
+        m = _match(
+            match_id=i + 1,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=10,
+            when=base + timedelta(days=i * 5),  # 5-day turnarounds = short rest
+        )
+        builder.advance_season_if_needed(m)
+        builder.record(m)
+
+    # Team 10 has played 5 short-rest matches; team 30 is fresh.
+    query = _match(
+        match_id=10,
+        home_id=10,
+        away_id=30,
+        home_score=0,
+        away_score=0,
+        when=base + timedelta(days=25),
+    )
+    builder.advance_season_if_needed(query)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    # Home (team 10) has accumulated fatigue; away (team 30) has none.
+    # home fatigue > away → positive diff.
+    assert row["team_fatigue_index_diff"] > 0.0
+
+
+def test_fatigue_decays_over_time() -> None:
+    """Fatigue from an old match has less impact than one from a recent match."""
+
+    builder_recent = FeatureBuilder()
+    builder_old = FeatureBuilder()
+    base = datetime(2025, 3, 1, tzinfo=UTC)
+
+    # Both builders: team 10 plays one heavy travel match.
+    for builder, when_offset in ((builder_recent, 7), (builder_old, 60)):
+        m = _match(
+            match_id=1,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=10,
+            when=base,
+        )
+        builder.advance_season_if_needed(m)
+        builder.record(m)
+
+        # Query match is when_offset days after the travel match.
+        query = _match(
+            match_id=2,
+            home_id=10,
+            away_id=30,
+            home_score=0,
+            away_score=0,
+            when=base + timedelta(days=when_offset),
+        )
+        builder.advance_season_if_needed(query)
+
+    row_recent = dict(
+        zip(
+            FEATURE_NAMES,
+            builder_recent.feature_row(
+                _match(
+                    match_id=2,
+                    home_id=10,
+                    away_id=30,
+                    home_score=0,
+                    away_score=0,
+                    when=base + timedelta(days=7),
+                )
+            ),
+            strict=True,
+        )
+    )
+    row_old = dict(
+        zip(
+            FEATURE_NAMES,
+            builder_old.feature_row(
+                _match(
+                    match_id=2,
+                    home_id=10,
+                    away_id=30,
+                    home_score=0,
+                    away_score=0,
+                    when=base + timedelta(days=60),
+                )
+            ),
+            strict=True,
+        )
+    )
+    # Fatigue from 7 days ago > fatigue from 60 days ago.
+    assert row_recent["team_fatigue_index_diff"] > row_old["team_fatigue_index_diff"]
