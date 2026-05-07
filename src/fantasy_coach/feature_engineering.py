@@ -37,7 +37,7 @@ from datetime import datetime
 import numpy as np
 
 from fantasy_coach.bookmaker.lines import devig_two_way
-from fantasy_coach.features import MatchRow, PlayerRow, TeamStat
+from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamStat
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
@@ -222,6 +222,20 @@ FEATURE_NAMES = (
     "must_win_intensity",
     "dead_rubber_indicator",
     "missing_ladder",
+    # Per-player rolling form trajectory (#251). Captures whether individual
+    # players are trending up or down over their last 3 matches vs their
+    # season baseline — a signal invisible to team-level rolling stats.
+    # Composite per player = tackle_breaks + line_breaks + try_assists
+    #   + 0.05 × tackles_made − 0.5 × errors (signed).
+    # Trajectory = (last-3 avg − season avg), position-weighted, home − away.
+    #
+    # player_form_trajectory_diff: full starting XIII, all positions.
+    # key_player_trajectory_diff: spine only (halves, hooker, fullback).
+    # missing_player_trajectory: 1.0 when ≥ 5 named XIII players on either
+    #   team have fewer than 3 recorded stat composites (early season, debuts).
+    "player_form_trajectory_diff",
+    "key_player_trajectory_diff",
+    "missing_player_trajectory",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -283,6 +297,11 @@ _TEAM_STATS_WINDOW = 5
 # Ladder-position feature constants (#255).
 LADDER_MIN_ROUND = 5  # emit missing_ladder=1.0 for rounds below this threshold
 NRL_SEASON_ROUNDS = 27  # regular-season rounds in the NRL calendar
+
+# Player form-trajectory constants (#251).
+_PLAYER_TRAJ_WINDOW = 20  # rolling window for season baseline
+_PLAYER_TRAJ_RECENT = 3  # recent window for "current form" snapshot
+_PLAYER_TRAJ_MISSING_N = 5  # ≥ this many XIII players without history → flag
 
 
 @dataclass
@@ -404,6 +423,12 @@ class FeatureBuilder:
         self._team_venue_season_counts: dict[tuple[int, str, int], int] = defaultdict(int)
         # Running competition ladder (#255). Keyed by team_id; reset each season.
         self._ladder: dict[int, _TeamLadder] = {}
+        # Per-player rolling stat composite history (#251). Each entry is the
+        # _player_stat_composite() value for a completed starting appearance.
+        # Walk-forward only — record() writes, feature_row() reads prior state.
+        self._player_stat_history: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_PLAYER_TRAJ_WINDOW)
+        )
 
     def feature_row(
         self, match: MatchRow, *, weather_forecast: WeatherForecast | None = None
@@ -502,6 +527,12 @@ class FeatureBuilder:
             match.round, h_id, a_id
         )
 
+        traj_h = self._team_trajectory(match.home.players, spine_only=False)
+        traj_a = self._team_trajectory(match.away.players, spine_only=False)
+        spine_traj_h = self._team_trajectory(match.home.players, spine_only=True)
+        spine_traj_a = self._team_trajectory(match.away.players, spine_only=True)
+        miss_traj = self._missing_trajectory(match.home.players, match.away.players)
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -560,6 +591,9 @@ class FeatureBuilder:
             must_win_int,
             dead_rub,
             miss_lad,
+            traj_h - traj_a,
+            spine_traj_h - spine_traj_a,
+            miss_traj,
         ]
 
     def _ladder_features(
@@ -627,6 +661,47 @@ class FeatureBuilder:
             dead_rubber,
             0.0,
         )
+
+    def _team_trajectory(self, players: list[PlayerRow], *, spine_only: bool) -> float:
+        """Position-weighted sum of (last-3 avg − season avg) per starter (#251).
+
+        Returns 0.0 when no starters have sufficient stat history, which is the
+        correct neutral value for early-season matches and debut appearances.
+        """
+        _spine: frozenset[str] = (
+            POSITION_GROUPS["halves"] | POSITION_GROUPS["hooker"] | POSITION_GROUPS["outside_backs"]
+        )
+        total = 0.0
+        for p in players:
+            if not p.is_on_field or p.position is None:
+                continue
+            if spine_only and p.position not in _spine:
+                continue
+            hist = self._player_stat_history.get(p.player_id)
+            if not hist or len(hist) < _PLAYER_TRAJ_RECENT:
+                continue
+            hist_list = list(hist)
+            last3_avg = sum(hist_list[-_PLAYER_TRAJ_RECENT:]) / _PLAYER_TRAJ_RECENT
+            season_avg = sum(hist_list) / len(hist_list)
+            weight = POSITION_WEIGHTS.get(p.position, 1.0)
+            total += (last3_avg - season_avg) * weight
+        return total
+
+    def _missing_trajectory(
+        self, home_players: list[PlayerRow], away_players: list[PlayerRow]
+    ) -> float:
+        """1.0 when ≥ _PLAYER_TRAJ_MISSING_N named XIII players on either team
+        lack sufficient stat history to compute a trajectory."""
+        for players in (home_players, away_players):
+            starters = [p for p in players if p.is_on_field]
+            missing = sum(
+                1
+                for p in starters
+                if len(self._player_stat_history.get(p.player_id) or []) < _PLAYER_TRAJ_RECENT
+            )
+            if missing >= _PLAYER_TRAJ_MISSING_N:
+                return 1.0
+        return 0.0
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
         """Rolling win-over-expected for (home team, venue); regressed toward 0."""
@@ -927,6 +1002,17 @@ class FeatureBuilder:
         else:  # draw
             self._ladder[h_id].pts += 1
             self._ladder[a_id].pts += 1
+        # Update per-player stat composite history (#251).
+        for side_stats, side_players in (
+            (match.home_player_stats, match.home.players),
+            (match.away_player_stats, match.away.players),
+        ):
+            stats_by_id = {s.player_id: s for s in side_stats}
+            for p in side_players:
+                if p.is_on_field and p.player_id in stats_by_id:
+                    composite = _player_stat_composite(stats_by_id[p.player_id])
+                    if composite is not None:
+                        self._player_stat_history[p.player_id].append(composite)
 
 
 def build_training_frame(
@@ -981,6 +1067,24 @@ def build_training_frame(
         y=np.asarray(targets, dtype=int),
         match_ids=np.asarray(match_ids, dtype=int),
         start_times=np.asarray(start_times, dtype="datetime64[s]"),
+    )
+
+
+def _player_stat_composite(stat: PlayerMatchStat) -> float | None:
+    """Weighted composite of attacking/defensive KPIs for one player's match (#251).
+
+    Returns None when the key attacking stats are entirely absent (e.g. a player
+    entry with only ``player_id`` populated). The composite is intentionally
+    sparse-safe — any missing field is treated as 0 rather than propagating None.
+    """
+    if stat.tackle_breaks is None and stat.line_breaks is None and stat.try_assists is None:
+        return None
+    return (
+        (stat.tackle_breaks or 0)
+        + (stat.line_breaks or 0)
+        + (stat.try_assists or 0)
+        + 0.05 * (stat.tackles_made or 0)
+        - 0.5 * (stat.errors or 0)
     )
 
 
