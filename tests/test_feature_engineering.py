@@ -520,3 +520,176 @@ def test_position_pair_feature_count_matches_feature_names() -> None:
     match = _make_match_with_players([], [])
     row = builder.feature_row(match)
     assert len(row) == len(FEATURE_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# Ladder-position features (#255)
+# ---------------------------------------------------------------------------
+
+
+def _match_r(
+    *,
+    match_id: int,
+    home_id: int,
+    away_id: int,
+    home_score: int,
+    away_score: int,
+    round_: int,
+    season: int = 2025,
+) -> MatchRow:
+    """Helper like _match() but accepts explicit round number."""
+    from datetime import UTC
+
+    when = datetime(season, 3, 1, tzinfo=UTC) + timedelta(weeks=round_ - 1)
+    return MatchRow(
+        match_id=match_id,
+        season=season,
+        round=round_,
+        start_time=when,
+        match_state="FullTime",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(
+            team_id=home_id,
+            name=str(home_id),
+            nick_name=str(home_id),
+            score=home_score,
+            players=[],
+        ),
+        away=TeamRow(
+            team_id=away_id,
+            name=str(away_id),
+            nick_name=str(away_id),
+            score=away_score,
+            players=[],
+        ),
+        team_stats=[],
+    )
+
+
+def test_ladder_missing_flag_for_early_rounds() -> None:
+    """missing_ladder=1.0 for rounds below LADDER_MIN_ROUND."""
+    builder = FeatureBuilder()
+    match = _match_r(match_id=1, home_id=10, away_id=20, home_score=24, away_score=12, round_=2)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+    assert row["missing_ladder"] == 1.0
+    assert row["ladder_position_diff"] == 0.0
+    assert row["must_win_intensity"] == 0.0
+    assert row["dead_rubber_indicator"] == 0.0
+
+
+def test_ladder_position_diff_after_several_rounds() -> None:
+    """Home is ranked higher (lower position number) → negative ladder_position_diff."""
+    builder = FeatureBuilder()
+    teams = list(range(10, 26))  # 16 teams
+    # Play 6 rounds: team 10 wins all, team 20 loses all, others split.
+    match_id = 0
+    for r in range(1, 7):
+        for i in range(0, len(teams), 2):
+            h, a = teams[i], teams[i + 1]
+            # team 10 always wins at home, team 20 always loses as away
+            match = _match_r(
+                match_id=match_id,
+                home_id=h,
+                away_id=a,
+                home_score=20,
+                away_score=10,
+                round_=r,
+            )
+            builder.advance_season_if_needed(match)
+            builder.record(match)
+            match_id += 1
+
+    # After 6 rounds team 10 (home winner every round) should be high on table;
+    # team 25 (always away loser) should be low.
+    query = _match_r(
+        match_id=match_id, home_id=10, away_id=25, home_score=0, away_score=0, round_=7
+    )
+    builder.advance_season_if_needed(query)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    assert row["missing_ladder"] == 0.0
+    # home (10) should have better (lower) position than away (25)
+    assert row["ladder_position_diff"] < 0
+
+
+def test_ladder_must_win_intensity_for_outside_top8() -> None:
+    """A team on the ladder bubble with few games remaining has high must_win_intensity."""
+    from fantasy_coach.feature_engineering import NRL_SEASON_ROUNDS
+
+    builder = FeatureBuilder()
+    # Simulate late season: play NRL_SEASON_ROUNDS - 2 rounds for many teams.
+    # team 10 sits just outside top 8 (8th has 2 more pts, 1 game remaining for both).
+    teams_top8 = list(range(1, 9))
+    teams_outside = list(range(9, 17))
+    match_id = 0
+
+    rounds_to_play = NRL_SEASON_ROUNDS - 2
+    for r in range(1, rounds_to_play + 1):
+        for h, a in zip(teams_top8, teams_outside, strict=True):
+            m = _match_r(
+                match_id=match_id,
+                home_id=h,
+                away_id=a,
+                home_score=20,
+                away_score=10,
+                round_=r,
+            )
+            builder.advance_season_if_needed(m)
+            builder.record(m)
+            match_id += 1
+
+    # Query: team 10 vs team 1 in final rounds — team 10 is outside top 8.
+    query = _match_r(
+        match_id=match_id,
+        home_id=10,  # outside top 8
+        away_id=1,  # inside top 8
+        home_score=0,
+        away_score=0,
+        round_=NRL_SEASON_ROUNDS - 1,
+    )
+    builder.advance_season_if_needed(query)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    # Home is outside top 8 with few games left → must_win_intensity > 0
+    assert row["missing_ladder"] == 0.0
+    assert row["must_win_intensity"] > 0.0
+
+
+def test_ladder_dead_rubber_when_top8_status_locked() -> None:
+    """dead_rubber_indicator fires when both teams' top-8 status is mathematically decided."""
+    from fantasy_coach.feature_engineering import NRL_SEASON_ROUNDS
+
+    builder = FeatureBuilder()
+    # team 1 wins all → comfortably in top 8
+    # team 20 loses all → comfortably out of top 8
+    # After 26 rounds both positions are locked.
+    teams = list(range(1, 17))
+    match_id = 0
+    for r in range(1, NRL_SEASON_ROUNDS):
+        for i in range(0, len(teams), 2):
+            h, a = teams[i], teams[i + 1]
+            m = _match_r(
+                match_id=match_id,
+                home_id=h,
+                away_id=a,
+                home_score=30,
+                away_score=0,
+                round_=r,
+            )
+            builder.advance_season_if_needed(m)
+            builder.record(m)
+            match_id += 1
+
+    # Final round: top-ranked vs bottom-ranked — neither can change status.
+    query = _match_r(
+        match_id=match_id,
+        home_id=teams[0],  # top of table
+        away_id=teams[-1],  # bottom of table
+        home_score=0,
+        away_score=0,
+        round_=NRL_SEASON_ROUNDS,
+    )
+    builder.advance_season_if_needed(query)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+    assert row["missing_ladder"] == 0.0
+    assert row["dead_rubber_indicator"] == 1.0
