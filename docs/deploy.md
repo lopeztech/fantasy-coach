@@ -194,6 +194,27 @@ impersonate the runtime SA at deploy time).
 
 Both SA definitions live in platform-infra and are the source of truth.
 
+## Container image
+
+The `Dockerfile` is a **two-stage build** to keep the runtime image slim:
+
+| Stage | Base | What it does |
+|-------|------|-------------|
+| `builder` | `python:3.12-slim` | Runs `uv sync --no-dev`; installs all wheels into `/app/.venv` |
+| `runtime` | `python:3.12-slim` | Copies only the built venv + `src/`, `deploy/`, `assets/`, `artifacts/best_params.json` |
+
+**What is NOT in the runtime image:**
+- `tests/`, `docs/`, `web/`, `scripts/`, `reports/` (excluded by `.dockerignore`)
+- `data/` — SQLite files, backfill sidecars, odds xlsx (excluded by `.dockerignore`)
+- `artifacts/*.joblib` — trained model blobs; the runtime downloads them from GCS
+  on cold start via `FANTASY_COACH_MODEL_GCS_URI` (see Cold-start behaviour).
+- `pytest`, `ruff`, `pre-commit` — dev deps excluded by `uv sync --no-dev`
+
+**Local build**: `make docker-build` passes `DOCKER_BUILDKIT=1` automatically.
+
+**CI cache**: `deploy.yml` uses `--cache-from type=gha --cache-to type=gha,mode=max`
+so the dependency layer is reused across PR builds on the same dependency set.
+
 ## Cold-start behaviour
 
 The service runs with `--min-instances 0` (scale to zero). Cold-start latency
