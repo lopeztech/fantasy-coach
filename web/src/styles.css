@@ -1301,6 +1301,72 @@ a:focus-visible {
   margin-top: 0.25rem;
 }
 
+/* ── Confidence-tier badge (#257) ───────────────────────────────────────── */
+/* Reuses the same pill geometry as .consensus-badge. */
+.confidence-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-full);
+  margin-top: 0.25rem;
+  cursor: default;
+}
+
+.confidence-badge--high {
+  background: #e6f4ea;
+  color: #1e6e35;
+}
+
+.confidence-badge--medium {
+  background: #fff3e0;
+  color: #7a4f00;
+}
+
+.confidence-badge--low {
+  background: #fdecea;
+  color: var(--color-error-text);
+}
+
+[data-theme="dark"] .confidence-badge--high {
+  background: #0d2b15;
+  color: #68d391;
+}
+
+[data-theme="dark"] .confidence-badge--medium {
+  background: #2d1f00;
+  color: #f6c90e;
+}
+
+[data-theme="dark"] .confidence-badge--low {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .confidence-badge--high {
+    background: #0d2b15;
+    color: #68d391;
+  }
+  :root:not([data-theme="light"]) .confidence-badge--medium {
+    background: #2d1f00;
+    color: #f6c90e;
+  }
+  :root:not([data-theme="light"]) .confidence-badge--low {
+    background: var(--color-error-bg);
+    color: var(--color-error-text);
+  }
+}
+
+/* No colour pulse on prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .confidence-badge--high {
+    animation: none;
+  }
+}
+
 /* Team name links inside MatchCard */
 .team-link {
   cursor: pointer;
