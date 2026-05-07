@@ -15,7 +15,7 @@ once it's manually enabled (see below).
 
 | Component | Driver | Expected monthly cost at current traffic |
 |-----------|--------|-------------------------------------------|
-| Cloud Run (API) | 0 → low; scale-to-zero; 512Mi × concurrency 80 | < $1 |
+| Cloud Run (API) | 0 → low; scale-to-zero; 512Mi × concurrency 200 (#261) | < $1 |
 | Cloud Run Job (precompute) | 0.5 vCPU × 256 Mi; ~90 s/run × 2 runs/week | ~$0.10/month |
 | Firestore | Free tier (1 GiB storage, 50K reads/day) | $0 |
 | Artifact Registry | Last 10 tagged images retained; cleanup policy in platform-infra | ~$0.04 steady-state |
@@ -80,7 +80,7 @@ cuts. Nothing was cut below observed p99 + meaningful headroom.
 | Flag | Before (gcloud defaults / original deploy) | After (pinned in `deploy.yml` + TF) | Why |
 |------|---------------------------------------------|--------------------------------------|-----|
 | `--memory` | `512Mi` | `512Mi` unchanged | p99 container RSS < 20% of 512Mi across 20 revisions — 256Mi would fit, but **gen2 execution environment has a 512Mi minimum enforced by `gcloud run deploy`**. We'd need to drop to gen1 to cut further, and the scrape-heavy workload values gen2's networking + startup CPU boost more than the pennies/month of memory savings. |
-| `--concurrency` | Cloud Run default 80 (not pinned) | `80` pinned | Explicit so TF and deploy stay aligned; no behavioural change. |
+| `--concurrency` | Cloud Run default 80 (not pinned) | `200` (#261) | FastAPI + Firestore is async I/O–bound; 200 in-flight per vCPU is safe. Higher concurrency = fewer instances during peak, reducing vCPU-second billing. |
 | `--timeout` | Cloud Run default `300s` (not pinned) | `120s` pinned | Cold-round scrape does ~8 HTTPS round-trips to nrl.com, so 60s is unsafe until #65 moves scrape off-path. 120s is still a 60% reduction from the default. |
 | `--cpu` | `1` | `1` unchanged | Predict is µs-scale; scraping is I/O-bound. |
 | `--min-instances` | `0` | `0` unchanged | Scale-to-zero stays. |
@@ -93,9 +93,15 @@ maximum billable CPU time per stuck request by 60 %. Real dollars
 today are pennies — this is drift insurance, not a major cost cut.
 
 The measurements above came from a ~13-hour window dominated by CI
-churn, not real user traffic. Revisit concurrency and memory once we
-have 30 days of real requests — concurrency especially may have room to
-go from 80 → 200 on a mostly-I/O endpoint. Tracked as a follow-up on #64.
+churn, not real user traffic. Concurrency has been raised from 80 → 200
+(#261) based on the async I/O workload profile. Memory at 512Mi remains
+appropriate given the gen2 minimum.
+
+**Off-peak min-instances schedule (#261):** A Cloud Scheduler job in
+platform-infra can toggle `--min-instances` between 1 (06:00–23:59 AEST)
+and 0 (00:00–06:00 AEST) to eliminate ~6 hr/day × 30 days of idle vCPU
+cost. Estimated saving: ~$11/month at current pricing once the schedule is
+applied via Terraform (tracked in platform-infra).
 
 ## Precompute Job vs on-request scrape (#65)
 

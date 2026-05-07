@@ -87,7 +87,7 @@ don't drift.
 |------|-------|-----------|
 | `--memory` | `512Mi` | Observed p99 RSS < 100 MiB, so 256Mi would fit — but gen2 execution environment has a 512Mi minimum, enforced by `gcloud run deploy`. Kept at 512Mi rather than downgrade to gen1. |
 | `--cpu` | `1` | One request at a time fits well under one vCPU; the logistic predict is µs-scale. |
-| `--concurrency` | `80` | Cloud Run's default; pinned explicitly so TF/deploy can't silently drift. Revisit after we have real traffic; 200 may be viable for a mostly-I/O endpoint. |
+| `--concurrency` | `200` | FastAPI + Firestore is async I/O–bound; 200 in-flight per vCPU is safe. Raised from 80 (#261): higher concurrency means fewer instances during peak, reducing vCPU-second billing. Must match the Terraform `container_concurrency` when platform-infra is next applied. |
 | `--timeout` | `120` | Down from the 300s default. First request of a round does a live scrape of nrl.com (~1s/fixture × 8 fixtures + overhead), so we can't safely cut to the AC's 60s yet — drop once #65 lands and scrape is off-path. |
 | `--cpu-throttling` | on | Billable CPU only during requests; cold idle is free. |
 | `--min-instances` | `0` | Scale to zero when idle. |
