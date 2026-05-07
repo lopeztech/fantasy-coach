@@ -930,8 +930,6 @@ def test_firestore_store_cache_hit_skips_firestore(monkeypatch) -> None:
 
 def test_firestore_store_cache_miss_after_ttl(monkeypatch) -> None:
     """Expired cache entry falls through to Firestore."""
-    import time as _time  # noqa: PLC0415
-
     store = FirestorePredictionStore(client=_FakeFirestoreClient())
     p = PredictionOut(
         matchId=1,
@@ -972,10 +970,10 @@ def test_firestore_store_prefetch_recent_populates_cache() -> None:
     store2 = FirestorePredictionStore(client=fake_client)
     # prefetch_recent uses the Firestore order_by path which the fake client
     # doesn't fully implement — just verify it doesn't raise
-    try:
+    import contextlib  # noqa: PLC0415
+
+    with contextlib.suppress(Exception):
         store2.prefetch_recent(n_rounds=2)
-    except Exception:
-        pass  # fake client may not support order_by; non-fatal by contract
 
 
 def test_get_prediction_store_factory_defaults_to_sqlite(monkeypatch, tmp_path: Path) -> None:
