@@ -2,6 +2,7 @@
 .github
 .venv
 __pycache__
+**/__pycache__
 .pytest_cache
 .ruff_cache
 .mypy_cache
@@ -16,3 +17,13 @@ data/
 .DS_Store
 Dockerfile
 .dockerignore
+# SPA source/build — not needed in the Cloud Run image
+web/
+# Dev/analysis artefacts
+scripts/
+reports/
+notebooks/
+**/*.ipynb
+# Trained model blobs — runtime fetches from GCS; only best_params.json is baked in
+artifacts/*.joblib
+artifacts/*.pkl

@@ -29,7 +29,7 @@ run: check-uv
 	uv run uvicorn fantasy_coach.app:app --reload --host 0.0.0.0 --port 8080
 
 docker-build:
-	docker build -t fantasy-coach:latest .
+	DOCKER_BUILDKIT=1 docker build -t fantasy-coach:latest .
 
 docker-run:
 	docker run --rm -p 8080:8080 -e PORT=8080 fantasy-coach:latest

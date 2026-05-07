@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -174,10 +175,31 @@ def _allowed_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
+def _prefetch_current_rounds() -> None:
+    """Warm the Firestore prediction cache on startup with the 2 most recent rounds.
+
+    Non-fatal: the regular per-request Firestore path still works on failure.
+    Only runs when STORAGE_BACKEND=firestore; SQLite dev is a no-op.
+    """
+    try:
+        store = _get_store()
+        if isinstance(store, FirestorePredictionStore):
+            store.prefetch_recent(n_rounds=2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("prefetch_current_rounds failed (non-fatal): %s", exc)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _prefetch_current_rounds()
+    yield
+
+
 app = FastAPI(
     title="Fantasy Coach",
     version=__version__,
     description="NRL match prediction API. All non-health endpoints require a Firebase ID token.",
+    lifespan=_lifespan,
 )
 
 # Enable Firebase token verification when a project ID is configured.

@@ -9,6 +9,7 @@ Tokens:    usage logged per call at INFO level for cost visibility.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 
@@ -16,9 +17,14 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Pin to a specific stable revision; update when the model is retired.
-DEFAULT_MODEL = "gemini-2.0-flash-001"
+# Honour GEMINI_COMMENTARY_MODEL env var so the model tier can be swapped
+# without a deploy (e.g. roll back from Flash to Pro via Cloud Run env update).
+DEFAULT_MODEL = os.environ.get("GEMINI_COMMENTARY_MODEL", "gemini-2.0-flash-001")
 DEFAULT_LOCATION = "us-central1"
+
+# Tight timeout for short-form commentary blurbs; longer tasks (injury parsing)
+# should pass an explicit timeout to generate().
+COMMENTARY_TIMEOUT: float = 8.0
 
 _SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -96,15 +102,30 @@ class GeminiClient:
         *,
         system: str = "",
         max_output_tokens: int = 512,
+        temperature: float | None = None,
+        candidate_count: int = 1,
+        timeout: float | None = None,
     ) -> GeminiResponse:
         """Call generateContent and return the parsed response.
 
         Retries up to ``max_retries`` times on transient HTTP errors (429 / 5xx).
         Raises ``RuntimeError`` when all retries are exhausted.
+
+        Args:
+            temperature: Sampling temperature (0.0–1.0). None uses the model default.
+            candidate_count: Number of response candidates (pin to 1 to avoid 2× cost).
+            timeout: Per-call timeout override; falls back to the instance timeout.
         """
+        gen_config: dict = {
+            "maxOutputTokens": max_output_tokens,
+            "candidateCount": candidate_count,
+        }
+        if temperature is not None:
+            gen_config["temperature"] = temperature
+
         body: dict = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": max_output_tokens},
+            "generationConfig": gen_config,
         }
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
@@ -115,6 +136,7 @@ class GeminiClient:
             "Content-Type": "application/json",
         }
 
+        effective_timeout = timeout if timeout is not None else self._timeout
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             if attempt:
@@ -124,7 +146,7 @@ class GeminiClient:
                     self._endpoint,
                     json=body,
                     headers=headers,
-                    timeout=self._timeout,
+                    timeout=effective_timeout,
                 )
                 if resp.status_code in _RETRYABLE_STATUS:
                     last_exc = httpx.HTTPStatusError(

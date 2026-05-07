@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -315,6 +316,9 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
 # ---------------------------------------------------------------------------
 
 
+_PRED_CACHE_TTL: float = 6 * 3600.0  # predictions are immutable between Tue/Thu precompute runs
+
+
 class FirestorePredictionStore:
     """Firestore-backed prediction cache.
 
@@ -327,6 +331,12 @@ class FirestorePredictionStore:
     round keeps both sides to a single Firestore RPC — cheaper than
     per-match docs, and Firestore's 1 MiB doc limit is ~orders of magnitude
     more than a round's prediction payload.
+
+    In-memory hydration cache: populated on startup (and on first access) to
+    avoid repeated Firestore reads for the same round within a Cloud Run
+    instance. TTL is 6 hours — predictions don't change between Tue/Thu runs.
+    Warm instances may serve stale data for up to TTL after an emergency retrain;
+    bounce the service to clear (see docs/cost.md).
     """
 
     _COLLECTION = "predictions"
@@ -343,16 +353,62 @@ class FirestorePredictionStore:
             from google.cloud import firestore  # noqa: PLC0415
 
             self._db = firestore.Client(project=project, database=database)
+        # (ts_monotonic, predictions) keyed by (season, round)
+        self._cache: dict[tuple[int, int], tuple[float, list[PredictionOut]]] = {}
 
     def close(self) -> None:  # symmetry with PredictionStore; Firestore has no conn to close
         return
 
     def get(self, season: int, round_: int) -> list[PredictionOut]:
+        key = (season, round_)
+        cached = self._cache.get(key)
+        if cached is not None:
+            ts, preds = cached
+            if time.monotonic() - ts < _PRED_CACHE_TTL:
+                return preds
+            del self._cache[key]
+
         snap = self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).get()
         if not snap.exists:
             return []
         data = snap.to_dict() or {}
-        return [PredictionOut(**p) for p in data.get("predictions", [])]
+        preds = [PredictionOut(**p) for p in data.get("predictions", [])]
+        self._cache[key] = (time.monotonic(), preds)
+        return preds
+
+    def prefetch_recent(self, n_rounds: int = 2) -> None:
+        """Eagerly warm the cache with the n most recently written rounds.
+
+        Called at Cloud Run startup so the first user request serves from memory.
+        Failures are logged but non-fatal — the regular get() path still works.
+        """
+        try:
+            from google.cloud.firestore_v1 import base_query  # noqa: PLC0415
+
+            snaps = list(
+                self._db.collection(self._COLLECTION)
+                .order_by("createdAt", direction=base_query.Query.DESCENDING)
+                .limit(n_rounds)
+                .stream()
+            )
+            for snap in snaps:
+                data = snap.to_dict() or {}
+                season = int(data.get("season", 0))
+                round_ = int(data.get("round", 0))
+                if season and round_:
+                    preds = [PredictionOut(**p) for p in data.get("predictions", [])]
+                    self._cache[(season, round_)] = (time.monotonic(), preds)
+            if snaps:
+                pairs = [
+                    (
+                        int((d.to_dict() or {}).get("season", 0)),
+                        int((d.to_dict() or {}).get("round", 0)),
+                    )
+                    for d in snaps
+                ]
+                logger.info("prefetch_recent warmed rounds=%s", pairs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("prefetch_recent failed (non-fatal): %s", exc)
 
     def put(self, season: int, round_: int, predictions: list[PredictionOut]) -> None:
         self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).set(

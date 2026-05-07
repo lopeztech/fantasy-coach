@@ -38,7 +38,13 @@ def _make_client(call_count_ref: list[int] | None = None) -> GeminiClient:
     _calls = call_count_ref if call_count_ref is not None else []
 
     def fake_generate(
-        prompt: str, *, system: str = "", max_output_tokens: int = 512
+        prompt: str,
+        *,
+        system: str = "",
+        max_output_tokens: int = 512,
+        temperature: float | None = None,
+        candidate_count: int = 1,
+        timeout: float | None = None,
     ) -> GeminiResponse:
         _calls.append(1)
         return FAKE_RESPONSE

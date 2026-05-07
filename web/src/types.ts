@@ -61,6 +61,11 @@ export type Prediction = {
   // don't carry these; the SPA falls back gracefully).
   venue?: string | null;
   venueCity?: string | null;
+  // Confidence tier (#257) — computed server-side from Bayesian spread + OOD score.
+  // Absent on older cached predictions; the UI omits the badge when null.
+  confidenceBand?: "low" | "medium" | "high" | null;
+  // OOD detection (#146). "in_distribution" | "edge" | "out_of_distribution"
+  oodFlag?: string | null;
 };
 
 export type RoundAccuracy = {

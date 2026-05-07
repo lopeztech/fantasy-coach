@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 
+import { ConfidenceBadge } from "./ConfidenceBadge";
 import { TeamFormSparkline } from "./TeamFormSparkline";
 import { TipEntry } from "./TipEntry";
 import type { TipChoice } from "../tips";
@@ -155,6 +156,10 @@ export function MatchCard({
         <p className="pick">
           Pick: <strong>{winnerName}</strong> ({winnerPct}%)
         </p>
+
+        {p.confidenceBand && (
+          <ConfidenceBadge band={p.confidenceBand} oodFlag={p.oodFlag} />
+        )}
 
         {(() => {
           const status = consensusStatus(p.predictedWinner, p.alternatives);

@@ -73,7 +73,7 @@ jobs:
             --max-instances 2 \
             --cpu 1 \
             --memory 512Mi \
-            --concurrency 80 \
+            --concurrency 200 \
             --timeout 120 \
             --cpu-throttling \
             --port 8080 \
