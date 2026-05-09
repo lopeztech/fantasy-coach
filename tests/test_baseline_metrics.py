@@ -106,14 +106,21 @@ SEASONS = (2023, 2024, 2025, 2026)
 #     early-2023 predictions toward 0.55; the rest tightens with more data.
 #   - Stacked +1.0pp accuracy / brier −0.0039. Inherits the XGBoost-component
 #     drag and the Elo-component lift; net positive.
+# Updated when `elo_mov_home_win_prob` was added to FEATURE_NAMES — XGBoost
+# loses 0.7pp on the all-seasons pool but GAINS 5.3pp on the 2026 R1-R7
+# slice (the recent season the user actually cares about). Skellam improves
+# universally (+1.15pp accuracy, log_loss/brier better). The new feature is
+# the calibrated EloMOV home-win probability with a +1 monotone constraint;
+# tree models needed direct sigmoid access rather than reconstructing it
+# from `elo_diff`.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5694, "log_loss": 0.8906, "brier": 0.2831},
-    "xgboost": {"n": 692, "accuracy": 0.6012, "log_loss": 0.6918, "brier": 0.2467},
-    "skellam": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6761, "brier": 0.2409},
-    "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6745, "brier": 0.2404},
+    "logistic": {"n": 692, "accuracy": 0.5708, "log_loss": 0.8931, "brier": 0.2838},
+    "xgboost": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6940, "brier": 0.2475},
+    "skellam": {"n": 692, "accuracy": 0.5997, "log_loss": 0.6740, "brier": 0.2398},
+    "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6759, "brier": 0.2411},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

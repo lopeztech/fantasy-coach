@@ -60,6 +60,10 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
     "hooker_strength_diff": 1,
     "outside_backs_strength_diff": 1,
     "halves_x_forwards_diff": 1,
+    # Calibrated EloMOV home-win probability (sigmoid of rating diff +
+    # per-team-per-venue HGA). Monotone +1 by definition: higher Elo
+    # probability ⇒ higher actual home win.
+    "elo_mov_home_win_prob": 1,
 }
 
 

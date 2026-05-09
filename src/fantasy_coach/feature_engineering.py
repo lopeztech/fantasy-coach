@@ -203,6 +203,17 @@ FEATURE_NAMES = (
     # error independent of the underlying weather signal).
     "rain_intensity",
     "weather_source",
+    # EloMOV's calibrated home-win probability for this fixture
+    # (sigmoid of (rating_home + HGA - rating_away) / scale, with the
+    # per-team-per-venue HGA adjustment from #145). The raw rating
+    # difference is already in `elo_diff`, but tree-based models split
+    # piecewise on it and approximate the sigmoid badly on small data.
+    # Surfacing the calibrated probability directly gives XGBoost a
+    # strong, monotone signal it can leverage with one split rather
+    # than reconstruct from rating arithmetic. EloMOV beats XGBoost on
+    # accuracy across every season slice in the eval — this gives the
+    # discriminative model direct access to that signal.
+    "elo_mov_home_win_prob",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -370,6 +381,7 @@ class FeatureBuilder:
     ) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
         elo_diff = self.elo.rating(h_id) + self.elo.home_advantage - self.elo.rating(a_id)
+        elo_mov_p_home = self.elo.predict(h_id, a_id, venue=match.venue)
         form_pf_h = _avg(self._points_for[h_id])
         form_pf_a = _avg(self._points_for[a_id])
         form_pa_h = _avg(self._points_against[h_id])
@@ -511,6 +523,7 @@ class FeatureBuilder:
             halves_x_fwds,
             rain_intensity,
             weather_source,
+            elo_mov_p_home,
         ]
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
