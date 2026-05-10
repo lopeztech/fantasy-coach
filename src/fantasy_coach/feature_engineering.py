@@ -214,6 +214,25 @@ FEATURE_NAMES = (
     # accuracy across every season slice in the eval — this gives the
     # discriminative model direct access to that signal.
     "elo_mov_home_win_prob",
+    # Ladder-position / finals-race features (#255). Emitted from the running
+    # competition ladder maintained in FeatureBuilder. All values default to
+    # 0.0 with missing_ladder=1.0 for rounds < LADDER_MIN_ROUND (positions
+    # aren't stable until ≥5 rounds have been played).
+    #
+    # ladder_position_diff: current ladder rank (1–17), home minus away.
+    #   Negative means home is ranked higher (better).
+    # points_to_top8_diff: (top8_pts − team_pts), signed, home minus away.
+    #   Negative = home is comfortably inside top 8 relative to away.
+    # must_win_intensity: max(0, 1 − (remaining − pts_to_top8 / 2)) for
+    #   the more desperate team; reaches 1.0 when elimination is imminent.
+    # dead_rubber_indicator: 1.0 when neither team can change their top-8
+    #   status regardless of remaining match results.
+    # missing_ladder: 1.0 for rounds < LADDER_MIN_ROUND or no ladder data.
+    "ladder_position_diff",
+    "points_to_top8_diff",
+    "must_win_intensity",
+    "dead_rubber_indicator",
+    "missing_ladder",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -271,6 +290,25 @@ DEFAULT_DAYS_REST = 14
 REF_WINDOW = 20  # rolling window for referee stats
 REF_SHRINKAGE_N = 10  # shrink toward league mean for fewer than N prior matches
 _TEAM_STATS_WINDOW = 5
+
+# Ladder-position feature constants (#255).
+LADDER_MIN_ROUND = 5  # emit missing_ladder=1.0 for rounds below this threshold
+NRL_SEASON_ROUNDS = 27  # regular-season rounds in the NRL calendar
+
+
+@dataclass
+class _TeamLadder:
+    """Per-team running ladder entry maintained by FeatureBuilder."""
+
+    team_id: int
+    pts: int = 0  # competition points (2 win, 1 draw, 0 loss)
+    pts_for: int = 0  # total match points scored
+    pts_against: int = 0
+    played: int = 0
+
+    @property
+    def pts_diff(self) -> int:
+        return self.pts_for - self.pts_against
 
 
 @dataclass(frozen=True)
@@ -375,6 +413,8 @@ class FeatureBuilder:
         # How many times each (team_id, venue_key, season) combination has appeared.
         # Used to determine whether a venue is a home ground for neutral-venue detection.
         self._team_venue_season_counts: dict[tuple[int, str, int], int] = defaultdict(int)
+        # Running competition ladder (#255). Keyed by team_id; reset each season.
+        self._ladder: dict[int, _TeamLadder] = {}
 
     def feature_row(
         self, match: MatchRow, *, weather_forecast: WeatherForecast | None = None
@@ -470,6 +510,10 @@ class FeatureBuilder:
         # Interaction: fires only when both groups push in the same direction.
         halves_x_fwds = fwds_diff if halves_diff * fwds_diff > 0 else 0.0
 
+        lad_pos_diff, pts8_diff, must_win_int, dead_rub, miss_lad = self._ladder_features(
+            match.round, h_id, a_id
+        )
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -524,7 +568,78 @@ class FeatureBuilder:
             rain_intensity,
             weather_source,
             elo_mov_p_home,
+            lad_pos_diff,
+            pts8_diff,
+            must_win_int,
+            dead_rub,
+            miss_lad,
         ]
+
+    def _ladder_features(
+        self, round_: int, h_id: int, a_id: int
+    ) -> tuple[float, float, float, float, float]:
+        """Return (ladder_position_diff, points_to_top8_diff, must_win_intensity,
+        dead_rubber_indicator, missing_ladder) from the running competition table.
+
+        All values are 0.0 / missing_ladder=1.0 when the round is below
+        LADDER_MIN_ROUND or either team hasn't appeared on the ladder yet.
+        """
+        if round_ < LADDER_MIN_ROUND or h_id not in self._ladder or a_id not in self._ladder:
+            return 0.0, 0.0, 0.0, 0.0, 1.0
+
+        entries = sorted(self._ladder.values(), key=lambda e: (-e.pts, -e.pts_diff))
+        if len(entries) < 2:
+            return 0.0, 0.0, 0.0, 0.0, 1.0
+
+        pos_map = {e.team_id: i + 1 for i, e in enumerate(entries)}
+        pts_map = {e.team_id: e.pts for e in entries}
+        played_map = {e.team_id: e.played for e in entries}
+
+        h_pos = pos_map.get(h_id, len(entries))
+        a_pos = pos_map.get(a_id, len(entries))
+
+        top8_pts = entries[7].pts if len(entries) >= 8 else entries[-1].pts
+
+        h_pts_to_8 = top8_pts - pts_map.get(h_id, 0)
+        a_pts_to_8 = top8_pts - pts_map.get(a_id, 0)
+
+        h_remaining = max(0, NRL_SEASON_ROUNDS - played_map.get(h_id, 0))
+        a_remaining = max(0, NRL_SEASON_ROUNDS - played_map.get(a_id, 0))
+
+        def _must_win_score(pts_to_8: float, remaining: int) -> float:
+            if pts_to_8 <= 0 or remaining == 0:
+                return 0.0
+            return max(0.0, min(1.0, 1.0 - (remaining - pts_to_8 / 2.0)))
+
+        must_win_intensity = max(
+            _must_win_score(h_pts_to_8, h_remaining),
+            _must_win_score(a_pts_to_8, a_remaining),
+        )
+
+        def _top8_locked(team_pts: int, pos: int, remaining: int) -> bool:
+            """True when this team's top-8 status cannot change."""
+            if remaining == 0:
+                return True
+            if pos > 8:
+                return team_pts + 2 * remaining < top8_pts
+            else:
+                if len(entries) < 9:
+                    return True
+                ninth = entries[8]
+                ninth_remaining = max(0, NRL_SEASON_ROUNDS - ninth.played)
+                return ninth.pts + 2 * ninth_remaining < team_pts
+
+        h_dead = _top8_locked(pts_map.get(h_id, 0), h_pos, h_remaining)
+        a_dead = _top8_locked(pts_map.get(a_id, 0), a_pos, a_remaining)
+        dead_rubber = 1.0 if (h_dead and a_dead) else 0.0
+
+        return (
+            float(h_pos - a_pos),
+            float(h_pts_to_8 - a_pts_to_8),
+            must_win_intensity,
+            dead_rubber,
+            0.0,
+        )
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
         """Rolling win-over-expected for (home team, venue); regressed toward 0."""
@@ -716,6 +831,7 @@ class FeatureBuilder:
         if match.season != self._current_season:
             self.elo.regress_to_mean()
             self.player_ratings.regress_to_mean()
+            self._ladder = {}  # fresh ladder each season (#255)
             self._current_season = match.season
 
     def record(self, match: MatchRow) -> None:
@@ -806,6 +922,24 @@ class FeatureBuilder:
             ar = _extract_stat(match.team_stats, "All Runs", side)
             if ar is not None:
                 self._team_all_runs[team_id].append(ar)
+        # Update running ladder (#255). Must happen after scores are confirmed.
+        for team_id, scored, conceded in (
+            (h_id, h_score, a_score),
+            (a_id, a_score, h_score),
+        ):
+            if team_id not in self._ladder:
+                self._ladder[team_id] = _TeamLadder(team_id=team_id)
+            e = self._ladder[team_id]
+            e.pts_for += scored
+            e.pts_against += conceded
+            e.played += 1
+        if h_score > a_score:
+            self._ladder[h_id].pts += 2
+        elif a_score > h_score:
+            self._ladder[a_id].pts += 2
+        else:  # draw
+            self._ladder[h_id].pts += 1
+            self._ladder[a_id].pts += 1
 
 
 def build_training_frame(
