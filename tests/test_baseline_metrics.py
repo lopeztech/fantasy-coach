@@ -113,14 +113,26 @@ SEASONS = (2023, 2024, 2025, 2026)
 # the calibrated EloMOV home-win probability with a +1 monotone constraint;
 # tree models needed direct sigmoid access rather than reconstructing it
 # from `elo_diff`.
+#
+# #255 adds 5 ladder-position / finals-race features (ladder_position_diff,
+# points_to_top8_diff, must_win_intensity, dead_rubber_indicator,
+# missing_ladder). home / elo / elo_mov are unchanged (don't read FEATURE_NAMES).
+# Effect on the pooled walk-forward window:
+#   - logistic: −1.44pp accuracy (0.5708 → 0.5564), log_loss / brier worsen.
+#     Linear model picks up noise from the new ladder columns at low rounds;
+#     features are kept because they're targeted at tree models.
+#   - xgboost: −0.57pp accuracy (0.5939 → 0.5882), log_loss/brier ~flat
+#     (within the 3.5e-2 cross-platform tolerance).
+#   - skellam: +0.58pp accuracy (0.5997 → 0.6055), log_loss / brier improve.
+#   - stacked: +0.14pp accuracy, log_loss / brier improve marginally.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5708, "log_loss": 0.8931, "brier": 0.2838},
-    "xgboost": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6940, "brier": 0.2475},
-    "skellam": {"n": 692, "accuracy": 0.5997, "log_loss": 0.6740, "brier": 0.2398},
-    "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6759, "brier": 0.2411},
+    "logistic": {"n": 692, "accuracy": 0.5564, "log_loss": 0.9086, "brier": 0.2871},
+    "xgboost": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6951, "brier": 0.2485},
+    "skellam": {"n": 692, "accuracy": 0.6055, "log_loss": 0.6713, "brier": 0.2384},
+    "stacked": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6752, "brier": 0.2404},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
