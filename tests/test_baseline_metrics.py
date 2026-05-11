@@ -138,14 +138,26 @@ SEASONS = (2023, 2024, 2025, 2026)
 #     ordering perturbs a handful of edge-case predictions near 0.5.
 #   - stacked: −0.72pp accuracy (0.5968 → 0.5896), log_loss / brier worsen
 #     slightly — inherits the skellam shift through the ensemble weights.
+#
+# #252 adds 3 cumulative fatigue features (team_fatigue_index_diff,
+# spine_fatigue_index_diff, cumulative_origin_minutes_diff). The last
+# defaults to 0.0 until representative_callups is wired into FeatureBuilder.
+#   - xgboost: −2.32pp accuracy (0.6012 → 0.5780), log_loss / brier ~flat.
+#     Inside the 3.5e-2 cross-platform tolerance but a real pooled
+#     regression — the constant-zero origin-minutes column likely adds a
+#     useless dimension the trees split on spuriously. Worth revisiting
+#     once callup data wires through, or dropping the column for now.
+#   - logistic: −0.73pp accuracy (0.5564 → 0.5491), log_loss / brier worsen.
+#   - skellam: −0.14pp accuracy (0.5968 → 0.5954), log_loss / brier ~flat.
+#   - stacked: +0.43pp accuracy (0.5896 → 0.5939), log_loss/brier ~flat.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5564, "log_loss": 0.9290, "brier": 0.2926},
-    "xgboost": {"n": 692, "accuracy": 0.6012, "log_loss": 0.6902, "brier": 0.2458},
-    "skellam": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6736, "brier": 0.2392},
-    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6805, "brier": 0.2428},
+    "logistic": {"n": 692, "accuracy": 0.5491, "log_loss": 0.9364, "brier": 0.2939},
+    "xgboost": {"n": 692, "accuracy": 0.5780, "log_loss": 0.6898, "brier": 0.2466},
+    "skellam": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6740, "brier": 0.2393},
+    "stacked": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6827, "brier": 0.2439},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

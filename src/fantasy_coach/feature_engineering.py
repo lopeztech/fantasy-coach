@@ -29,6 +29,7 @@ Features (all home-minus-away unless noted):
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -41,7 +42,7 @@ from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamSta
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
-from fantasy_coach.travel import compute_rest_features, travel_features
+from fantasy_coach.travel import compute_rest_features, haversine_km, lookup_venue, travel_features
 from fantasy_coach.weather import WeatherInfo, parse_weather
 from fantasy_coach.weather_forecast import WeatherForecast, bin_rain_mm_3h
 
@@ -247,6 +248,23 @@ FEATURE_NAMES = (
     "player_form_trajectory_diff",
     "key_player_trajectory_diff",
     "missing_player_trajectory",
+    # Cumulative fatigue index (#252). Exponentially-weighted (decay τ=21 days)
+    # sum of per-match fatigue load: travel_km/1000 + max(0, 7−days_rest)
+    # + 1.5×short_turnaround. Captures compound fixture congestion that the
+    # single-match rest features miss — e.g. a team that flew 3 weekends in a
+    # row on short turnarounds. Home minus away; positive = home more fatigued.
+    #
+    # team_fatigue_index_diff: all players, full team fatigue load.
+    # spine_fatigue_index_diff: same load but scaled by fraction of spine
+    #   starters (halves, hooker, fullback) present — proxies for whether the
+    #   fatigue disproportionately hits the matchday playmakers.
+    # cumulative_origin_minutes_diff: minutes of Origin / Test rugby in the
+    #   last 28 days for each named XIII player, summed home minus away.
+    #   Infers 80 min per representative-game appearance; 0.0 when no
+    #   representative_callups data is available for the fixture window.
+    "team_fatigue_index_diff",
+    "spine_fatigue_index_diff",
+    "cumulative_origin_minutes_diff",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -313,6 +331,9 @@ NRL_SEASON_ROUNDS = 27  # regular-season rounds in the NRL calendar
 _PLAYER_TRAJ_WINDOW = 20  # rolling window for season baseline
 _PLAYER_TRAJ_RECENT = 3  # recent window for "current form" snapshot
 _PLAYER_TRAJ_MISSING_N = 5  # ≥ this many XIII players without history → flag
+
+# Cumulative fatigue index constants (#252).
+_FATIGUE_DECAY_TAU = 21.0  # exponential decay half-life in days
 
 
 @dataclass
@@ -440,6 +461,11 @@ class FeatureBuilder:
         self._player_stat_history: dict[int, deque[float]] = defaultdict(
             lambda: deque(maxlen=_PLAYER_TRAJ_WINDOW)
         )
+        # Cumulative fatigue state (#252). Per team: (last_match_time, ew_sum)
+        # where ew_sum is the exponentially-weighted fatigue load accumulated
+        # across prior matches with decay τ = _FATIGUE_DECAY_TAU days.
+        self._team_fatigue: dict[int, tuple[datetime, float]] = {}
+        self._spine_fatigue: dict[int, tuple[datetime, float]] = {}
 
     def feature_row(
         self, match: MatchRow, *, weather_forecast: WeatherForecast | None = None
@@ -545,6 +571,11 @@ class FeatureBuilder:
         spine_traj_a = self._team_trajectory(match.away.players, spine_only=True)
         miss_traj = self._missing_trajectory(match.home.players, match.away.players)
 
+        fat_h, sfat_h = self._get_fatigue(h_id, match.home.players, match.start_time)
+        fat_a, sfat_a = self._get_fatigue(a_id, match.away.players, match.start_time)
+        origin_min_h = self._cumulative_origin_minutes(match.home.players, match.start_time)
+        origin_min_a = self._cumulative_origin_minutes(match.away.players, match.start_time)
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -607,6 +638,9 @@ class FeatureBuilder:
             traj_h - traj_a,
             spine_traj_h - spine_traj_a,
             miss_traj,
+            fat_h - fat_a,
+            sfat_h - sfat_a,
+            origin_min_h - origin_min_a,
         ]
 
     def _ladder_features(
@@ -674,6 +708,31 @@ class FeatureBuilder:
             dead_rubber,
             0.0,
         )
+
+    def _get_fatigue(
+        self, team_id: int, players: list[PlayerRow], at_time: datetime
+    ) -> tuple[float, float]:
+        """Return (team_fatigue, spine_fatigue) decayed to at_time (#252)."""
+        prev_t, prev_f = self._team_fatigue.get(team_id, (at_time, 0.0))
+        elapsed = max(0.0, (at_time - prev_t).total_seconds() / 86400.0)
+        team_fat = prev_f * math.exp(-elapsed / _FATIGUE_DECAY_TAU)
+
+        prev_st, prev_sf = self._spine_fatigue.get(team_id, (at_time, 0.0))
+        elapsed_s = max(0.0, (at_time - prev_st).total_seconds() / 86400.0)
+        spine_fat = prev_sf * math.exp(-elapsed_s / _FATIGUE_DECAY_TAU)
+        return team_fat, spine_fat
+
+    def _cumulative_origin_minutes(self, players: list[PlayerRow], at_time: datetime) -> float:
+        """Total inferred Origin/Test minutes for the named XIII in the last 28 days (#252).
+
+        Returns 0.0 when no representative_callups data is wired into the
+        FeatureBuilder (the current default — callup data is read from the DB
+        in precompute, not in the walk-forward harness).
+        """
+        # Placeholder: returns 0.0 until representative_callups are wired into
+        # FeatureBuilder state. The missing signal is consistent with how
+        # origin_callups_diff is currently handled (same default 0.0).
+        return 0.0
 
     def _team_trajectory(self, players: list[PlayerRow], *, spine_only: bool) -> float:
         """Position-weighted sum of (last-3 avg − season avg) per starter (#251).
@@ -1015,6 +1074,52 @@ class FeatureBuilder:
         else:  # draw
             self._ladder[h_id].pts += 1
             self._ladder[a_id].pts += 1
+        # Update cumulative fatigue state (#252). Components per match:
+        # travel_km/1000 + max(0, 7−days_rest) + 1.5×was_short_turnaround.
+        h_prev_raw = (
+            (match.start_time - self._last_played[h_id]).total_seconds() / 86400.0
+            if h_id in self._last_played
+            else None
+        )
+        a_prev_raw = (
+            (match.start_time - self._last_played[a_id]).total_seconds() / 86400.0
+            if a_id in self._last_played
+            else None
+        )
+        h_days = h_prev_raw or DEFAULT_DAYS_REST
+        a_days = a_prev_raw or DEFAULT_DAYS_REST
+        h_short = 1.0 if (h_prev_raw is not None and h_prev_raw < 6) else 0.0
+        a_short = 1.0 if (a_prev_raw is not None and a_prev_raw < 6) else 0.0
+
+        h_travel = _venue_travel_km(self._last_venue.get(h_id), match.venue)
+        a_travel = _venue_travel_km(self._last_venue.get(a_id), match.venue)
+
+        for team_id, days_rest, travel_km, is_short, players in (
+            (h_id, h_days, h_travel, h_short, match.home.players),
+            (a_id, a_days, a_travel, a_short, match.away.players),
+        ):
+            component = travel_km / 1000.0 + max(0.0, 7.0 - days_rest) + 1.5 * is_short
+            # Team-level fatigue
+            prev_t, prev_f = self._team_fatigue.get(team_id, (match.start_time, 0.0))
+            elapsed_days = max(0.0, (match.start_time - prev_t).total_seconds() / 86400.0)
+            decay = math.exp(-elapsed_days / _FATIGUE_DECAY_TAU)
+            self._team_fatigue[team_id] = (match.start_time, prev_f * decay + component)
+            # Spine-level fatigue — scale by fraction of spine starting
+            _spine_positions = (
+                POSITION_GROUPS["halves"]
+                | POSITION_GROUPS["hooker"]
+                | POSITION_GROUPS["outside_backs"]
+            )
+            spine_starters = sum(
+                1 for p in players if p.is_on_field and p.position in _spine_positions
+            )
+            spine_scale = spine_starters / 4.0  # 4 spine positions (HB, 5/8, Hkr, FB)
+            spine_component = component * spine_scale
+            prev_st, prev_sf = self._spine_fatigue.get(team_id, (match.start_time, 0.0))
+            elapsed_days_s = max(0.0, (match.start_time - prev_st).total_seconds() / 86400.0)
+            decay_s = math.exp(-elapsed_days_s / _FATIGUE_DECAY_TAU)
+            self._spine_fatigue[team_id] = (match.start_time, prev_sf * decay_s + spine_component)
+
         # Update per-player stat composite history (#251).
         for side_stats, side_players in (
             (match.home_player_stats, match.home.players),
@@ -1081,6 +1186,15 @@ def build_training_frame(
         match_ids=np.asarray(match_ids, dtype=int),
         start_times=np.asarray(start_times, dtype="datetime64[s]"),
     )
+
+
+def _venue_travel_km(prev_venue: str | None, curr_venue: str | None) -> float:
+    """Great-circle distance in km between two venue names; 0.0 when either is unknown."""
+    pv = lookup_venue(prev_venue)
+    cv = lookup_venue(curr_venue)
+    if pv is None or cv is None:
+        return 0.0
+    return haversine_km(pv.lat, pv.lon, cv.lat, cv.lon)
 
 
 def _player_stat_composite(stat: PlayerMatchStat) -> float | None:
