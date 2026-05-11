@@ -125,14 +125,27 @@ SEASONS = (2023, 2024, 2025, 2026)
 #     (within the 3.5e-2 cross-platform tolerance).
 #   - skellam: +0.58pp accuracy (0.5997 → 0.6055), log_loss / brier improve.
 #   - stacked: +0.14pp accuracy, log_loss / brier improve marginally.
+#
+# #251 adds 3 per-player rolling-form trajectory features
+# (player_form_trajectory_diff, key_player_trajectory_diff,
+# missing_player_trajectory). home / elo / elo_mov unchanged.
+#   - xgboost: +1.30pp accuracy (0.5882 → 0.6012), log_loss / brier improve —
+#     this is the cleanest tree-model gain in the last few PRs.
+#   - logistic: accuracy flat (0.5564), log_loss / brier worsen modestly
+#     (linear pipeline keeps absorbing tree-model-shaped features).
+#   - skellam: −0.87pp accuracy (0.6055 → 0.5968), log_loss / brier ~flat —
+#     skellam doesn't read FEATURE_NAMES but the new `record()` state
+#     ordering perturbs a handful of edge-case predictions near 0.5.
+#   - stacked: −0.72pp accuracy (0.5968 → 0.5896), log_loss / brier worsen
+#     slightly — inherits the skellam shift through the ensemble weights.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5564, "log_loss": 0.9086, "brier": 0.2871},
-    "xgboost": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6951, "brier": 0.2485},
-    "skellam": {"n": 692, "accuracy": 0.6055, "log_loss": 0.6713, "brier": 0.2384},
-    "stacked": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6752, "brier": 0.2404},
+    "logistic": {"n": 692, "accuracy": 0.5564, "log_loss": 0.9290, "brier": 0.2926},
+    "xgboost": {"n": 692, "accuracy": 0.6012, "log_loss": 0.6902, "brier": 0.2458},
+    "skellam": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6736, "brier": 0.2392},
+    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6805, "brier": 0.2428},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
