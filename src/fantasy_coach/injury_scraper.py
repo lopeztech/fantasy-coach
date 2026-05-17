@@ -420,3 +420,78 @@ def scrape_injury_list(
         scraped_at=scraped_at,
         player_index=player_index,
     )
+
+
+# ---------------------------------------------------------------------------
+# Live URL auto-discovery (#268)
+# ---------------------------------------------------------------------------
+
+# NRL.com's weekly injury+changes article is published at
+#     /news/YYYY/MM/DD/nrl-late-mail-round-N-<slug>/
+# (the #268 issue called these "injury-list" articles but that slug has
+# never actually existed on NRL.com — verified across 2024/2025 via CDX).
+NEWS_INDEX_URL = "https://www.nrl.com/news/?tag=late-mail"
+
+_LATE_MAIL_HREF_RE = re.compile(
+    r"/news/(?P<season>20\d{2})/\d{1,2}/\d{1,2}/"
+    r"[^\"'<>\s]*late-mail[^\"'<>\s]*round[-_](?P<round>\d{1,2})[^\"'<>\s]*",
+    re.IGNORECASE,
+)
+
+
+def discover_injury_list_url(
+    season: int,
+    round_: int,
+    *,
+    client: Any | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> str | None:
+    """Crawl the NRL.com news index and find the late-mail article for ``(season, round_)``.
+
+    The index is a Next.js app — article URLs are embedded both in the
+    ``__NEXT_DATA__`` JSON payload and as plain ``<a href="...">`` anchors.
+    We scan the raw HTML for any URL matching the canonical
+    ``/news/YYYY/.../nrl-late-mail-round-N-...`` shape, then return the
+    one whose parsed ``(season, round)`` matches the request.
+
+    Returns ``None`` when no match is found. Callers should fall back
+    to the ``--url`` flag in that case.
+    """
+    own_client = client is None
+    if client is None:
+        client = httpx.Client(
+            timeout=timeout,
+            headers={"User-Agent": USER_AGENT},
+            follow_redirects=True,
+        )
+    try:
+        resp = client.get(NEWS_INDEX_URL)
+        resp.raise_for_status()
+        html = resp.text
+    finally:
+        if own_client:
+            client.close()
+
+    candidates: list[str] = []
+    for match in _LATE_MAIL_HREF_RE.finditer(html):
+        url_season = int(match.group("season"))
+        url_round = int(match.group("round"))
+        if url_season != season or url_round != round_:
+            continue
+        path = match.group(0)
+        absolute = f"https://www.nrl.com{path}"
+        if absolute not in candidates:
+            candidates.append(absolute)
+
+    if not candidates:
+        logger.info(
+            "injury_scraper: discover_injury_list_url found no late-mail article "
+            "for season=%d round=%d",
+            season,
+            round_,
+        )
+        return None
+    # Multiple articles for the same round are rare (publishing fix-ups);
+    # prefer the longest URL which usually carries the most-specific slug
+    # variant (the corrected one).
+    return max(candidates, key=len)

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+import httpx
+
 from fantasy_coach.features import PlayerRow, TeamRow
 from fantasy_coach.injury import InjuryStatus
 from fantasy_coach.injury_scraper import (
@@ -14,6 +16,7 @@ from fantasy_coach.injury_scraper import (
     _materialise_reports,
     _parse_gemini_json,
     build_player_index,
+    discover_injury_list_url,
     scrape_injury_list,
     strip_html_to_text,
 )
@@ -410,3 +413,93 @@ def test_scrape_injury_list_tolerates_gemini_garbage() -> None:
         player_index=idx,
     )
     assert reports == []
+
+
+# ---------------------------------------------------------------------------
+# discover_injury_list_url (#268)
+#
+# The articles we want are NRL's weekly "nrl-late-mail-round-N" posts —
+# NRL.com has never used "injury-list" as a URL slug.
+# ---------------------------------------------------------------------------
+
+
+def _index_html_with(*paths: str) -> str:
+    """Build a fake news-index HTML page containing the given hrefs."""
+    anchors = "\n".join(f'<a class="card" href="{p}">Story</a>' for p in paths)
+    return f"<html><body>{anchors}</body></html>"
+
+
+def test_discover_returns_url_for_matching_round() -> None:
+    paths = [
+        "/news/2026/03/04/nrl-late-mail-round-2-team-changes/",
+        "/news/2026/03/11/nrl-late-mail-round-3-injuries/",
+        "/news/2026/03/18/nrl-late-mail-round-4/",
+    ]
+    html = _index_html_with(*paths)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    url = discover_injury_list_url(2026, 3, client=client)
+    assert url == "https://www.nrl.com/news/2026/03/11/nrl-late-mail-round-3-injuries/"
+
+
+def test_discover_returns_none_when_round_missing() -> None:
+    html = _index_html_with(
+        "/news/2026/03/04/nrl-late-mail-round-2/",
+        "/news/2026/03/18/nrl-late-mail-round-4/",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert discover_injury_list_url(2026, 3, client=client) is None
+
+
+def test_discover_prefers_longest_url_for_corrected_articles() -> None:
+    """When NRL.com publishes a corrected article, the original article
+    sometimes stays in the index with a shorter slug. Prefer the longer
+    (more-specific) URL."""
+    html = _index_html_with(
+        "/news/2026/03/11/nrl-late-mail-round-3/",
+        "/news/2026/03/11/nrl-late-mail-round-3-update-with-injuries/",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    url = discover_injury_list_url(2026, 3, client=client)
+    assert url == "https://www.nrl.com/news/2026/03/11/nrl-late-mail-round-3-update-with-injuries/"
+
+
+def test_discover_ignores_non_matching_season() -> None:
+    html = _index_html_with(
+        "/news/2025/03/11/nrl-late-mail-round-3/",
+        "/news/2026/03/11/nrl-late-mail-round-3/",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    url = discover_injury_list_url(2026, 3, client=client)
+    assert url == "https://www.nrl.com/news/2026/03/11/nrl-late-mail-round-3/"
+
+
+def test_discover_ignores_team_list_articles_for_same_round() -> None:
+    """Team-list articles share the round-N suffix but aren't late-mail —
+    they shouldn't match the discovery regex."""
+    html = _index_html_with(
+        "/news/2026/03/11/nrl-team-lists-round-3/",
+        "/news/2026/03/11/nrl-late-mail-round-3/",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    url = discover_injury_list_url(2026, 3, client=client)
+    assert url == "https://www.nrl.com/news/2026/03/11/nrl-late-mail-round-3/"
