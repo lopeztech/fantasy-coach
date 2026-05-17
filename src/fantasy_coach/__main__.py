@@ -432,12 +432,19 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Fetch + parse an NRL.com injury-list article into structured "
             "InjuryReport rows (#208). Uses Gemini (commentary client) to "
-            "extract names + statuses from the prose. The CLI takes a single "
-            "URL per run; auto-discovery + Wayback historical backfill are "
-            "follow-up issues."
+            "extract names + statuses from the prose. When --url is omitted "
+            "the URL is auto-discovered from nrl.com/news/?topic=injury-list "
+            "via discover_injury_list_url (#268)."
         ),
     )
-    si.add_argument("--url", required=True, help="NRL.com injury-list article URL.")
+    si.add_argument(
+        "--url",
+        default=None,
+        help=(
+            "NRL.com injury-list article URL. Omit to auto-discover from the "
+            "news index for the given season/round."
+        ),
+    )
     si.add_argument("--season", type=int, required=True)
     si.add_argument("--round", type=int, required=True)
     si.add_argument(
@@ -461,6 +468,50 @@ def main(argv: list[str] | None = None) -> int:
         help="Source label written to injury_reports.source.",
     )
     si.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
+    sib = sub.add_parser(
+        "scrape-injuries-backfill",
+        help=(
+            "Historical backfill of injury_reports via the Wayback Machine "
+            "(#268). Queries the CDX API for nrl.com injury-list articles "
+            "captured during the given seasons, dedupes to one snapshot per "
+            "(season, round), and feeds each through GeminiInjuryListParser. "
+            "Idempotent: storage upserts on (player_id, season, round, source)."
+        ),
+    )
+    sib.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        required=True,
+        help="Season to backfill. Repeatable, e.g. --season 2024 --season 2025.",
+    )
+    sib.add_argument(
+        "--match-season",
+        type=int,
+        action="append",
+        default=None,
+        help=(
+            "Season(s) to read for the player-name → player_id index. "
+            "Defaults to all --season args. Pass extra seasons if a player "
+            "moved clubs and the round's own season doesn't have them yet."
+        ),
+    )
+    sib.add_argument(
+        "--gemini-project",
+        default=None,
+        help="GCP project for the Gemini client. Defaults to FIREBASE_PROJECT_ID.",
+    )
+    sib.add_argument(
+        "--source-label",
+        default="wayback:nrl.com",
+        help="Source label written to injury_reports.source.",
+    )
+    sib.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -543,6 +594,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_watch_team_lists(args)
     if args.command == "scrape-injuries":
         return _run_scrape_injuries(args)
+    if args.command == "scrape-injuries-backfill":
+        return _run_scrape_injuries_backfill(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -1388,7 +1441,11 @@ def _run_notify_round_published(args: argparse.Namespace) -> int:
 
 
 def _run_scrape_injuries(args: argparse.Namespace) -> int:
-    """Scrape an NRL.com injury-list article into structured rows (#208 PR C)."""
+    """Scrape an NRL.com injury-list article into structured rows (#208 PR C).
+
+    When ``--url`` is omitted, discovers the URL from the live NRL.com news
+    index for the requested ``(season, round)`` (#268).
+    """
     import os  # noqa: PLC0415
 
     from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
@@ -1397,6 +1454,7 @@ def _run_scrape_injuries(args: argparse.Namespace) -> int:
         GeminiInjuryListParser,
         HttpInjuryListSource,
         build_player_index,
+        discover_injury_list_url,
         scrape_injury_list,
     )
     from fantasy_coach.storage.injury import (  # noqa: PLC0415
@@ -1410,6 +1468,18 @@ def _run_scrape_injuries(args: argparse.Namespace) -> int:
     if not project:
         print("scrape-injuries: --gemini-project or FIREBASE_PROJECT_ID is required.")
         return 1
+
+    url = args.url
+    if url is None:
+        url = discover_injury_list_url(args.season, args.round)
+        if url is None:
+            print(
+                f"scrape-injuries: no injury-list article found in the news index "
+                f"for season={args.season} round={args.round}. "
+                f"Pass --url explicitly."
+            )
+            return 1
+        print(f"scrape-injuries: auto-discovered URL {url}")
 
     repo = get_repository()
     backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
@@ -1437,7 +1507,7 @@ def _run_scrape_injuries(args: argparse.Namespace) -> int:
         source_label=args.source_label,
     )
     reports = scrape_injury_list(
-        url=args.url,
+        url=url,
         season=args.season,
         round=args.round,
         source=HttpInjuryListSource(),
@@ -1452,6 +1522,97 @@ def _run_scrape_injuries(args: argparse.Namespace) -> int:
         f"season={args.season} round={args.round} (source={args.source_label})."
     )
     return 0
+
+
+def _run_scrape_injuries_backfill(args: argparse.Namespace) -> int:
+    """Historical injury_reports backfill via the Wayback Machine (#268)."""
+    import os  # noqa: PLC0415
+
+    from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.injury_scraper import (  # noqa: PLC0415
+        GeminiInjuryListParser,
+        build_player_index,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreInjuryReportRepository,
+        SQLiteInjuryReportRepository,
+    )
+    from fantasy_coach.wayback import (  # noqa: PLC0415
+        WaybackInjuryListSource,
+        backfill_injuries,
+    )
+
+    project = (
+        args.gemini_project or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    )
+    if not project:
+        print("scrape-injuries-backfill: --gemini-project or FIREBASE_PROJECT_ID is required.")
+        return 1
+
+    seasons: list[int] = sorted(set(args.season))
+    match_seasons: list[int] = sorted(set(args.match_season or seasons))
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        injury_repo: Any = FirestoreInjuryReportRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("scrape-injuries-backfill: SQLite repo has no `_conn`; aborting.")
+            return 1
+        injury_repo = SQLiteInjuryReportRepository(conn)
+
+    matches: list[Any] = []
+    for s in match_seasons:
+        matches.extend(repo.list_matches(s))
+    if not matches:
+        print(
+            f"scrape-injuries-backfill: no matches in match-seasons {match_seasons}; "
+            "player-name index will be empty so every report will be skipped. "
+            "Backfill the relevant season(s) first."
+        )
+        return 1
+    player_index = build_player_index(matches)
+
+    parser = GeminiInjuryListParser(
+        client=GeminiClient(project=project),
+        source_label=args.source_label,
+    )
+    source = WaybackInjuryListSource()
+
+    results = backfill_injuries(
+        seasons=seasons,
+        source=source,
+        parser=parser,
+        player_index=player_index,
+        injury_repo=injury_repo,
+        source_label=args.source_label,
+    )
+
+    by_season: dict[int, list] = {}
+    for r in results:
+        by_season.setdefault(r.season, []).append(r)
+    for season in sorted(by_season):
+        season_rows = by_season[season]
+        n_articles = len(season_rows)
+        n_errors = sum(1 for r in season_rows if r.error)
+        n_reports = sum(r.reports_written for r in season_rows)
+        rounds = sorted({r.round for r in season_rows})
+        print(
+            f"season={season}: articles={n_articles} errors={n_errors} "
+            f"reports={n_reports} rounds={rounds}"
+        )
+    total_articles = len(results)
+    total_reports = sum(r.reports_written for r in results)
+    total_errors = sum(1 for r in results if r.error)
+    print(
+        f"scrape-injuries-backfill: parsed {total_articles} articles "
+        f"({total_errors} errors) producing {total_reports} reports "
+        f"(source={args.source_label})."
+    )
+    return 0 if total_errors == 0 else 1
 
 
 def _run_watch_team_lists(args: argparse.Namespace) -> int:
