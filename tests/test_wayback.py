@@ -72,6 +72,11 @@ def test_parse_season_round_extracts_pair(url: str, expected: tuple[int, int]) -
         "https://www.nrl.com/news/1999/01/01/nrl-late-mail-round-1/",
         # Article about an injured player but not the weekly late-mail.
         "https://www.nrl.com/news/2025/01/24/hess-with-positive-update-on-return-from-his-acl-injury/",
+        # NRLW (women's) weekly late-mail — different competition, different
+        # player IDs and team IDs. Real URLs from the 2024 Wayback CDX dump.
+        "https://www.nrl.com/news/2024/08/29/nrlw-late-mail-round-6-southwell-a-chance-to-return/",
+        "https://www.nrl.com/news/2024/09/05/nrlw-late-mail-round-7-young-guns-set-to-return-for-titans/",
+        "https://www.nrl.com/news/2024/09/18/nrlw-late-mail-round-9-brown-set-for-final-wing-fling/amp/",
     ],
 )
 def test_parse_season_round_returns_none_for_unmatched(url: str) -> None:

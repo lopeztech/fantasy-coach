@@ -432,9 +432,11 @@ def scrape_injury_list(
 # never actually existed on NRL.com — verified across 2024/2025 via CDX).
 NEWS_INDEX_URL = "https://www.nrl.com/news/?tag=late-mail"
 
+# Anchored to `nrl-` so the parallel NRLW (women's) `nrlw-late-mail-round-N`
+# articles don't match — NRLW has different player IDs and team IDs.
 _LATE_MAIL_HREF_RE = re.compile(
     r"/news/(?P<season>20\d{2})/\d{1,2}/\d{1,2}/"
-    r"[^\"'<>\s]*late-mail[^\"'<>\s]*round[-_](?P<round>\d{1,2})[^\"'<>\s]*",
+    r"[^\"'<>\s]*(?<![a-z])nrl-late-mail[^\"'<>\s]*round[-_](?P<round>\d{1,2})[^\"'<>\s]*",
     re.IGNORECASE,
 )
 

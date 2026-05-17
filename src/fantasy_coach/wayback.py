@@ -57,13 +57,16 @@ _CDX_TIMEOUT = 120.0
 
 # NRL.com weekly injury articles live at
 #     /news/YYYY/MM/DD/nrl-late-mail-round-N-<trailing-slug>/
-# The publish year IS the NRL season for in-season round-N articles, so
-# one regex captures both. We require "late-mail" specifically (not just
-# "round-N") because the site also publishes team-list, preview, and
-# review articles with the same round suffix that don't include injuries.
+#
+# Critically: nrl.com ALSO publishes a parallel NRLW (women's competition)
+# weekly article at /news/YYYY/MM/DD/nrlw-late-mail-round-N-.../. NRLW has
+# its own player IDs / team IDs / fixture list — those reports must NOT
+# go into injury_reports for the men's competition. We anchor the slug
+# to the `nrl-` prefix specifically (with a `(?<![a-z])` lookbehind so
+# `nrl-late-mail` matches but `nrlw-late-mail` does not).
 _LATE_MAIL_RE = re.compile(
     r"/news/(?P<season>20\d{2})/\d{1,2}/\d{1,2}/"
-    r"[^/]*late-mail[^/]*round[-_](?P<round>\d{1,2})",
+    r"[^/]*(?<![a-z])nrl-late-mail[^/]*round[-_](?P<round>\d{1,2})",
     re.IGNORECASE,
 )
 
