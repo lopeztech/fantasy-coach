@@ -10,6 +10,11 @@ from fantasy_coach.betting import odds_client
 from fantasy_coach.betting.odds_client import API_BASE_URL, SPORT_KEY, OddsApiClient
 
 
+def test_sport_key_matches_the_odds_api_slug() -> None:
+    """Regression: must be 'rugbyleague_nrl' — earlier 'rugby_league_nrl' 404'd."""
+    assert SPORT_KEY == "rugbyleague_nrl"
+
+
 @pytest.fixture(autouse=True)
 def fast_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     """Don't actually sleep between retries during tests."""

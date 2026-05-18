@@ -25,9 +25,20 @@ from fantasy_coach.betting.models import TotalsLine
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://api.the-odds-api.com/v4"
-SPORT_KEY = "rugby_league_nrl"
+# the-odds-api sport key. Confirmed against the public sports listing: the
+# slug is a single word "rugbyleague" — using "rugby_league_nrl" returns 404.
+SPORT_KEY = "rugbyleague_nrl"
 REGIONS = "au"
 MARKETS = "h2h,totals"
+
+# Raise httpx's INFO-level logger to WARNING. The default INFO log writes the
+# full request URL on every call, which includes the API key in this client's
+# query string ("?apiKey=...&regions=au..."). Without this, every odds-api
+# call leaks the secret into Cloud Logging. We can't move the key into a
+# header — the-odds-api only accepts the key via query string. WARNING is a
+# safe global setting (no other httpx caller in this codebase relies on the
+# INFO line for behaviour).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
