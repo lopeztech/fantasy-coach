@@ -161,11 +161,17 @@ class GeminiInjuryListParser:
 
     `client` is anything with a ``generate(prompt, *, system, max_output_tokens) -> obj.text``
     interface. The real ``GeminiClient`` from ``commentary/client.py`` fits.
+
+    `max_output_tokens` defaults to 16384 — most weekly late-mail articles
+    list 30+ players per round across all 17 clubs, and a 4096-token budget
+    truncates mid-JSON on roughly half of them (verified against the 2024
+    Wayback dump). Gemini 2.5 Flash supports up to 65536 output tokens; we
+    headroom-pad to 16384 so even the longest articles parse cleanly.
     """
 
     client: Any
     source_label: str = "nrl.com"
-    max_output_tokens: int = 4096
+    max_output_tokens: int = 16384
 
     def parse(
         self,

@@ -21,7 +21,7 @@ from fantasy_coach.commentary.client import GeminiClient, GeminiResponse
 # ---------------------------------------------------------------------------
 
 FAKE_RESPONSE = GeminiResponse(text="Panthers win by 10.", input_tokens=40, output_tokens=8)
-MODEL = "gemini-2.0-flash-001"
+MODEL = "gemini-2.5-flash-lite"
 PROJECT = "test-project"
 
 

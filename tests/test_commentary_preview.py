@@ -24,7 +24,7 @@ from fantasy_coach.feature_engineering import FEATURE_NAMES
 def _fake_caching_client(text: str = "Broncos to win.") -> CachingGeminiClient:
     """Return a CachingGeminiClient whose underlying GeminiClient is mocked."""
     mock_client = MagicMock(spec=GeminiClient)
-    mock_client._model = "gemini-2.0-flash-001"
+    mock_client._model = "gemini-2.5-flash-lite"
     mock_client.generate.return_value = GeminiResponse(text=text, input_tokens=80, output_tokens=20)
     return CachingGeminiClient(
         mock_client,
@@ -289,7 +289,7 @@ def test_fallback_preview_no_venue() -> None:
 
 def test_preview_generator_caches_identical_context() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Cached.", input_tokens=50, output_tokens=10
     )
@@ -309,7 +309,7 @@ def test_preview_generator_caches_identical_context() -> None:
 
 def test_preview_generator_different_match_ids_no_cache_collision() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Text.", input_tokens=50, output_tokens=10
     )
@@ -328,7 +328,7 @@ def test_preview_generator_different_match_ids_no_cache_collision() -> None:
 
 def test_preview_generator_different_model_versions_no_cache_collision() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Text.", input_tokens=50, output_tokens=10
     )
@@ -347,7 +347,7 @@ def test_preview_generator_different_model_versions_no_cache_collision() -> None
 
 def test_preview_generator_custom_token_cap() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Short.", input_tokens=50, output_tokens=10
     )

@@ -1,6 +1,11 @@
 """Vertex AI Gemini Flash client.
 
-Model pin: gemini-2.0-flash-001 (latest stable as of 2026-04; bump when Vertex retires it).
+Model pin: gemini-2.5-flash-lite (bumped from gemini-2.0-flash-001 in 2026-05
+           after the 2.0-flash-001 endpoint started returning 404 from Vertex
+           — the publisher model is no longer enumerated for new projects).
+           flash-lite is preferred over flash/flash-thinking for the
+           commentary use case: short outputs (<= 150 tokens), no benefit
+           from the thinking-mode budget, lowest cost/latency tier.
 Auth:      Application Default Credentials / Workload Identity — no API keys stored here.
 Retries:   exponential back-off on 429 / 5xx.
 Tokens:    usage logged per call at INFO level for cost visibility.
@@ -18,8 +23,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Honour GEMINI_COMMENTARY_MODEL env var so the model tier can be swapped
-# without a deploy (e.g. roll back from Flash to Pro via Cloud Run env update).
-DEFAULT_MODEL = os.environ.get("GEMINI_COMMENTARY_MODEL", "gemini-2.0-flash-001")
+# without a deploy (e.g. switch to gemini-2.5-flash for thinking-enabled
+# extraction, or roll back to a deprecated model for a quick A/B).
+DEFAULT_MODEL = os.environ.get("GEMINI_COMMENTARY_MODEL", "gemini-2.5-flash-lite")
 DEFAULT_LOCATION = "us-central1"
 
 # Tight timeout for short-form commentary blurbs; longer tasks (injury parsing)
