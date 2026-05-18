@@ -113,8 +113,13 @@ jobs:
             --region "${REGION}" \
             --image "${IMAGE}" \
             --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore,FANTASY_COACH_MODEL_PATH=/tmp/model.joblib,FANTASY_COACH_MODEL_GCS_URI=gs://${PROJECT_ID}-models/logistic/latest.joblib" \
+            --set-secrets "FANTASY_COACH_ODDS_API_KEY=odds-api-key:latest" \
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra#65 not applied yet)."
+          # --set-secrets injects the-odds-api.com key from Secret Manager so
+          # the precompute job can fetch NRL totals (over/under) lines for
+          # Betting Tips (#280). The IAM grant on the secret lives in
+          # platform-infra/projects/fantasy-coach/odds_api_secret.tf.
 
       - name: Update retrain Job image
         env:
