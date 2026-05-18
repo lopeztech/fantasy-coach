@@ -13,7 +13,7 @@ from fantasy_coach.commentary.client import GeminiClient, GeminiResponse
 
 PROJECT = "test-project"
 LOCATION = "us-central1"
-MODEL = "gemini-2.0-flash-001"
+MODEL = "gemini-2.5-flash-lite"
 ENDPOINT = (
     f"https://{LOCATION}-aiplatform.googleapis.com/v1"
     f"/projects/{PROJECT}/locations/{LOCATION}"
