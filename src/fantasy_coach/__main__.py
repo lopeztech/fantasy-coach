@@ -941,6 +941,51 @@ def _run_precompute(args: argparse.Namespace) -> int:
         if refreshed:
             print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
 
+        # Generate the weekly Betting Tips card. Non-fatal — the API
+        # gracefully returns 503 on cache miss. Skipped silently when there
+        # are no predictions. Totals legs require FANTASY_COACH_ODDS_API_KEY;
+        # without it the card is H2H-only (still useful).
+        try:
+            from fantasy_coach.betting.generator import generate_tips  # noqa: PLC0415
+            from fantasy_coach.betting.store import get_betting_tips_store  # noqa: PLC0415
+
+            if predictions:
+                totals_lines: dict = {}
+                odds_snapshot_at: str | None = None
+                odds_api_key = os.environ.get("FANTASY_COACH_ODDS_API_KEY")
+                if odds_api_key:
+                    try:
+                        from fantasy_coach.betting.odds_client import (  # noqa: PLC0415
+                            OddsApiClient,
+                        )
+
+                        totals_lines = OddsApiClient(api_key=odds_api_key).fetch_totals()
+                        odds_snapshot_at = datetime.now(UTC).isoformat()
+                    except Exception as _odds_exc:  # noqa: BLE001
+                        print(f"Betting tips: odds-api fetch failed (non-fatal): {_odds_exc}")
+                else:
+                    print("Betting tips: FANTASY_COACH_ODDS_API_KEY unset — H2H-only card")
+
+                tips = generate_tips(
+                    season,
+                    round_,
+                    predictions,
+                    totals_lines=totals_lines,
+                    odds_snapshot_at=odds_snapshot_at,
+                )
+                tips_store = get_betting_tips_store()
+                try:
+                    tips_store.put(tips)
+                finally:
+                    if hasattr(tips_store, "close"):
+                        tips_store.close()
+                print(
+                    f"Betting tips: wrote {len(tips.singles)} singles, "
+                    f"{len(tips.doubles)} doubles, {len(tips.trebles)} trebles"
+                )
+        except Exception as _tips_exc:  # noqa: BLE001
+            print(f"Betting tips computation failed (non-fatal): {_tips_exc}")
+
         # Run Monte Carlo season simulation (#217). Failures are non-fatal.
         try:
             from fantasy_coach.simulation import simulate_season  # noqa: PLC0415

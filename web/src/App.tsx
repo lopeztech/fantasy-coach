@@ -13,6 +13,7 @@ type Toast = { title: string; body: string; href?: string };
 
 const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/predictions", label: "Predictions" },
+  { to: "/betting-tips", label: "Betting Tips" },
   { to: "/ladder", label: "Ladder" },
   { to: "/leaderboard", label: "Leaderboard" },
   { to: "/groups", label: "Groups" },

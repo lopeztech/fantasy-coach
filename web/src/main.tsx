@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import Accuracy from "./routes/Accuracy";
 import App from "./App";
+import BettingTips from "./routes/BettingTips";
 import GroupDetail from "./routes/GroupDetail";
 import Groups from "./routes/Groups";
 import Home from "./routes/Home";
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Home /> },
       { path: "predictions", element: <Predictions /> },
+      { path: "betting-tips", element: <BettingTips /> },
       { path: "round/:season/:round", element: <Round /> },
       { path: "round/:season/:round/:matchId", element: <MatchDetail /> },
       { path: "scoreboard", element: <Scoreboard /> },

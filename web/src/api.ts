@@ -1,5 +1,6 @@
 import { getFirebaseAuth, API_BASE_URL } from "./firebase";
 import type {
+  BettingTipsResponse,
   DashboardOut,
   JobRunDetail,
   JobRunListItem,
@@ -56,6 +57,15 @@ export async function getJobRuns(limit = 20): Promise<JobRunListItem[]> {
 
 export async function getJobRun(runId: string): Promise<JobRunDetail> {
   return apiFetch<JobRunDetail>(`/job-runs/${encodeURIComponent(runId)}`);
+}
+
+export async function getBettingTips(
+  season: number,
+  round: number,
+): Promise<BettingTipsResponse> {
+  return apiFetch<BettingTipsResponse>(
+    `/betting-tips?season=${season}&round=${round}`,
+  );
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

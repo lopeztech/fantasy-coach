@@ -9,6 +9,7 @@ development reads the same variable names from a `.env` file (gitignored).
 | Secret Manager name | Env var | Purpose | Who can rotate |
 |---|---|---|---|
 | `firebase-project-id` | `FIREBASE_PROJECT_ID` | Firebase project for ID-token verification (issue #17) | Project owner |
+| `odds-api-key` | `FANTASY_COACH_ODDS_API_KEY` | the-odds-api.com key for NRL totals lines on the Betting Tips card. Optional — without it the card is H2H-only. | Project owner |
 
 ## Naming convention
 
@@ -85,3 +86,21 @@ make run
 
 If a paid bookmaker odds API is added (issue #26), its API key goes here
 under `bookmaker-odds-api-key` / `BOOKMAKER_ODDS_API_KEY`.
+
+## Paired platform-infra work
+
+Each new secret needs a matching pair of resources in
+[`lopeztech/platform-infra`](https://github.com/lopeztech/platform-infra)
+under `projects/fantasy-coach/`:
+
+1. `google_secret_manager_secret.<name>` — the secret container.
+2. `google_secret_manager_secret_iam_member` bindings granting
+   `roles/secretmanager.secretAccessor` to **both** the API runtime SA
+   (`fantasy-coach-runtime`) and the precompute Job runtime SA.
+
+Then update `.github/workflows/deploy.yml` to inject the value via
+`--set-secrets ENV_VAR=<secret-name>:latest` on both the Cloud Run service
+and the Cloud Run Job. Make sure the env var is listed in the Terraform
+`lifecycle.ignore_changes` block on the Cloud Run resource — otherwise the
+next `terraform apply` will silently strip it (see memory note
+"Terraform can wipe Cloud Run runtime config").
