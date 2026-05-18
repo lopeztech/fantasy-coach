@@ -234,6 +234,50 @@ export type JobRunDetail = JobRunListItem & {
   changes: JobRunChange[];
 };
 
+// ---------------------------------------------------------------------------
+// Betting tips
+// ---------------------------------------------------------------------------
+
+export type TipMarket = "h2h" | "totals";
+export type TipKind = "single" | "double" | "treble";
+
+export type TipLeg = {
+  matchId: number;
+  homeName: string;
+  awayName: string;
+  kickoff: string; // ISO 8601 UTC
+  market: TipMarket;
+  selectionCode: "home" | "away" | "over" | "under";
+  selection: string; // display string, e.g. "Storm" or "Over 41.5"
+  line: number | null;
+  decimalOdds: number;
+  modelProb: number;
+  impliedProb: number;
+  edge: number;
+  bookmaker: string;
+};
+
+export type Tip = {
+  kind: TipKind;
+  legs: TipLeg[];
+  combinedOdds: number;
+  combinedModelProb: number;
+  combinedImpliedProb: number;
+  edge: number;
+  suggestedUnits: number;
+};
+
+export type BettingTipsResponse = {
+  season: number;
+  round: number;
+  generatedAt: string;
+  oddsSnapshotAt: string | null;
+  caveat: string;
+  singles: Tip[];
+  doubles: Tip[];
+  trebles: Tip[];
+};
+
 export type DashboardOut = {
   season: number;
   currentRound: number | null;

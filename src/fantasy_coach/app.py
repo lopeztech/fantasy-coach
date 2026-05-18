@@ -12,6 +12,12 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from fantasy_coach import __version__
+from fantasy_coach.betting.models import BettingTipsOut
+from fantasy_coach.betting.store import (
+    BettingTipsStore,
+    FirestoreBettingTipsStore,
+    get_betting_tips_store,
+)
 from fantasy_coach.config import get_repository
 from fantasy_coach.job_runs import JobRunStore
 from fantasy_coach.predictions import (
@@ -230,6 +236,7 @@ app.add_middleware(
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
 _job_run_store: JobRunStore | None = None
+_betting_tips_store: BettingTipsStore | FirestoreBettingTipsStore | None = None
 
 # In-process cache for team profile responses: key=(team_id, season), value=(timestamp, data)
 _PROFILE_CACHE_TTL = 60  # seconds
@@ -256,6 +263,13 @@ def _get_repo() -> Repository:
     if _repo is None:
         _repo = get_repository()
     return _repo
+
+
+def _get_betting_tips_store() -> BettingTipsStore | FirestoreBettingTipsStore:
+    global _betting_tips_store
+    if _betting_tips_store is None:
+        _betting_tips_store = get_betting_tips_store()
+    return _betting_tips_store
 
 
 def _get_job_run_store() -> JobRunStore | None:
@@ -364,6 +378,39 @@ def get_predictions(
             ),
         )
     return _annotate_results(cached, season, round)
+
+
+@app.get(
+    "/betting-tips",
+    response_model=BettingTipsOut,
+    summary="Top betting tips for a season/round",
+    description=(
+        "Returns the precomputed 2-singles + 2-doubles + 2-trebles card for the "
+        "requested round. Tips combine cached model probabilities with bookmaker "
+        "odds (head-to-head from the nrl.com scrape; totals from the-odds-api "
+        "when configured). Computed twice a week by the Cloud Run Job; this "
+        "endpoint is a cache read only. Returns 503 with a retry hint when the "
+        "cache is empty. Picks are educational, not financial advice — gamble "
+        "responsibly."
+    ),
+)
+def get_betting_tips(
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+    round: int = Query(..., description="Round number, e.g. 7", alias="round"),
+) -> BettingTipsOut:
+    tips = _get_betting_tips_store().get(season, round)
+    if tips is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"No cached betting tips for season {season} round {round}. "
+                "The precompute job runs Tue 09:00 AEST and Thu 06:00 AEST. "
+                "Retry in a few minutes or trigger it manually with "
+                "`gcloud run jobs execute fantasy-coach-precompute`."
+            ),
+            headers={"Retry-After": "3600"},
+        )
+    return tips
 
 
 @app.get(
