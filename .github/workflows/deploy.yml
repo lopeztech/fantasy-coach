@@ -139,6 +139,40 @@ jobs:
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#107 not applied yet)."
 
+      - name: Update watch-team-lists Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-watch-team-lists
+        # Provisioned by platform-infra fantasy-coach#267 (injury.tf). Same
+        # rotation pattern as precompute/retrain: TF owns Job shape (command,
+        # SA, resources) and ignore_changes-es image + env; this workflow
+        # owns the image tag + runtime env vars.
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#267 not applied yet)."
+
+      - name: Update scrape-injuries Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-scrape-injuries
+        # Provisioned by platform-infra fantasy-coach#267 (injury.tf). The
+        # Job is invoked manually with `--args=--season=...,--round=...`
+        # for now; Gemini parses NRL.com injury-list prose using the runtime
+        # SA's aiplatform.user grant.
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#267 not applied yet)."
+
       # The external /healthz smoke test has been dropped: `gcloud auth
       # print-identity-token` doesn't work with WIF-federated credentials
       # (they're OAuth2 access tokens, not OIDC ID tokens), and Cloud Run's
