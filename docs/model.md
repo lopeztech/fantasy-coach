@@ -656,6 +656,32 @@ and uses `early_stopping_rounds=30` to trim the estimator count to
 what the training set actually supports. That took config (d) from a
 retrain-gate block to a promotion candidate.
 
+### No-signal XGBoost column sampling weights
+
+Some `FEATURE_NAMES` columns are deliberately present before their backing
+data is available in the baseline snapshot: line movement, representative
+callups/minutes, forecast-only weather fields, and the constant `is_home_field`
+tree no-op. Dropping those columns would break model-artifact compatibility, so
+XGBoost instead keeps the schema and gives those columns near-zero
+`feature_weights` for column sampling.
+
+Walk-forward on the 2023–2026 baseline (n=692):
+
+| Predictor | Metric | Before | After | Δ |
+|---|---:|---:|---:|---:|
+| XGBoost | accuracy | 0.5882 | **0.5968** | **+0.0087** |
+| XGBoost | log_loss | 0.6916 | **0.6889** | **−0.0027** |
+| XGBoost | brier | 0.2465 | **0.2451** | **−0.0014** |
+| XGBoost | ECE | 0.0422 | 0.0487 | +0.0065 |
+| Stacked | accuracy | 0.5896 | 0.5896 | 0.0000 |
+| Stacked | log_loss | **0.6794** | 0.6814 | +0.0020 |
+| Stacked | brier | **0.2421** | 0.2431 | +0.0010 |
+
+The 2026 slice improves materially for the production model (accuracy 0.5357
+→ 0.6071, log_loss 0.7441 → 0.6874, brier 0.2686 → 0.2456). Remove a column
+from `NO_SIGNAL_COLUMN_SAMPLE_FEATURES` once its data is backfilled and the
+feature has real variance in walk-forward training.
+
 Production delivery: `artifacts/best_params.json` is committed + baked
 into the Dockerfile. The retrain Job (#107) loads it via
 `load_best_params()` on every fit; Monday's retrain run trains a

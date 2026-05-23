@@ -177,14 +177,25 @@ SEASONS = (2023, 2024, 2025, 2026)
 # (0.5824 → 0.5882), brier/ECE improve, with a tiny log_loss tradeoff.
 # Stacked shifts down on accuracy versus the spine-only point but keeps
 # better log_loss / brier than the #252 baseline.
+#
+# XGBoost no-signal column sampling weights: keep placeholder/constant columns
+# in FEATURE_NAMES for train/serve schema compatibility, but give them near-zero
+# XGBoost column-sampling weight until their backing data is wired/backfilled.
+# This stops all-zero line-movement / representative / forecast columns from
+# consuming colsample_bytree slots in tiny walk-forward fits. Production
+# XGBoost gains +0.87pp accuracy (0.5882 → 0.5968) while log_loss and brier
+# both improve. ECE worsens slightly (0.0422 → 0.0487), still acceptable given
+# the accuracy and proper-scoring-rule lift; the 2026 slice improves
+# materially (0.5357 → 0.6071 accuracy). Stacked accuracy is unchanged, with
+# a small log_loss / brier regression from the XGBoost base shift.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
     "logistic": {"n": 692, "accuracy": 0.5506, "log_loss": 0.9508, "brier": 0.2959},
-    "xgboost": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6916, "brier": 0.2465},
+    "xgboost": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6889, "brier": 0.2451},
     "skellam": {"n": 692, "accuracy": 0.5910, "log_loss": 0.6738, "brier": 0.2394},
-    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6794, "brier": 0.2421},
+    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6814, "brier": 0.2431},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

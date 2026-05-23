@@ -76,6 +76,32 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
 }
 
 
+NO_SIGNAL_FEATURE_SAMPLE_WEIGHT = 1e-9
+
+# These columns are intentionally still present in FEATURE_NAMES so trained
+# artefacts and serving code keep the same schema, but on the current baseline
+# they are either structural constants or placeholders whose backing data is
+# not wired/backfilled yet. With colsample_bytree≈0.5, allowing them to be
+# sampled like live features wastes split-search capacity in tiny walk-forward
+# fits. Give them near-zero column-sampling probability until they carry real
+# training signal; remove names from this set as the data is backfilled.
+NO_SIGNAL_COLUMN_SAMPLE_FEATURES: frozenset[str] = frozenset(
+    {
+        "is_home_field",
+        "wind_kph",
+        "temperature_c",
+        "missing_player_strength",
+        "odds_line_move_home_prob",
+        "odds_line_move_magnitude",
+        "missing_line_move",
+        "origin_callups_diff",
+        "is_test_window",
+        "weather_source",
+        "cumulative_origin_minutes_diff",
+    }
+)
+
+
 def _monotone_tuple() -> tuple[int, ...]:
     """Build the ``monotone_constraints`` tuple aligned with ``FEATURE_NAMES``.
 
@@ -87,6 +113,19 @@ def _monotone_tuple() -> tuple[int, ...]:
     if unknown:
         raise ValueError(f"MONOTONE_CONSTRAINTS has unknown features: {sorted(unknown)}")
     return tuple(MONOTONE_CONSTRAINTS.get(name, 0) for name in FEATURE_NAMES)
+
+
+def _feature_weights_tuple() -> tuple[float, ...]:
+    """Build XGBoost column-sampling weights aligned with ``FEATURE_NAMES``."""
+    unknown = set(NO_SIGNAL_COLUMN_SAMPLE_FEATURES) - set(FEATURE_NAMES)
+    if unknown:
+        raise ValueError(
+            f"NO_SIGNAL_COLUMN_SAMPLE_FEATURES has unknown features: {sorted(unknown)}"
+        )
+    return tuple(
+        NO_SIGNAL_FEATURE_SAMPLE_WEIGHT if name in NO_SIGNAL_COLUMN_SAMPLE_FEATURES else 1.0
+        for name in FEATURE_NAMES
+    )
 
 
 # Structural params — never tuned, always applied. Monotone constraints
@@ -109,6 +148,7 @@ _FIXED_PARAMS: dict[str, object] = {
     "verbosity": 0,
     "use_label_encoder": False,
     "monotone_constraints": _monotone_tuple(),
+    "feature_weights": _feature_weights_tuple(),
     # ``n_jobs=1`` makes XGBoost's OMP reductions deterministic *within*
     # a platform. It does NOT eliminate cross-platform drift — we
     # verified this empirically on #187: macOS (Apple Silicon NEON) and
