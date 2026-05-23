@@ -194,6 +194,13 @@ export type SeasonSimulation = {
   teams: SeasonTeamOutcome[];
 };
 
+export type WhatIfOut = {
+  baseHomeWinProbability: number;
+  homeWinProbability: number;
+  predictedWinner: string;
+  contributions?: FeatureContribution[] | null;
+};
+
 // ---------------------------------------------------------------------------
 // Precompute job-run audit log (#244)
 // ---------------------------------------------------------------------------
