@@ -46,6 +46,14 @@ def _from_blob(blob: dict) -> Model:
         from fantasy_coach.models.ensemble import _from_blob as _ens
 
         return _ens(blob)
+    if kind == "bivariate_poisson":
+        from fantasy_coach.models.bivariate_poisson import _from_blob as _bp
+
+        return _bp(blob)
+    if kind == "multitask":
+        from fantasy_coach.models.multitask import _from_blob as _mt
+
+        return _mt(blob)
     raise RuntimeError(f"Unknown model_type in artifact: {kind!r}")
 
 

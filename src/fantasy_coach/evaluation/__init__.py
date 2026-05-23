@@ -2,9 +2,11 @@ from fantasy_coach.evaluation.harness import (
     EvaluationResult,
     Prediction,
     walk_forward,
+    walk_forward_bayesian_coverage,
 )
 from fantasy_coach.evaluation.metrics import accuracy, brier_score, ece, log_loss
 from fantasy_coach.evaluation.predictors import (
+    BayesianPredictor,
     CalibratedLogisticPredictor,
     CalibratedXGBoostPredictor,
     EloMOVPredictor,
@@ -20,6 +22,7 @@ from fantasy_coach.evaluation.predictors import (
 )
 
 __all__ = [
+    "BayesianPredictor",
     "CalibratedLogisticPredictor",
     "CalibratedXGBoostPredictor",
     "EloMOVPredictor",
@@ -39,4 +42,5 @@ __all__ = [
     "ece",
     "log_loss",
     "walk_forward",
+    "walk_forward_bayesian_coverage",
 ]

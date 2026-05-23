@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from fantasy_coach.commentary.cache import CachingGeminiClient, context_hash
+from fantasy_coach.commentary.client import COMMENTARY_TIMEOUT
 from fantasy_coach.feature_engineering import FEATURE_NAMES
 
 _SYSTEM = (
@@ -28,8 +29,15 @@ _SYSTEM = (
 # Tokens per call — enforces <$0.01/round of 8 matches at Gemini Flash pricing.
 _MAX_OUTPUT_TOKENS = 150
 
+# Consistent, on-brand tone without creative drift between rounds.
+_TEMPERATURE = 0.4
+
 # 7-day TTL: predictions for a round don't change once generated.
 _TTL = 7 * 24 * 3600.0
+
+# Quality gate: degenerate responses shorter than this are replaced by the
+# fallback template rather than displayed to users.
+_MIN_RESPONSE_CHARS = 30
 
 # +1 = higher value favours home, -1 = higher value favours away, 0 = skip.
 _FEATURE_POLARITY: dict[str, int] = {
@@ -108,8 +116,14 @@ class PreviewGenerator:
             max_output_tokens=self._max_output_tokens,
             ttl=self._ttl,
             feature_snapshot_hash=feature_hash,
+            temperature=_TEMPERATURE,
+            candidate_count=1,
+            timeout=COMMENTARY_TIMEOUT,
         )
-        return response.text.strip()
+        text = response.text.strip()
+        if _is_degenerate(text, ctx):
+            return _fallback_preview(ctx)
+        return text
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +179,26 @@ def _top_drivers(ctx: MatchContext, n: int = 3) -> list[str]:
 
     scored.sort(reverse=True)
     return [label for _, label in scored[:n]]
+
+
+def _is_degenerate(text: str, ctx: MatchContext) -> bool:
+    """Return True when the Gemini response is too short or references no team name."""
+    if len(text) < _MIN_RESPONSE_CHARS:
+        return True
+    return ctx.home_name not in text and ctx.away_name not in text
+
+
+def _fallback_preview(ctx: MatchContext) -> str:
+    """Deterministic template used when Gemini returns a degenerate response."""
+    winner = ctx.home_name if ctx.predicted_winner == "home" else ctx.away_name
+    pct = int(
+        (ctx.home_win_prob if ctx.predicted_winner == "home" else 1 - ctx.home_win_prob) * 100
+    )
+    venue_part = f" at {ctx.venue}" if ctx.venue else ""
+    return (
+        f"{ctx.home_name} host {ctx.away_name}{venue_part}. "
+        f"The model favours {winner} with a {pct}% win probability."
+    )
 
 
 def _context_hash(ctx: MatchContext) -> str:

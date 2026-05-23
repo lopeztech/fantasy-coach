@@ -11,9 +11,12 @@ import pytest
 from fantasy_coach.feature_engineering import FEATURE_NAMES
 from fantasy_coach.models.xgboost_model import (
     MONOTONE_CONSTRAINTS,
+    NO_SIGNAL_COLUMN_SAMPLE_FEATURES,
+    NO_SIGNAL_FEATURE_SAMPLE_WEIGHT,
     SEASON_WEIGHTS,
     LoadedModel,
     TrainResult,
+    _feature_weights_tuple,
     _monotone_tuple,
     load_best_params,
     load_model,
@@ -304,6 +307,28 @@ def test_train_xgboost_respects_monotone_increasing_constraint() -> None:
     assert (diffs >= -1e-9).all(), (
         f"constraint violated: probs={probs.tolist()} diffs={diffs.tolist()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Column-sampling feature weights
+# ---------------------------------------------------------------------------
+
+
+def test_feature_weights_tuple_length_matches_feature_names() -> None:
+    assert len(_feature_weights_tuple()) == len(FEATURE_NAMES)
+
+
+def test_no_signal_feature_weight_keys_all_exist_in_feature_names() -> None:
+    assert set(NO_SIGNAL_COLUMN_SAMPLE_FEATURES).issubset(set(FEATURE_NAMES))
+
+
+def test_feature_weights_tuple_downweights_no_signal_columns() -> None:
+    weights = _feature_weights_tuple()
+    for idx, name in enumerate(FEATURE_NAMES):
+        expected = (
+            NO_SIGNAL_FEATURE_SAMPLE_WEIGHT if name in NO_SIGNAL_COLUMN_SAMPLE_FEATURES else 1.0
+        )
+        assert weights[idx] == pytest.approx(expected), f"{name} mismatched at index {idx}"
 
 
 # ---------------------------------------------------------------------------

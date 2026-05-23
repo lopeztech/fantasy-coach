@@ -10,6 +10,8 @@ from fantasy_coach.commentary.preview import (
     MatchContext,
     PreviewGenerator,
     _build_prompt,
+    _fallback_preview,
+    _is_degenerate,
     _top_drivers,
 )
 from fantasy_coach.feature_engineering import FEATURE_NAMES
@@ -22,7 +24,7 @@ from fantasy_coach.feature_engineering import FEATURE_NAMES
 def _fake_caching_client(text: str = "Broncos to win.") -> CachingGeminiClient:
     """Return a CachingGeminiClient whose underlying GeminiClient is mocked."""
     mock_client = MagicMock(spec=GeminiClient)
-    mock_client._model = "gemini-2.0-flash-001"
+    mock_client._model = "gemini-2.5-flash-lite"
     mock_client.generate.return_value = GeminiResponse(text=text, input_tokens=80, output_tokens=20)
     return CachingGeminiClient(
         mock_client,
@@ -227,14 +229,67 @@ def test_preview_generator_returns_text() -> None:
 
 
 def test_preview_generator_strips_whitespace() -> None:
-    client = _fake_caching_client("  Preview text.  \n")
+    long_text = "  Brisbane Broncos are expected to dominate this clash at Suncorp.  \n"
+    client = _fake_caching_client(long_text)
     gen = PreviewGenerator(client)
-    assert gen.generate(_ctx()) == "Preview text."
+    assert gen.generate(_ctx()) == long_text.strip()
+
+
+def test_preview_generator_fallback_on_short_response() -> None:
+    client = _fake_caching_client("Ok.")
+    gen = PreviewGenerator(client)
+    result = gen.generate(_ctx())
+    assert "Broncos" in result
+    assert "Storm" in result
+
+
+def test_preview_generator_fallback_on_no_team_name() -> None:
+    text = "This is a long response with no team name in it at all really."
+    client = _fake_caching_client(text)
+    gen = PreviewGenerator(client)
+    result = gen.generate(_ctx())
+    assert "Broncos" in result
+
+
+def test_is_degenerate_short() -> None:
+    ctx = _ctx()
+    assert _is_degenerate("Too short.", ctx) is True
+
+
+def test_is_degenerate_no_team_name() -> None:
+    ctx = _ctx()
+    text = "This is a full length response but mentions neither team by name at all."
+    assert _is_degenerate(text, ctx) is True
+
+
+def test_is_degenerate_valid() -> None:
+    ctx = _ctx()
+    text = "Brisbane Broncos are well placed to defeat the Storm at home on Friday night."
+    assert _is_degenerate(text, ctx) is False
+
+
+def test_fallback_preview_contains_teams() -> None:
+    ctx = _ctx()
+    result = _fallback_preview(ctx)
+    assert "Broncos" in result
+    assert "Storm" in result
+    assert "63%" in result
+
+
+def test_fallback_preview_includes_venue() -> None:
+    ctx = _ctx(venue="Suncorp Stadium")
+    assert "Suncorp Stadium" in _fallback_preview(ctx)
+
+
+def test_fallback_preview_no_venue() -> None:
+    ctx = _ctx(venue=None)
+    result = _fallback_preview(ctx)
+    assert "None" not in result
 
 
 def test_preview_generator_caches_identical_context() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Cached.", input_tokens=50, output_tokens=10
     )
@@ -254,7 +309,7 @@ def test_preview_generator_caches_identical_context() -> None:
 
 def test_preview_generator_different_match_ids_no_cache_collision() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Text.", input_tokens=50, output_tokens=10
     )
@@ -273,7 +328,7 @@ def test_preview_generator_different_match_ids_no_cache_collision() -> None:
 
 def test_preview_generator_different_model_versions_no_cache_collision() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Text.", input_tokens=50, output_tokens=10
     )
@@ -292,7 +347,7 @@ def test_preview_generator_different_model_versions_no_cache_collision() -> None
 
 def test_preview_generator_custom_token_cap() -> None:
     mock_inner = MagicMock(spec=GeminiClient)
-    mock_inner._model = "gemini-2.0-flash-001"
+    mock_inner._model = "gemini-2.5-flash-lite"
     mock_inner.generate.return_value = GeminiResponse(
         text="Short.", input_tokens=50, output_tokens=10
     )

@@ -322,6 +322,9 @@ class CachingGeminiClient:
         max_output_tokens: int = 512,
         ttl: float | None = None,
         feature_snapshot_hash: str = "",
+        temperature: float | None = None,
+        candidate_count: int = 1,
+        timeout: float | None = None,
     ) -> GeminiResponse:
         """Return a (cached) response, enforcing budget before live calls.
 
@@ -344,6 +347,9 @@ class CachingGeminiClient:
             prompt,
             system=system,
             max_output_tokens=max_output_tokens,
+            temperature=temperature,
+            candidate_count=candidate_count,
+            timeout=timeout,
         )
         self._budget.record_usage(response.total_tokens)
         self._cache.set(

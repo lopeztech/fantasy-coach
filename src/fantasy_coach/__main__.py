@@ -427,6 +427,139 @@ def main(argv: list[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
+    si = sub.add_parser(
+        "scrape-injuries",
+        help=(
+            "Fetch + parse an NRL.com injury-list article into structured "
+            "InjuryReport rows (#208). Uses Gemini (commentary client) to "
+            "extract names + statuses from the prose. When --url is omitted "
+            "the URL is auto-discovered from nrl.com/news/?topic=injury-list "
+            "via discover_injury_list_url (#268)."
+        ),
+    )
+    si.add_argument(
+        "--url",
+        default=None,
+        help=(
+            "NRL.com injury-list article URL. Omit to auto-discover from the "
+            "news index for the given season/round."
+        ),
+    )
+    si.add_argument("--season", type=int, required=True)
+    si.add_argument("--round", type=int, required=True)
+    si.add_argument(
+        "--match-season",
+        type=int,
+        default=None,
+        help=(
+            "Season(s) to read for the player-name → player_id index. "
+            "Defaults to --season; pass an earlier season when scraping a "
+            "round whose own match data hasn't been fetched yet."
+        ),
+    )
+    si.add_argument(
+        "--gemini-project",
+        default=None,
+        help="GCP project for the Gemini client. Defaults to FIREBASE_PROJECT_ID.",
+    )
+    si.add_argument(
+        "--source-label",
+        default="nrl.com",
+        help="Source label written to injury_reports.source.",
+    )
+    si.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
+    sib = sub.add_parser(
+        "scrape-injuries-backfill",
+        help=(
+            "Historical backfill of injury_reports via the Wayback Machine "
+            "(#268). Queries the CDX API for nrl.com injury-list articles "
+            "captured during the given seasons, dedupes to one snapshot per "
+            "(season, round), and feeds each through GeminiInjuryListParser. "
+            "Idempotent: storage upserts on (player_id, season, round, source)."
+        ),
+    )
+    sib.add_argument(
+        "--season",
+        type=int,
+        action="append",
+        required=True,
+        help="Season to backfill. Repeatable, e.g. --season 2024 --season 2025.",
+    )
+    sib.add_argument(
+        "--match-season",
+        type=int,
+        action="append",
+        default=None,
+        help=(
+            "Season(s) to read for the player-name → player_id index. "
+            "Defaults to all --season args. Pass extra seasons if a player "
+            "moved clubs and the round's own season doesn't have them yet."
+        ),
+    )
+    sib.add_argument(
+        "--gemini-project",
+        default=None,
+        help="GCP project for the Gemini client. Defaults to FIREBASE_PROJECT_ID.",
+    )
+    sib.add_argument(
+        "--source-label",
+        default="wayback:nrl.com",
+        help="Source label written to injury_reports.source.",
+    )
+    sib.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
+    wtl = sub.add_parser(
+        "watch-team-lists",
+        help=(
+            "Snapshot starting-XIIIs for kickoff-imminent matches and emit "
+            "LateTeamChange rows for any starting-XIII diff vs the most recent "
+            "pre-window snapshot (#208). Designed to run on a third Cloud Run "
+            "schedule (every 15 min on match days)."
+        ),
+    )
+    wtl.add_argument(
+        "--season",
+        type=int,
+        default=None,
+        help="Season to watch. Omit to autodetect the current year.",
+    )
+    wtl.add_argument(
+        "--round",
+        type=int,
+        default=None,
+        help="Round to watch. Omit to autodetect the next upcoming round.",
+    )
+    wtl.add_argument(
+        "--lead-minutes",
+        type=int,
+        default=90,
+        help="Look at matches whose kickoff is inside the next N minutes (default 90).",
+    )
+    wtl.add_argument(
+        "--cutoff-minutes",
+        type=int,
+        default=60,
+        help=(
+            "A snapshot must be at least N minutes before kickoff to be eligible "
+            "as the diff reference (default 60). Filters out other intra-window "
+            "watcher snapshots so each emit compares to the named team list."
+        ),
+    )
+    wtl.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=args.log_level,
@@ -457,6 +590,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_notify_round_published(args)
     if args.command == "clear-commentary-cache":
         return _run_clear_commentary_cache(args)
+    if args.command == "watch-team-lists":
+        return _run_watch_team_lists(args)
+    if args.command == "scrape-injuries":
+        return _run_scrape_injuries(args)
+    if args.command == "scrape-injuries-backfill":
+        return _run_scrape_injuries_backfill(args)
     parser.error(f"unknown command {args.command!r}")
     return 2  # unreachable
 
@@ -767,6 +906,15 @@ def _run_precompute(args: argparse.Namespace) -> int:
         _profiler.enable()
         print("[profile] cProfile + RSS sampler started")
 
+    started_at = datetime.now(UTC)
+    # Snapshot prev predictions BEFORE compute_predictions overwrites them, so
+    # the job_runs writer (#244) can diff prev → new. Single Firestore read.
+    prev_predictions: list[Any] = []
+    try:
+        prev_predictions = list(store.get(season, round_) or [])
+    except Exception as _e:  # noqa: BLE001
+        print(f"job_runs: prev predictions snapshot skipped ({_e})")
+
     try:
         # Fetch pre-kickoff weather forecasts for upcoming matches (#207).
         # Failures are non-fatal — missing_weather=1.0 falls back gracefully.
@@ -792,6 +940,51 @@ def _run_precompute(args: argparse.Namespace) -> int:
         refreshed = refresh_stale_matches(repo, season)
         if refreshed:
             print(f"Refreshed {refreshed} stale past-start-time matches in season {season}")
+
+        # Generate the weekly Betting Tips card. Non-fatal — the API
+        # gracefully returns 503 on cache miss. Skipped silently when there
+        # are no predictions. Totals legs require FANTASY_COACH_ODDS_API_KEY;
+        # without it the card is H2H-only (still useful).
+        try:
+            from fantasy_coach.betting.generator import generate_tips  # noqa: PLC0415
+            from fantasy_coach.betting.store import get_betting_tips_store  # noqa: PLC0415
+
+            if predictions:
+                totals_lines: dict = {}
+                odds_snapshot_at: str | None = None
+                odds_api_key = os.environ.get("FANTASY_COACH_ODDS_API_KEY")
+                if odds_api_key:
+                    try:
+                        from fantasy_coach.betting.odds_client import (  # noqa: PLC0415
+                            OddsApiClient,
+                        )
+
+                        totals_lines = OddsApiClient(api_key=odds_api_key).fetch_totals()
+                        odds_snapshot_at = datetime.now(UTC).isoformat()
+                    except Exception as _odds_exc:  # noqa: BLE001
+                        print(f"Betting tips: odds-api fetch failed (non-fatal): {_odds_exc}")
+                else:
+                    print("Betting tips: FANTASY_COACH_ODDS_API_KEY unset — H2H-only card")
+
+                tips = generate_tips(
+                    season,
+                    round_,
+                    predictions,
+                    totals_lines=totals_lines,
+                    odds_snapshot_at=odds_snapshot_at,
+                )
+                tips_store = get_betting_tips_store()
+                try:
+                    tips_store.put(tips)
+                finally:
+                    if hasattr(tips_store, "close"):
+                        tips_store.close()
+                print(
+                    f"Betting tips: wrote {len(tips.singles)} singles, "
+                    f"{len(tips.doubles)} doubles, {len(tips.trebles)} trebles"
+                )
+        except Exception as _tips_exc:  # noqa: BLE001
+            print(f"Betting tips computation failed (non-fatal): {_tips_exc}")
 
         # Run Monte Carlo season simulation (#217). Failures are non-fatal.
         try:
@@ -821,6 +1014,62 @@ def _run_precompute(args: argparse.Namespace) -> int:
                 print(f"Persisted season simulation to Firestore for season {season}")
         except Exception as _sim_exc:  # noqa: BLE001
             print(f"Season simulation failed (non-fatal): {_sim_exc}")
+
+        # Write the job-run audit log (#244). Firestore-only — local SQLite
+        # dev runs skip this path. Failures are non-fatal: the SPA's /jobs
+        # page just won't see this run.
+        if os.getenv("STORAGE_BACKEND", "sqlite").lower() == "firestore":
+            try:
+                from fantasy_coach.job_runs import (  # noqa: PLC0415
+                    JobRunRecord,
+                    JobRunStore,
+                    aggregate_summary,
+                    build_change_entries,
+                    hash_team_lists,
+                    weather_fetched_at_iso,
+                )
+
+                jr_store = JobRunStore(project=os.getenv("FIREBASE_PROJECT_ID"))
+                prev_changes_by_match = jr_store.latest_changes_by_match(season, round_)
+                prev_predictions_by_match = {p.matchId: p for p in prev_predictions}
+
+                team_list_hashes = {
+                    p.matchId: hash_team_lists(team_list_repo, p.matchId) for p in predictions
+                }
+                weather_at = {
+                    p.matchId: weather_fetched_at_iso(weather_forecasts.get(p.matchId))
+                    for p in predictions
+                }
+
+                changes = build_change_entries(
+                    new_predictions=predictions,
+                    prev_predictions_by_match=prev_predictions_by_match,
+                    prev_changes_by_match=prev_changes_by_match,
+                    new_team_list_hashes=team_list_hashes,
+                    new_weather_fetched_at=weather_at,
+                )
+                model_version = predictions[0].modelVersion if predictions else ""
+                record = JobRunRecord(
+                    started_at=started_at,
+                    finished_at=datetime.now(UTC),
+                    trigger=os.getenv("FANTASY_COACH_JOB_TRIGGER", "scheduled"),
+                    status="success",
+                    season=season,
+                    round=round_,
+                    matches_processed=len(predictions),
+                    model_version=model_version,
+                    error=None,
+                    summary=aggregate_summary(changes),
+                    changes=changes,
+                )
+                run_id = jr_store.add(record)
+                print(
+                    f"job_runs: wrote {run_id} "
+                    f"(flips={record.summary['flips']}, "
+                    f"max_abs_delta={record.summary['max_abs_delta']:.3f})"
+                )
+            except Exception as _jr_exc:  # noqa: BLE001
+                print(f"job_runs: write failed (non-fatal): {_jr_exc}")
     finally:
         if _profiler is not None:
             import pstats  # noqa: PLC0415
@@ -1233,6 +1482,284 @@ def _run_notify_round_published(args: argparse.Namespace) -> int:
     from fantasy_coach.notifications import send_round_published  # noqa: PLC0415
 
     send_round_published(season=args.season, round_id=args.round_id)
+    return 0
+
+
+def _run_scrape_injuries(args: argparse.Namespace) -> int:
+    """Scrape an NRL.com injury-list article into structured rows (#208 PR C).
+
+    When ``--url`` is omitted, discovers the URL from the live NRL.com news
+    index for the requested ``(season, round)`` (#268).
+    """
+    import os  # noqa: PLC0415
+
+    from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.injury_scraper import (  # noqa: PLC0415
+        GeminiInjuryListParser,
+        HttpInjuryListSource,
+        build_player_index,
+        discover_injury_list_url,
+        scrape_injury_list,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreInjuryReportRepository,
+        SQLiteInjuryReportRepository,
+    )
+
+    project = (
+        args.gemini_project or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    )
+    if not project:
+        print("scrape-injuries: --gemini-project or FIREBASE_PROJECT_ID is required.")
+        return 1
+
+    url = args.url
+    if url is None:
+        url = discover_injury_list_url(args.season, args.round)
+        if url is None:
+            print(
+                f"scrape-injuries: no injury-list article found in the news index "
+                f"for season={args.season} round={args.round}. "
+                f"Pass --url explicitly."
+            )
+            return 1
+        print(f"scrape-injuries: auto-discovered URL {url}")
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        injury_repo: Any = FirestoreInjuryReportRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("scrape-injuries: SQLite repo has no `_conn`; aborting.")
+            return 1
+        injury_repo = SQLiteInjuryReportRepository(conn)
+
+    match_season = args.match_season or args.season
+    matches = repo.list_matches(match_season)
+    if not matches:
+        print(
+            f"scrape-injuries: no matches in season {match_season}; "
+            "player-name index will be empty so every report will be skipped. "
+            "Backfill the season or pass --match-season."
+        )
+    player_index = build_player_index(list(matches))
+
+    parser = GeminiInjuryListParser(
+        client=GeminiClient(project=project),
+        source_label=args.source_label,
+    )
+    reports = scrape_injury_list(
+        url=url,
+        season=args.season,
+        round=args.round,
+        source=HttpInjuryListSource(),
+        parser=parser,
+        player_index=player_index,
+    )
+    for report in reports:
+        injury_repo.record_report(report)
+
+    print(
+        f"scrape-injuries: parsed {len(reports)} reports for "
+        f"season={args.season} round={args.round} (source={args.source_label})."
+    )
+    return 0
+
+
+def _run_scrape_injuries_backfill(args: argparse.Namespace) -> int:
+    """Historical injury_reports backfill via the Wayback Machine (#268)."""
+    import os  # noqa: PLC0415
+
+    from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.injury_scraper import (  # noqa: PLC0415
+        GeminiInjuryListParser,
+        build_player_index,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreInjuryReportRepository,
+        SQLiteInjuryReportRepository,
+    )
+    from fantasy_coach.wayback import (  # noqa: PLC0415
+        WaybackInjuryListSource,
+        backfill_injuries,
+    )
+
+    project = (
+        args.gemini_project or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    )
+    if not project:
+        print("scrape-injuries-backfill: --gemini-project or FIREBASE_PROJECT_ID is required.")
+        return 1
+
+    seasons: list[int] = sorted(set(args.season))
+    match_seasons: list[int] = sorted(set(args.match_season or seasons))
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        injury_repo: Any = FirestoreInjuryReportRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("scrape-injuries-backfill: SQLite repo has no `_conn`; aborting.")
+            return 1
+        injury_repo = SQLiteInjuryReportRepository(conn)
+
+    matches: list[Any] = []
+    for s in match_seasons:
+        matches.extend(repo.list_matches(s))
+    if not matches:
+        print(
+            f"scrape-injuries-backfill: no matches in match-seasons {match_seasons}; "
+            "player-name index will be empty so every report will be skipped. "
+            "Backfill the relevant season(s) first."
+        )
+        return 1
+    player_index = build_player_index(matches)
+
+    parser = GeminiInjuryListParser(
+        client=GeminiClient(project=project),
+        source_label=args.source_label,
+    )
+    source = WaybackInjuryListSource()
+
+    results = backfill_injuries(
+        seasons=seasons,
+        source=source,
+        parser=parser,
+        player_index=player_index,
+        injury_repo=injury_repo,
+        source_label=args.source_label,
+    )
+
+    by_season: dict[int, list] = {}
+    for r in results:
+        by_season.setdefault(r.season, []).append(r)
+    for season in sorted(by_season):
+        season_rows = by_season[season]
+        n_articles = len(season_rows)
+        n_errors = sum(1 for r in season_rows if r.error)
+        n_reports = sum(r.reports_written for r in season_rows)
+        rounds = sorted({r.round for r in season_rows})
+        print(
+            f"season={season}: articles={n_articles} errors={n_errors} "
+            f"reports={n_reports} rounds={rounds}"
+        )
+    total_articles = len(results)
+    total_reports = sum(r.reports_written for r in results)
+    total_errors = sum(1 for r in results if r.error)
+    print(
+        f"scrape-injuries-backfill: parsed {total_articles} articles "
+        f"({total_errors} errors) producing {total_reports} reports "
+        f"(source={args.source_label})."
+    )
+    return 0 if total_errors == 0 else 1
+
+
+def _run_watch_team_lists(args: argparse.Namespace) -> int:
+    """Snapshot kickoff-imminent team lists + emit LateTeamChange rows (#208)."""
+    import os  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from fantasy_coach.config import get_repository  # noqa: PLC0415
+    from fantasy_coach.late_change_watcher import (  # noqa: PLC0415
+        find_matches_in_window,
+        watch_match,
+    )
+    from fantasy_coach.scraper import (  # noqa: PLC0415
+        InMemoryScraperCache,
+        fetch_match_from_url,
+    )
+    from fantasy_coach.storage.injury import (  # noqa: PLC0415
+        FirestoreLateTeamChangeRepository,
+        SQLiteLateTeamChangeRepository,
+    )
+    from fantasy_coach.storage.team_list import (  # noqa: PLC0415
+        FirestoreTeamListRepository,
+        SQLiteTeamListRepository,
+    )
+
+    season = args.season or datetime.now(UTC).year
+    round_ = args.round
+    if round_ is None:
+        round_ = _detect_upcoming_round(season)
+        if round_ is None:
+            print(f"No upcoming round found in season {season} — nothing to watch.")
+            return 0
+        print(f"Autodetected upcoming round: season={season} round={round_}")
+
+    repo = get_repository()
+    backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
+    if backend == "firestore":
+        team_list_repo: Any = FirestoreTeamListRepository()
+        late_repo: Any = FirestoreLateTeamChangeRepository()
+    else:
+        conn = getattr(repo, "_conn", None)
+        if conn is None:
+            print("watch-team-lists: SQLite repo has no `_conn`; aborting.")
+            return 1
+        team_list_repo = SQLiteTeamListRepository(conn)
+        late_repo = SQLiteLateTeamChangeRepository(conn)
+
+    matches = repo.list_matches(season, round_)
+    now = datetime.now(UTC)
+    in_window = find_matches_in_window(matches=matches, now=now, lead_minutes=args.lead_minutes)
+
+    if not in_window:
+        print(
+            f"No matches kicking off in the next {args.lead_minutes} min "
+            f"(season={season}, round={round_}); nothing to watch."
+        )
+        return 0
+
+    cache = InMemoryScraperCache()
+
+    def _fetcher(match: Any) -> dict[str, Any] | None:
+        # The Cloud Run Job stores match objects with a stable matchCentreUrl
+        # only on the upcoming-fixture endpoint, not the per-match payload.
+        # Fall back to a constructed path when that's missing.
+        url = getattr(match, "match_centre_url", None)
+        if url is None:
+            from fantasy_coach.scraper import _match_path  # noqa: PLC0415
+
+            home_slug = getattr(match.home, "slug", None)
+            away_slug = getattr(match.away, "slug", None)
+            if home_slug and away_slug:
+                url = _match_path(season, round_, home_slug, away_slug)
+        if url is None:
+            print(f"watch-team-lists: no match URL for match_id={match.match_id}; skipping")
+            return None
+        return fetch_match_from_url(url, cache=cache)
+
+    total_changes = 0
+    for match in in_window:
+        try:
+            written = watch_match(
+                match=match,
+                fetch_match=_fetcher,
+                team_list_repo=team_list_repo,
+                late_repo=late_repo,
+                now=now,
+                cutoff_minutes_before_kickoff=args.cutoff_minutes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"watch-team-lists: match_id={match.match_id} failed: {exc}")
+            continue
+        if written:
+            total_changes += len(written)
+            print(
+                f"watch-team-lists: match_id={match.match_id} -> "
+                f"{len(written)} late changes ({[c.change_type for c in written]})"
+            )
+
+    print(
+        f"watch-team-lists: {len(in_window)} matches in window, "
+        f"{total_changes} late changes recorded."
+    )
     return 0
 
 

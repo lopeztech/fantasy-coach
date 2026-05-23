@@ -4,12 +4,15 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import Accuracy from "./routes/Accuracy";
 import App from "./App";
+import BettingTips from "./routes/BettingTips";
 import GroupDetail from "./routes/GroupDetail";
 import Groups from "./routes/Groups";
 import Home from "./routes/Home";
+import { JobDetail, Jobs } from "./routes/Jobs";
 import Ladder from "./routes/Ladder";
 import Leaderboard from "./routes/Leaderboard";
 import MatchDetail from "./routes/MatchDetail";
+import Predictions from "./routes/Predictions";
 import Round from "./routes/Round";
 import Scoreboard from "./routes/Scoreboard";
 import Team from "./routes/Team";
@@ -21,6 +24,8 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <Home /> },
+      { path: "predictions", element: <Predictions /> },
+      { path: "betting-tips", element: <BettingTips /> },
       { path: "round/:season/:round", element: <Round /> },
       { path: "round/:season/:round/:matchId", element: <MatchDetail /> },
       { path: "scoreboard", element: <Scoreboard /> },
@@ -30,6 +35,8 @@ const router = createBrowserRouter([
       { path: "leaderboard", element: <Leaderboard /> },
       { path: "groups", element: <Groups /> },
       { path: "groups/:gid", element: <GroupDetail /> },
+      { path: "jobs", element: <Jobs /> },
+      { path: "jobs/:runId", element: <JobDetail /> },
     ],
   },
 ]);

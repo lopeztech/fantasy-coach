@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,8 @@ MODEL_PATH_ENV = "FANTASY_COACH_MODEL_PATH"
 MODEL_GCS_URI_ENV = "FANTASY_COACH_MODEL_GCS_URI"
 LOGISTIC_PATH_ENV = "FANTASY_COACH_LOGISTIC_PATH"
 LOGISTIC_GCS_URI_ENV = "FANTASY_COACH_LOGISTIC_GCS_URI"
+BAYESIAN_MODEL_PATH_ENV = "FANTASY_COACH_BAYESIAN_MODEL_PATH"
+DEFAULT_BAYESIAN_MODEL_PATH = "artifacts/bayesian.joblib"
 DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
 DEFAULT_LOGISTIC_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
@@ -79,6 +82,19 @@ CREATE TABLE IF NOT EXISTS predictions (
 class TeamInfo(BaseModel):
     id: int
     name: str
+    # Decimal bookmaker odds at scrape time (e.g. 1.74). Optional — absent
+    # when the NRL feed didn't carry odds for this fixture, or for cached
+    # predictions written before this field shipped. Powers the NRL-draw-style
+    # odds pills in the SPA round view.
+    odds: float | None = None
+
+
+class ScorelineProb(BaseModel):
+    """One (home_score, away_score) outcome with its predicted probability."""
+
+    homeScore: int  # noqa: N815
+    awayScore: int  # noqa: N815
+    probability: float
 
 
 class FeatureContribution(BaseModel):
@@ -157,6 +173,30 @@ class PredictionOut(BaseModel):
     winProbability80ci: tuple[float, float] | None = None
     trainingDataSimilarity: float | None = None
     confidenceBand: str | None = None  # "low" | "medium" | "high"
+    # Joint score-distribution / multi-task fields (#209, #215). Optional so
+    # predictions from other model types still deserialise correctly.
+    predictedTotal: float | None = None  # noqa: N815
+    drawProbability: float | None = None  # noqa: N815
+    topScorelines: list[ScorelineProb] | None = None  # noqa: N815
+    predictedLineBreakDiff: float | None = None  # noqa: N815  multi-task #215
+    # OOD detection fields (#216). Optional; absent on predictions from models
+    # without a fitted OOD detector.
+    oodScore: float | None = None  # noqa: N815  0–100 percentile
+    oodFlag: str | None = None  # noqa: N815  "in_distribution" | "edge" | "out_of_distribution"
+    # Conformal prediction intervals (#214). Guaranteed-coverage intervals
+    # derived from calibration-set residuals; absence means conformalizer was
+    # not fitted or the model type doesn't support it.
+    homeWinProbabilityCi80: tuple[float, float] | None = None  # noqa: N815
+    marginCi80: tuple[float, float] | None = None  # noqa: N815
+    # Bayesian posterior predictive margin HDI (#144 PR C). Populated during
+    # precompute when a saved BayesianHierarchicalModel artefact is present at
+    # FANTASY_COACH_BAYESIAN_MODEL_PATH. Absent on older cached predictions.
+    bayesianMargin80ci: tuple[int, int] | None = None  # noqa: N815
+    bayesianMargin95ci: tuple[int, int] | None = None  # noqa: N815
+    # Display metadata for the NRL-draw-style round view. Optional — older
+    # cached predictions don't carry these; the SPA falls back gracefully.
+    venue: str | None = None
+    venueCity: str | None = None  # noqa: N815
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +316,9 @@ def _row_to_out(r: sqlite3.Row) -> PredictionOut:
 # ---------------------------------------------------------------------------
 
 
+_PRED_CACHE_TTL: float = 6 * 3600.0  # predictions are immutable between Tue/Thu precompute runs
+
+
 class FirestorePredictionStore:
     """Firestore-backed prediction cache.
 
@@ -288,6 +331,12 @@ class FirestorePredictionStore:
     round keeps both sides to a single Firestore RPC — cheaper than
     per-match docs, and Firestore's 1 MiB doc limit is ~orders of magnitude
     more than a round's prediction payload.
+
+    In-memory hydration cache: populated on startup (and on first access) to
+    avoid repeated Firestore reads for the same round within a Cloud Run
+    instance. TTL is 6 hours — predictions don't change between Tue/Thu runs.
+    Warm instances may serve stale data for up to TTL after an emergency retrain;
+    bounce the service to clear (see docs/cost.md).
     """
 
     _COLLECTION = "predictions"
@@ -304,16 +353,62 @@ class FirestorePredictionStore:
             from google.cloud import firestore  # noqa: PLC0415
 
             self._db = firestore.Client(project=project, database=database)
+        # (ts_monotonic, predictions) keyed by (season, round)
+        self._cache: dict[tuple[int, int], tuple[float, list[PredictionOut]]] = {}
 
     def close(self) -> None:  # symmetry with PredictionStore; Firestore has no conn to close
         return
 
     def get(self, season: int, round_: int) -> list[PredictionOut]:
+        key = (season, round_)
+        cached = self._cache.get(key)
+        if cached is not None:
+            ts, preds = cached
+            if time.monotonic() - ts < _PRED_CACHE_TTL:
+                return preds
+            del self._cache[key]
+
         snap = self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).get()
         if not snap.exists:
             return []
         data = snap.to_dict() or {}
-        return [PredictionOut(**p) for p in data.get("predictions", [])]
+        preds = [PredictionOut(**p) for p in data.get("predictions", [])]
+        self._cache[key] = (time.monotonic(), preds)
+        return preds
+
+    def prefetch_recent(self, n_rounds: int = 2) -> None:
+        """Eagerly warm the cache with the n most recently written rounds.
+
+        Called at Cloud Run startup so the first user request serves from memory.
+        Failures are logged but non-fatal — the regular get() path still works.
+        """
+        try:
+            from google.cloud.firestore_v1 import base_query  # noqa: PLC0415
+
+            snaps = list(
+                self._db.collection(self._COLLECTION)
+                .order_by("createdAt", direction=base_query.Query.DESCENDING)
+                .limit(n_rounds)
+                .stream()
+            )
+            for snap in snaps:
+                data = snap.to_dict() or {}
+                season = int(data.get("season", 0))
+                round_ = int(data.get("round", 0))
+                if season and round_:
+                    preds = [PredictionOut(**p) for p in data.get("predictions", [])]
+                    self._cache[(season, round_)] = (time.monotonic(), preds)
+            if snaps:
+                pairs = [
+                    (
+                        int((d.to_dict() or {}).get("season", 0)),
+                        int((d.to_dict() or {}).get("round", 0)),
+                    )
+                    for d in snaps
+                ]
+                logger.info("prefetch_recent warmed rounds=%s", pairs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("prefetch_recent failed (non-fatal): %s", exc)
 
     def put(self, season: int, round_: int, predictions: list[PredictionOut]) -> None:
         self._db.collection(self._COLLECTION).document(_doc_id(season, round_)).set(
@@ -1000,8 +1095,8 @@ def compute_predictions(
         predictions.append(
             PredictionOut(
                 matchId=match.match_id,
-                home=TeamInfo(id=match.home.team_id, name=match.home.name),
-                away=TeamInfo(id=match.away.team_id, name=match.away.name),
+                home=TeamInfo(id=match.home.team_id, name=match.home.name, odds=match.home.odds),
+                away=TeamInfo(id=match.away.team_id, name=match.away.name, odds=match.away.odds),
                 kickoff=match.start_time.isoformat(),
                 predictedWinner="home" if prob >= 0.5 else "away",
                 homeWinProbability=prob,
@@ -1013,9 +1108,61 @@ def compute_predictions(
                 winProbability80ci=(ci_lo, ci_hi),
                 trainingDataSimilarity=ood_sim,
                 confidenceBand=band,
+                venue=match.venue,
+                venueCity=match.venue_city,
             )
         )
 
     store.put(season, round_, predictions)
     logger.info("Computed and cached %d predictions for %d r%d", len(predictions), season, round_)
     return predictions
+
+
+# ---------------------------------------------------------------------------
+# Bayesian uncertainty helper (#144 PR C)
+# ---------------------------------------------------------------------------
+
+
+def compute_bayesian_uncertainty(
+    home_team_id: int,
+    away_team_id: int,
+    *,
+    bayesian_model_path: Path | None = None,
+) -> dict[str, object] | None:
+    """Compute posterior predictive win probability and margin HDI.
+
+    Loads the Bayesian hierarchical model from ``bayesian_model_path``
+    (defaults to ``FANTASY_COACH_BAYESIAN_MODEL_PATH`` env var, then
+    ``artifacts/bayesian.joblib``). Returns None when the artefact does
+    not exist or when the requested teams are not in the model's training
+    set (graceful degradation — no PyMC import required at inference time).
+
+    Returns a dict with:
+        win_probability   float   posterior mean P(home wins)
+        margin_80ci       [lo, hi]  80% HDI integers
+        margin_95ci       [lo, hi]  95% HDI integers
+    """
+    path = bayesian_model_path or Path(
+        os.getenv(BAYESIAN_MODEL_PATH_ENV, DEFAULT_BAYESIAN_MODEL_PATH)
+    )
+    if not path.exists():
+        return None
+
+    try:
+        from fantasy_coach.models.bayesian_hierarchical import (  # noqa: PLC0415
+            load_bayesian_hierarchical,
+        )
+
+        model = load_bayesian_hierarchical(path)
+    except Exception:
+        logger.exception("Failed to load Bayesian model from %s", path)
+        return None
+
+    win_prob = model.predict_win_prob(home_team_id, away_team_id)
+    hdi = model.predict_margin_hdi(home_team_id, away_team_id)
+
+    return {
+        "win_probability": round(win_prob, 4),
+        "margin_80ci": [int(hdi["hdi_80_lo"]), int(hdi["hdi_80_hi"])],
+        "margin_95ci": [int(hdi["hdi_95_lo"]), int(hdi["hdi_95_hi"])],
+    }

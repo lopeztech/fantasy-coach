@@ -56,6 +56,33 @@ type Status =
   | { kind: "error"; message: string }
   | { kind: "ok"; predictions: Prediction[]; teamForm: Map<number, TeamFormHistory | null> };
 
+/**
+ * Group predictions by their kickoff day in the user's local timezone.
+ * Mimics the NRL draw page which renders one heading per match-day.
+ */
+function groupByDay(
+  predictions: Prediction[],
+): Array<{ dayKey: string; dayLabel: string; predictions: Prediction[] }> {
+  const fmt = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const groups = new Map<string, { dayKey: string; dayLabel: string; predictions: Prediction[] }>();
+  for (const p of predictions) {
+    const d = new Date(p.kickoff);
+    if (Number.isNaN(d.getTime())) continue;
+    // Bucket key by year-month-day in local time so DST and tz transitions
+    // don't split a single match-night across two groups.
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    if (!groups.has(key)) {
+      groups.set(key, { dayKey: key, dayLabel: fmt.format(d).toUpperCase(), predictions: [] });
+    }
+    groups.get(key)!.predictions.push(p);
+  }
+  return [...groups.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
+}
+
 const SKELETON_COUNT = 8;
 
 export default function Round() {
@@ -250,18 +277,23 @@ export default function Round() {
 
       {status.kind === "ok" && visiblePredictions.length > 0 && (
         <div className="match-grid">
-          {visiblePredictions.map((p) => (
-            <MatchCard
-              key={p.matchId}
-              prediction={p}
-              season={season}
-              round={round}
-              tip={tips.get(p.matchId) ?? null}
-              savingTip={savingTip === p.matchId}
-              onTip={(choice) => void handleTip(p.matchId, p.kickoff, choice)}
-              homeForm={status.teamForm.get(p.home.id)}
-              awayForm={status.teamForm.get(p.away.id)}
-            />
+          {groupByDay(visiblePredictions).map(({ dayLabel, predictions }) => (
+            <div key={dayLabel} className="match-day-group">
+              <h2 className="match-day-heading">{dayLabel}</h2>
+              {predictions.map((p) => (
+                <MatchCard
+                  key={p.matchId}
+                  prediction={p}
+                  season={season}
+                  round={round}
+                  tip={tips.get(p.matchId) ?? null}
+                  savingTip={savingTip === p.matchId}
+                  onTip={(choice) => void handleTip(p.matchId, p.kickoff, choice)}
+                  homeForm={status.teamForm.get(p.home.id)}
+                  awayForm={status.teamForm.get(p.away.id)}
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}

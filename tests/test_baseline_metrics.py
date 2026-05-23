@@ -106,14 +106,96 @@ SEASONS = (2023, 2024, 2025, 2026)
 #     early-2023 predictions toward 0.55; the rest tightens with more data.
 #   - Stacked +1.0pp accuracy / brier −0.0039. Inherits the XGBoost-component
 #     drag and the Elo-component lift; net positive.
+# Updated when `elo_mov_home_win_prob` was added to FEATURE_NAMES — XGBoost
+# loses 0.7pp on the all-seasons pool but GAINS 5.3pp on the 2026 R1-R7
+# slice (the recent season the user actually cares about). Skellam improves
+# universally (+1.15pp accuracy, log_loss/brier better). The new feature is
+# the calibrated EloMOV home-win probability with a +1 monotone constraint;
+# tree models needed direct sigmoid access rather than reconstructing it
+# from `elo_diff`.
+#
+# #255 adds 5 ladder-position / finals-race features (ladder_position_diff,
+# points_to_top8_diff, must_win_intensity, dead_rubber_indicator,
+# missing_ladder). home / elo / elo_mov are unchanged (don't read FEATURE_NAMES).
+# Effect on the pooled walk-forward window:
+#   - logistic: −1.44pp accuracy (0.5708 → 0.5564), log_loss / brier worsen.
+#     Linear model picks up noise from the new ladder columns at low rounds;
+#     features are kept because they're targeted at tree models.
+#   - xgboost: −0.57pp accuracy (0.5939 → 0.5882), log_loss/brier ~flat
+#     (within the 3.5e-2 cross-platform tolerance).
+#   - skellam: +0.58pp accuracy (0.5997 → 0.6055), log_loss / brier improve.
+#   - stacked: +0.14pp accuracy, log_loss / brier improve marginally.
+#
+# #251 adds 3 per-player rolling-form trajectory features
+# (player_form_trajectory_diff, key_player_trajectory_diff,
+# missing_player_trajectory). home / elo / elo_mov unchanged.
+#   - xgboost: +1.30pp accuracy (0.5882 → 0.6012), log_loss / brier improve —
+#     this is the cleanest tree-model gain in the last few PRs.
+#   - logistic: accuracy flat (0.5564), log_loss / brier worsen modestly
+#     (linear pipeline keeps absorbing tree-model-shaped features).
+#   - skellam: −0.87pp accuracy (0.6055 → 0.5968), log_loss / brier ~flat —
+#     skellam doesn't read FEATURE_NAMES but the new `record()` state
+#     ordering perturbs a handful of edge-case predictions near 0.5.
+#   - stacked: −0.72pp accuracy (0.5968 → 0.5896), log_loss / brier worsen
+#     slightly — inherits the skellam shift through the ensemble weights.
+#
+# #252 adds 3 cumulative fatigue features (team_fatigue_index_diff,
+# spine_fatigue_index_diff, cumulative_origin_minutes_diff). The last
+# defaults to 0.0 until representative_callups is wired into FeatureBuilder.
+#   - xgboost: −2.32pp accuracy (0.6012 → 0.5780), log_loss / brier ~flat.
+#     Inside the 3.5e-2 cross-platform tolerance but a real pooled
+#     regression — the constant-zero origin-minutes column likely adds a
+#     useless dimension the trees split on spuriously. Worth revisiting
+#     once callup data wires through, or dropping the column for now.
+#   - logistic: −0.73pp accuracy (0.5564 → 0.5491), log_loss / brier worsen.
+#   - skellam: −0.14pp accuracy (0.5968 → 0.5954), log_loss / brier ~flat.
+#   - stacked: +0.43pp accuracy (0.5896 → 0.5939), log_loss/brier ~flat.
+# Fatigue state-ordering fix: `record()` now snapshots previous kickoff/venue
+# before updating `_last_played` / `_last_venue`, so cumulative fatigue measures
+# the rest/travel load before the completed match instead of the just-recorded
+# match. Production XGBoost improves across all three metrics:
+#   - xgboost: +0.43pp accuracy (0.5780 → 0.5824), log_loss −0.0045,
+#     brier −0.0021, ECE −0.0126.
+#   - logistic: −0.14pp accuracy, log_loss / brier worsen (linear model keeps
+#     struggling with tree-shaped roster/travel features).
+#   - skellam: −0.87pp accuracy, log_loss / brier essentially flat.
+#   - stacked: −0.43pp accuracy, log_loss / brier essentially flat; inherits
+#     the Skellam shift more than the XGBoost gain.
+# Spine-position fix: `key_player_trajectory_diff` and `spine_fatigue_index_diff`
+# now treat spine as halves + hooker + fullback, rather than all outside backs
+# (fullback + centres + wingers). Winner-pick impact after both fixes:
+#   - xgboost: accuracy unchanged at 0.5824; log_loss / brier worsen versus
+#     fatigue-only, but production winner accuracy still stays above the #252
+#     baseline.
+#   - logistic: +0.29pp accuracy versus fatigue-only, log_loss / brier ~flat.
+#   - skellam: +0.43pp accuracy versus fatigue-only, log_loss / brier ~flat.
+#   - stacked: +0.29pp accuracy and log_loss −0.0057 versus fatigue-only.
+# XGBoost rest/fatigue monotone constraints: add hard directionality for
+# days-rest, short-turnaround, and cumulative fatigue columns. Higher rest for
+# home / lower rest for away should not hurt home; higher home fatigue should
+# not help home. Production XGBoost gains another +0.58pp accuracy
+# (0.5824 → 0.5882), brier/ECE improve, with a tiny log_loss tradeoff.
+# Stacked shifts down on accuracy versus the spine-only point but keeps
+# better log_loss / brier than the #252 baseline.
+#
+# XGBoost no-signal column sampling weights: keep placeholder/constant columns
+# in FEATURE_NAMES for train/serve schema compatibility, but give them near-zero
+# XGBoost column-sampling weight until their backing data is wired/backfilled.
+# This stops all-zero line-movement / representative / forecast columns from
+# consuming colsample_bytree slots in tiny walk-forward fits. Production
+# XGBoost gains +0.87pp accuracy (0.5882 → 0.5968) while log_loss and brier
+# both improve. ECE worsens slightly (0.0422 → 0.0487), still acceptable given
+# the accuracy and proper-scoring-rule lift; the 2026 slice improves
+# materially (0.5357 → 0.6071 accuracy). Stacked accuracy is unchanged, with
+# a small log_loss / brier regression from the XGBoost base shift.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5694, "log_loss": 0.8906, "brier": 0.2831},
-    "xgboost": {"n": 692, "accuracy": 0.6012, "log_loss": 0.6918, "brier": 0.2467},
-    "skellam": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6761, "brier": 0.2409},
-    "stacked": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6745, "brier": 0.2404},
+    "logistic": {"n": 692, "accuracy": 0.5506, "log_loss": 0.9508, "brier": 0.2959},
+    "xgboost": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6889, "brier": 0.2451},
+    "skellam": {"n": 692, "accuracy": 0.5910, "log_loss": 0.6738, "brier": 0.2394},
+    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6814, "brier": 0.2431},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

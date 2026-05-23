@@ -1,5 +1,12 @@
 import { getFirebaseAuth, API_BASE_URL } from "./firebase";
-import type { DashboardOut, SeasonSimulation, TeamOption } from "./types";
+import type {
+  BettingTipsResponse,
+  DashboardOut,
+  JobRunDetail,
+  JobRunListItem,
+  SeasonSimulation,
+  TeamOption,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -41,6 +48,24 @@ export async function getDashboard(
 
 export async function getSimulation(season: number): Promise<SeasonSimulation> {
   return apiFetch<SeasonSimulation>(`/season/${season}/simulation`);
+}
+
+export async function getJobRuns(limit = 20): Promise<JobRunListItem[]> {
+  const data = await apiFetch<{ runs: JobRunListItem[] }>(`/job-runs?limit=${limit}`);
+  return data.runs;
+}
+
+export async function getJobRun(runId: string): Promise<JobRunDetail> {
+  return apiFetch<JobRunDetail>(`/job-runs/${encodeURIComponent(runId)}`);
+}
+
+export async function getBettingTips(
+  season: number,
+  round: number,
+): Promise<BettingTipsResponse> {
+  return apiFetch<BettingTipsResponse>(
+    `/betting-tips?season=${season}&round=${round}`,
+  );
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

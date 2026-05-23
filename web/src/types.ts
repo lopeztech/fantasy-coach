@@ -1,6 +1,9 @@
 export type Team = {
   id: number;
   name: string;
+  // Decimal bookmaker odds (e.g. 1.74). Optional — older cached predictions
+  // and predictions for fixtures without odds data don't carry this.
+  odds?: number | null;
 };
 
 // One entry in a starting-XIII "missing regulars" list — carried as
@@ -54,6 +57,15 @@ export type Prediction = {
   actualWinner?: "home" | "away" | null;
   // Three-way consensus (#140): absent on predictions cached before #140 shipped.
   alternatives?: AlternativeModels | null;
+  // NRL-draw-style display fields (optional — older cached predictions
+  // don't carry these; the SPA falls back gracefully).
+  venue?: string | null;
+  venueCity?: string | null;
+  // Confidence tier (#257) — computed server-side from Bayesian spread + OOD score.
+  // Absent on older cached predictions; the UI omits the badge when null.
+  confidenceBand?: "low" | "medium" | "high" | null;
+  // OOD detection (#146). "in_distribution" | "edge" | "out_of_distribution"
+  oodFlag?: string | null;
 };
 
 export type RoundAccuracy = {
@@ -187,6 +199,90 @@ export type WhatIfOut = {
   homeWinProbability: number;
   predictedWinner: string;
   contributions?: FeatureContribution[] | null;
+};
+
+// ---------------------------------------------------------------------------
+// Precompute job-run audit log (#244)
+// ---------------------------------------------------------------------------
+
+export type JobRunSummary = {
+  flips: number;
+  meanAbsDelta: number;
+  maxAbsDelta: number;
+};
+
+export type JobRunListItem = {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  trigger: string;
+  status: string;
+  season: number;
+  round: number;
+  matchesProcessed: number;
+  modelVersion: string;
+  error: string | null;
+  summary: JobRunSummary;
+};
+
+export type JobRunChange = {
+  matchId: number;
+  homeTeam: string;
+  awayTeam: string;
+  prevHomeProb: number | null;
+  newHomeProb: number;
+  delta: number;
+  flipped: boolean;
+  triggerSignal: "team_list" | "weather" | "retrain" | null;
+  summary: string;
+};
+
+export type JobRunDetail = JobRunListItem & {
+  changes: JobRunChange[];
+};
+
+// ---------------------------------------------------------------------------
+// Betting tips
+// ---------------------------------------------------------------------------
+
+export type TipMarket = "h2h" | "totals";
+export type TipKind = "single" | "double" | "treble";
+
+export type TipLeg = {
+  matchId: number;
+  homeName: string;
+  awayName: string;
+  kickoff: string; // ISO 8601 UTC
+  market: TipMarket;
+  selectionCode: "home" | "away" | "over" | "under";
+  selection: string; // display string, e.g. "Storm" or "Over 41.5"
+  line: number | null;
+  decimalOdds: number;
+  modelProb: number;
+  impliedProb: number;
+  edge: number;
+  bookmaker: string;
+};
+
+export type Tip = {
+  kind: TipKind;
+  legs: TipLeg[];
+  combinedOdds: number;
+  combinedModelProb: number;
+  combinedImpliedProb: number;
+  edge: number;
+  suggestedUnits: number;
+};
+
+export type BettingTipsResponse = {
+  season: number;
+  round: number;
+  generatedAt: string;
+  oddsSnapshotAt: string | null;
+  caveat: string;
+  singles: Tip[];
+  doubles: Tip[];
+  trebles: Tip[];
 };
 
 export type DashboardOut = {

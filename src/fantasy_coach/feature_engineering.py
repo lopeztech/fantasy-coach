@@ -29,6 +29,7 @@ Features (all home-minus-away unless noted):
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -37,11 +38,11 @@ from datetime import datetime
 import numpy as np
 
 from fantasy_coach.bookmaker.lines import devig_two_way
-from fantasy_coach.features import MatchRow, PlayerRow, TeamStat
+from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamStat
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
-from fantasy_coach.travel import compute_rest_features, travel_features
+from fantasy_coach.travel import compute_rest_features, haversine_km, lookup_venue, travel_features
 from fantasy_coach.weather import WeatherInfo, parse_weather
 from fantasy_coach.weather_forecast import WeatherForecast, bin_rain_mm_3h
 
@@ -203,6 +204,67 @@ FEATURE_NAMES = (
     # error independent of the underlying weather signal).
     "rain_intensity",
     "weather_source",
+    # EloMOV's calibrated home-win probability for this fixture
+    # (sigmoid of (rating_home + HGA - rating_away) / scale, with the
+    # per-team-per-venue HGA adjustment from #145). The raw rating
+    # difference is already in `elo_diff`, but tree-based models split
+    # piecewise on it and approximate the sigmoid badly on small data.
+    # Surfacing the calibrated probability directly gives XGBoost a
+    # strong, monotone signal it can leverage with one split rather
+    # than reconstruct from rating arithmetic. EloMOV beats XGBoost on
+    # accuracy across every season slice in the eval — this gives the
+    # discriminative model direct access to that signal.
+    "elo_mov_home_win_prob",
+    # Ladder-position / finals-race features (#255). Emitted from the running
+    # competition ladder maintained in FeatureBuilder. All values default to
+    # 0.0 with missing_ladder=1.0 for rounds < LADDER_MIN_ROUND (positions
+    # aren't stable until ≥5 rounds have been played).
+    #
+    # ladder_position_diff: current ladder rank (1–17), home minus away.
+    #   Negative means home is ranked higher (better).
+    # points_to_top8_diff: (top8_pts − team_pts), signed, home minus away.
+    #   Negative = home is comfortably inside top 8 relative to away.
+    # must_win_intensity: max(0, 1 − (remaining − pts_to_top8 / 2)) for
+    #   the more desperate team; reaches 1.0 when elimination is imminent.
+    # dead_rubber_indicator: 1.0 when neither team can change their top-8
+    #   status regardless of remaining match results.
+    # missing_ladder: 1.0 for rounds < LADDER_MIN_ROUND or no ladder data.
+    "ladder_position_diff",
+    "points_to_top8_diff",
+    "must_win_intensity",
+    "dead_rubber_indicator",
+    "missing_ladder",
+    # Per-player rolling form trajectory (#251). Captures whether individual
+    # players are trending up or down over their last 3 matches vs their
+    # season baseline — a signal invisible to team-level rolling stats.
+    # Composite per player = tackle_breaks + line_breaks + try_assists
+    #   + 0.05 × tackles_made − 0.5 × errors (signed).
+    # Trajectory = (last-3 avg − season avg), position-weighted, home − away.
+    #
+    # player_form_trajectory_diff: full starting XIII, all positions.
+    # key_player_trajectory_diff: spine only (halves, hooker, fullback).
+    # missing_player_trajectory: 1.0 when ≥ 5 named XIII players on either
+    #   team have fewer than 3 recorded stat composites (early season, debuts).
+    "player_form_trajectory_diff",
+    "key_player_trajectory_diff",
+    "missing_player_trajectory",
+    # Cumulative fatigue index (#252). Exponentially-weighted (decay τ=21 days)
+    # sum of per-match fatigue load: travel_km/1000 + max(0, 7−days_rest)
+    # + 1.5×short_turnaround. Captures compound fixture congestion that the
+    # single-match rest features miss — e.g. a team that flew 3 weekends in a
+    # row on short turnarounds. Home minus away; positive = home more fatigued.
+    #
+    # team_fatigue_index_diff: all players, full team fatigue load.
+    # spine_fatigue_index_diff: same load but scaled by fraction of spine
+    #   starters (halves, hooker, fullback) present — proxies for whether the
+    #   fatigue disproportionately hits the matchday playmakers.
+    # cumulative_origin_minutes_diff: minutes of Origin / Test rugby in the
+    #   last 28 days for each named XIII player, summed home minus away.
+    #   Infers 80 min per representative-game appearance; 0.0 when no
+    #   representative_callups data is available for the fixture window.
+    "team_fatigue_index_diff",
+    "spine_fatigue_index_diff",
+    "cumulative_origin_minutes_diff",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -233,6 +295,10 @@ POSITION_WEIGHTS: dict[str, float] = {
     "Interchange": 0.5,
 }
 
+SPINE_POSITIONS: frozenset[str] = (
+    POSITION_GROUPS["halves"] | POSITION_GROUPS["hooker"] | frozenset({"Fullback"})
+)
+
 # How many recent completed matches define a team's "regular XIII".
 KEY_ABSENCE_WINDOW = 5
 # A player needs to have started this many of the last KEY_ABSENCE_WINDOW
@@ -260,6 +326,33 @@ DEFAULT_DAYS_REST = 14
 REF_WINDOW = 20  # rolling window for referee stats
 REF_SHRINKAGE_N = 10  # shrink toward league mean for fewer than N prior matches
 _TEAM_STATS_WINDOW = 5
+
+# Ladder-position feature constants (#255).
+LADDER_MIN_ROUND = 5  # emit missing_ladder=1.0 for rounds below this threshold
+NRL_SEASON_ROUNDS = 27  # regular-season rounds in the NRL calendar
+
+# Player form-trajectory constants (#251).
+_PLAYER_TRAJ_WINDOW = 20  # rolling window for season baseline
+_PLAYER_TRAJ_RECENT = 3  # recent window for "current form" snapshot
+_PLAYER_TRAJ_MISSING_N = 5  # ≥ this many XIII players without history → flag
+
+# Cumulative fatigue index constants (#252).
+_FATIGUE_DECAY_TAU = 21.0  # exponential decay half-life in days
+
+
+@dataclass
+class _TeamLadder:
+    """Per-team running ladder entry maintained by FeatureBuilder."""
+
+    team_id: int
+    pts: int = 0  # competition points (2 win, 1 draw, 0 loss)
+    pts_for: int = 0  # total match points scored
+    pts_against: int = 0
+    played: int = 0
+
+    @property
+    def pts_diff(self) -> int:
+        return self.pts_for - self.pts_against
 
 
 @dataclass(frozen=True)
@@ -364,12 +457,26 @@ class FeatureBuilder:
         # How many times each (team_id, venue_key, season) combination has appeared.
         # Used to determine whether a venue is a home ground for neutral-venue detection.
         self._team_venue_season_counts: dict[tuple[int, str, int], int] = defaultdict(int)
+        # Running competition ladder (#255). Keyed by team_id; reset each season.
+        self._ladder: dict[int, _TeamLadder] = {}
+        # Per-player rolling stat composite history (#251). Each entry is the
+        # _player_stat_composite() value for a completed starting appearance.
+        # Walk-forward only — record() writes, feature_row() reads prior state.
+        self._player_stat_history: dict[int, deque[float]] = defaultdict(
+            lambda: deque(maxlen=_PLAYER_TRAJ_WINDOW)
+        )
+        # Cumulative fatigue state (#252). Per team: (last_match_time, ew_sum)
+        # where ew_sum is the exponentially-weighted fatigue load accumulated
+        # across prior matches with decay τ = _FATIGUE_DECAY_TAU days.
+        self._team_fatigue: dict[int, tuple[datetime, float]] = {}
+        self._spine_fatigue: dict[int, tuple[datetime, float]] = {}
 
     def feature_row(
         self, match: MatchRow, *, weather_forecast: WeatherForecast | None = None
     ) -> list[float]:
         h_id, a_id = match.home.team_id, match.away.team_id
         elo_diff = self.elo.rating(h_id) + self.elo.home_advantage - self.elo.rating(a_id)
+        elo_mov_p_home = self.elo.predict(h_id, a_id, venue=match.venue)
         form_pf_h = _avg(self._points_for[h_id])
         form_pf_a = _avg(self._points_for[a_id])
         form_pa_h = _avg(self._points_against[h_id])
@@ -425,7 +532,11 @@ class FeatureBuilder:
         lb_a = _avg(self._team_line_breaks[a_id])
         runs_h = _avg(self._team_all_runs[h_id])
         runs_a = _avg(self._team_all_runs[a_id])
-        missing_ts = 1.0 if len(self._team_kick_metres[h_id]) == 0 else 0.0
+        missing_ts = (
+            0.0
+            if self._has_team_stats_history(h_id) and self._has_team_stats_history(a_id)
+            else 1.0
+        )
         is_neutral = self._is_neutral_venue(h_id, a_id, vkey, match.season)
         tv_hga = 0.0 if is_neutral else self._team_venue_hga_estimate(h_id, vkey)
 
@@ -457,6 +568,21 @@ class FeatureBuilder:
         ) - self._position_group_strength(match.away.players, POSITION_GROUPS["outside_backs"])
         # Interaction: fires only when both groups push in the same direction.
         halves_x_fwds = fwds_diff if halves_diff * fwds_diff > 0 else 0.0
+
+        lad_pos_diff, pts8_diff, must_win_int, dead_rub, miss_lad = self._ladder_features(
+            match.round, h_id, a_id
+        )
+
+        traj_h = self._team_trajectory(match.home.players, spine_only=False)
+        traj_a = self._team_trajectory(match.away.players, spine_only=False)
+        spine_traj_h = self._team_trajectory(match.home.players, spine_only=True)
+        spine_traj_a = self._team_trajectory(match.away.players, spine_only=True)
+        miss_traj = self._missing_trajectory(match.home.players, match.away.players)
+
+        fat_h, sfat_h = self._get_fatigue(h_id, match.home.players, match.start_time)
+        fat_a, sfat_a = self._get_fatigue(a_id, match.away.players, match.start_time)
+        origin_min_h = self._cumulative_origin_minutes(match.home.players, match.start_time)
+        origin_min_a = self._cumulative_origin_minutes(match.away.players, match.start_time)
 
         return [
             elo_diff,
@@ -511,7 +637,160 @@ class FeatureBuilder:
             halves_x_fwds,
             rain_intensity,
             weather_source,
+            elo_mov_p_home,
+            lad_pos_diff,
+            pts8_diff,
+            must_win_int,
+            dead_rub,
+            miss_lad,
+            traj_h - traj_a,
+            spine_traj_h - spine_traj_a,
+            miss_traj,
+            fat_h - fat_a,
+            sfat_h - sfat_a,
+            origin_min_h - origin_min_a,
         ]
+
+    def _ladder_features(
+        self, round_: int, h_id: int, a_id: int
+    ) -> tuple[float, float, float, float, float]:
+        """Return (ladder_position_diff, points_to_top8_diff, must_win_intensity,
+        dead_rubber_indicator, missing_ladder) from the running competition table.
+
+        All values are 0.0 / missing_ladder=1.0 when the round is below
+        LADDER_MIN_ROUND or either team hasn't appeared on the ladder yet.
+        """
+        if round_ < LADDER_MIN_ROUND or h_id not in self._ladder or a_id not in self._ladder:
+            return 0.0, 0.0, 0.0, 0.0, 1.0
+
+        entries = sorted(self._ladder.values(), key=lambda e: (-e.pts, -e.pts_diff))
+        if len(entries) < 2:
+            return 0.0, 0.0, 0.0, 0.0, 1.0
+
+        pos_map = {e.team_id: i + 1 for i, e in enumerate(entries)}
+        pts_map = {e.team_id: e.pts for e in entries}
+        played_map = {e.team_id: e.played for e in entries}
+
+        h_pos = pos_map.get(h_id, len(entries))
+        a_pos = pos_map.get(a_id, len(entries))
+
+        top8_pts = entries[7].pts if len(entries) >= 8 else entries[-1].pts
+
+        h_pts_to_8 = top8_pts - pts_map.get(h_id, 0)
+        a_pts_to_8 = top8_pts - pts_map.get(a_id, 0)
+
+        h_remaining = max(0, NRL_SEASON_ROUNDS - played_map.get(h_id, 0))
+        a_remaining = max(0, NRL_SEASON_ROUNDS - played_map.get(a_id, 0))
+
+        def _must_win_score(pts_to_8: float, remaining: int) -> float:
+            if pts_to_8 <= 0 or remaining == 0:
+                return 0.0
+            return max(0.0, min(1.0, 1.0 - (remaining - pts_to_8 / 2.0)))
+
+        must_win_intensity = max(
+            _must_win_score(h_pts_to_8, h_remaining),
+            _must_win_score(a_pts_to_8, a_remaining),
+        )
+
+        def _top8_locked(team_pts: int, pos: int, remaining: int) -> bool:
+            """True when this team's top-8 status cannot change."""
+            if remaining == 0:
+                return True
+            if pos > 8:
+                return team_pts + 2 * remaining < top8_pts
+            else:
+                if len(entries) < 9:
+                    return True
+                ninth = entries[8]
+                ninth_remaining = max(0, NRL_SEASON_ROUNDS - ninth.played)
+                return ninth.pts + 2 * ninth_remaining < team_pts
+
+        h_dead = _top8_locked(pts_map.get(h_id, 0), h_pos, h_remaining)
+        a_dead = _top8_locked(pts_map.get(a_id, 0), a_pos, a_remaining)
+        dead_rubber = 1.0 if (h_dead and a_dead) else 0.0
+
+        return (
+            float(h_pos - a_pos),
+            float(h_pts_to_8 - a_pts_to_8),
+            must_win_intensity,
+            dead_rubber,
+            0.0,
+        )
+
+    def _get_fatigue(
+        self, team_id: int, players: list[PlayerRow], at_time: datetime
+    ) -> tuple[float, float]:
+        """Return (team_fatigue, spine_fatigue) decayed to at_time (#252)."""
+        prev_t, prev_f = self._team_fatigue.get(team_id, (at_time, 0.0))
+        elapsed = max(0.0, (at_time - prev_t).total_seconds() / 86400.0)
+        team_fat = prev_f * math.exp(-elapsed / _FATIGUE_DECAY_TAU)
+
+        prev_st, prev_sf = self._spine_fatigue.get(team_id, (at_time, 0.0))
+        elapsed_s = max(0.0, (at_time - prev_st).total_seconds() / 86400.0)
+        spine_fat = prev_sf * math.exp(-elapsed_s / _FATIGUE_DECAY_TAU)
+        return team_fat, spine_fat
+
+    def _has_team_stats_history(self, team_id: int) -> bool:
+        """True when all rolling team-stat inputs have at least one prior sample."""
+        return all(
+            len(window[team_id]) > 0
+            for window in (
+                self._team_kick_metres,
+                self._team_kick_return_metres,
+                self._team_line_breaks,
+                self._team_all_runs,
+            )
+        )
+
+    def _cumulative_origin_minutes(self, players: list[PlayerRow], at_time: datetime) -> float:
+        """Total inferred Origin/Test minutes for the named XIII in the last 28 days (#252).
+
+        Returns 0.0 when no representative_callups data is wired into the
+        FeatureBuilder (the current default — callup data is read from the DB
+        in precompute, not in the walk-forward harness).
+        """
+        # Placeholder: returns 0.0 until representative_callups are wired into
+        # FeatureBuilder state. The missing signal is consistent with how
+        # origin_callups_diff is currently handled (same default 0.0).
+        return 0.0
+
+    def _team_trajectory(self, players: list[PlayerRow], *, spine_only: bool) -> float:
+        """Position-weighted sum of (last-3 avg − season avg) per starter (#251).
+
+        Returns 0.0 when no starters have sufficient stat history, which is the
+        correct neutral value for early-season matches and debut appearances.
+        """
+        total = 0.0
+        for p in players:
+            if not p.is_on_field or p.position is None:
+                continue
+            if spine_only and p.position not in SPINE_POSITIONS:
+                continue
+            hist = self._player_stat_history.get(p.player_id)
+            if not hist or len(hist) < _PLAYER_TRAJ_RECENT:
+                continue
+            hist_list = list(hist)
+            last3_avg = sum(hist_list[-_PLAYER_TRAJ_RECENT:]) / _PLAYER_TRAJ_RECENT
+            season_avg = sum(hist_list) / len(hist_list)
+            weight = POSITION_WEIGHTS.get(p.position, 1.0)
+            total += (last3_avg - season_avg) * weight
+        return total
+
+    def _missing_trajectory(
+        self, home_players: list[PlayerRow], away_players: list[PlayerRow]
+    ) -> float:
+        """1.0 when ≥ _PLAYER_TRAJ_MISSING_N named XIII players on either team
+        lack sufficient stat history to compute a trajectory."""
+        for players in (home_players, away_players):
+            starters = [p for p in players if p.is_on_field]
+            missing = sum(
+                1
+                for p in starters
+                if len(self._player_stat_history.get(p.player_id) or []) < _PLAYER_TRAJ_RECENT
+            )
+            if missing >= _PLAYER_TRAJ_MISSING_N:
+                return 1.0
+        return 0.0
 
     def _team_venue_hga_estimate(self, team_id: int, vkey: str) -> float:
         """Rolling win-over-expected for (home team, venue); regressed toward 0."""
@@ -703,6 +982,7 @@ class FeatureBuilder:
         if match.season != self._current_season:
             self.elo.regress_to_mean()
             self.player_ratings.regress_to_mean()
+            self._ladder = {}  # fresh ladder each season (#255)
             self._current_season = match.season
 
     def record(self, match: MatchRow) -> None:
@@ -711,6 +991,10 @@ class FeatureBuilder:
             return
         h_id, a_id = match.home.team_id, match.away.team_id
         h_score, a_score = int(match.home.score), int(match.away.score)
+        h_prev_played = self._last_played.get(h_id)
+        a_prev_played = self._last_played.get(a_id)
+        h_prev_venue = self._last_venue.get(h_id)
+        a_prev_venue = self._last_venue.get(a_id)
 
         # Opponent-adjusted form: compute baselines from pre-update windows,
         # then store adjusted scores. No leakage — _opp_*_window for both
@@ -793,6 +1077,76 @@ class FeatureBuilder:
             ar = _extract_stat(match.team_stats, "All Runs", side)
             if ar is not None:
                 self._team_all_runs[team_id].append(ar)
+        # Update running ladder (#255). Must happen after scores are confirmed.
+        for team_id, scored, conceded in (
+            (h_id, h_score, a_score),
+            (a_id, a_score, h_score),
+        ):
+            if team_id not in self._ladder:
+                self._ladder[team_id] = _TeamLadder(team_id=team_id)
+            e = self._ladder[team_id]
+            e.pts_for += scored
+            e.pts_against += conceded
+            e.played += 1
+        if h_score > a_score:
+            self._ladder[h_id].pts += 2
+        elif a_score > h_score:
+            self._ladder[a_id].pts += 2
+        else:  # draw
+            self._ladder[h_id].pts += 1
+            self._ladder[a_id].pts += 1
+        # Update cumulative fatigue state (#252). Components per match:
+        # travel_km/1000 + max(0, 7−days_rest) + 1.5×was_short_turnaround.
+        h_prev_raw = (
+            (match.start_time - h_prev_played).total_seconds() / 86400.0
+            if h_prev_played is not None
+            else None
+        )
+        a_prev_raw = (
+            (match.start_time - a_prev_played).total_seconds() / 86400.0
+            if a_prev_played is not None
+            else None
+        )
+        h_days = h_prev_raw or DEFAULT_DAYS_REST
+        a_days = a_prev_raw or DEFAULT_DAYS_REST
+        h_short = 1.0 if (h_prev_raw is not None and h_prev_raw < 6) else 0.0
+        a_short = 1.0 if (a_prev_raw is not None and a_prev_raw < 6) else 0.0
+
+        h_travel = _venue_travel_km(h_prev_venue, match.venue)
+        a_travel = _venue_travel_km(a_prev_venue, match.venue)
+
+        for team_id, days_rest, travel_km, is_short, players in (
+            (h_id, h_days, h_travel, h_short, match.home.players),
+            (a_id, a_days, a_travel, a_short, match.away.players),
+        ):
+            component = travel_km / 1000.0 + max(0.0, 7.0 - days_rest) + 1.5 * is_short
+            # Team-level fatigue
+            prev_t, prev_f = self._team_fatigue.get(team_id, (match.start_time, 0.0))
+            elapsed_days = max(0.0, (match.start_time - prev_t).total_seconds() / 86400.0)
+            decay = math.exp(-elapsed_days / _FATIGUE_DECAY_TAU)
+            self._team_fatigue[team_id] = (match.start_time, prev_f * decay + component)
+            # Spine-level fatigue — scale by fraction of spine starting
+            spine_starters = sum(
+                1 for p in players if p.is_on_field and p.position in SPINE_POSITIONS
+            )
+            spine_scale = spine_starters / 4.0  # 4 spine positions (HB, 5/8, Hkr, FB)
+            spine_component = component * spine_scale
+            prev_st, prev_sf = self._spine_fatigue.get(team_id, (match.start_time, 0.0))
+            elapsed_days_s = max(0.0, (match.start_time - prev_st).total_seconds() / 86400.0)
+            decay_s = math.exp(-elapsed_days_s / _FATIGUE_DECAY_TAU)
+            self._spine_fatigue[team_id] = (match.start_time, prev_sf * decay_s + spine_component)
+
+        # Update per-player stat composite history (#251).
+        for side_stats, side_players in (
+            (match.home_player_stats, match.home.players),
+            (match.away_player_stats, match.away.players),
+        ):
+            stats_by_id = {s.player_id: s for s in side_stats}
+            for p in side_players:
+                if p.is_on_field and p.player_id in stats_by_id:
+                    composite = _player_stat_composite(stats_by_id[p.player_id])
+                    if composite is not None:
+                        self._player_stat_history[p.player_id].append(composite)
 
 
 def build_training_frame(
@@ -847,6 +1201,33 @@ def build_training_frame(
         y=np.asarray(targets, dtype=int),
         match_ids=np.asarray(match_ids, dtype=int),
         start_times=np.asarray(start_times, dtype="datetime64[s]"),
+    )
+
+
+def _venue_travel_km(prev_venue: str | None, curr_venue: str | None) -> float:
+    """Great-circle distance in km between two venue names; 0.0 when either is unknown."""
+    pv = lookup_venue(prev_venue)
+    cv = lookup_venue(curr_venue)
+    if pv is None or cv is None:
+        return 0.0
+    return haversine_km(pv.lat, pv.lon, cv.lat, cv.lon)
+
+
+def _player_stat_composite(stat: PlayerMatchStat) -> float | None:
+    """Weighted composite of attacking/defensive KPIs for one player's match (#251).
+
+    Returns None when the key attacking stats are entirely absent (e.g. a player
+    entry with only ``player_id`` populated). The composite is intentionally
+    sparse-safe — any missing field is treated as 0 rather than propagating None.
+    """
+    if stat.tackle_breaks is None and stat.line_breaks is None and stat.try_assists is None:
+        return None
+    return (
+        (stat.tackle_breaks or 0)
+        + (stat.line_breaks or 0)
+        + (stat.try_assists or 0)
+        + 0.05 * (stat.tackles_made or 0)
+        - 0.5 * (stat.errors or 0)
     )
 
 

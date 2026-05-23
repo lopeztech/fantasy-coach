@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 
+import { ConfidenceBadge } from "./ConfidenceBadge";
 import { TeamFormSparkline } from "./TeamFormSparkline";
 import { TipEntry } from "./TipEntry";
 import type { TipChoice } from "../tips";
@@ -26,6 +27,24 @@ function formatKickoff(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/**
+ * Compact NRL-draw-style kickoff time, e.g. "6:00pm". Used in the centred
+ * column of the match card. Falls back to formatKickoff() for non-times.
+ */
+function formatKickoffTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d
+    .toLocaleString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })
+    .replace(/\s/g, "")
+    .toLowerCase();
+}
+
+function formatOdds(odds: number | null | undefined): string {
+  if (odds == null || !Number.isFinite(odds)) return "—";
+  return `$${odds.toFixed(2)}`;
 }
 
 export function MatchCard({
@@ -57,6 +76,8 @@ export function MatchCard({
   const winnerPct = p.predictedWinner === "home" ? homePct : awayPct;
   const isKickedOff = new Date(p.kickoff) <= new Date();
 
+  const venueLine = [p.venue, p.venueCity].filter(Boolean).join(", ");
+
   return (
     <Link
       to={`/round/${season}/${round}/${p.matchId}`}
@@ -65,31 +86,43 @@ export function MatchCard({
     >
       <article className="match-card">
         <header className="match-card-head">
-          <div className="teams">
-            <span
-              className="team home team-link"
-              role="link"
-              tabIndex={0}
-              onClick={(e) => { e.preventDefault(); navigate(`/team/${p.home.id}`); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.home.id}`); } }}
-            >
-              {p.home.name}
-            </span>
-            <span className="muted"> vs </span>
-            <span
-              className="team away team-link"
-              role="link"
-              tabIndex={0}
-              onClick={(e) => { e.preventDefault(); navigate(`/team/${p.away.id}`); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.away.id}`); } }}
-            >
-              {p.away.name}
-            </span>
+          <div
+            className="match-team match-team--home"
+            role="link"
+            tabIndex={0}
+            onClick={(e) => { e.preventDefault(); navigate(`/team/${p.home.id}`); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.home.id}`); } }}
+          >
+            <span className="match-team-name">{p.home.name}</span>
           </div>
-          <time className="kickoff muted" dateTime={p.kickoff}>
-            {formatKickoff(p.kickoff)}
-          </time>
+          <div className="match-time-cell">
+            <time className="match-kickoff-time" dateTime={p.kickoff}>
+              {formatKickoffTime(p.kickoff)}
+            </time>
+            <span className="match-kickoff-date muted">{formatKickoff(p.kickoff)}</span>
+          </div>
+          <div
+            className="match-team match-team--away"
+            role="link"
+            tabIndex={0}
+            onClick={(e) => { e.preventDefault(); navigate(`/team/${p.away.id}`); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); navigate(`/team/${p.away.id}`); } }}
+          >
+            <span className="match-team-name">{p.away.name}</span>
+          </div>
         </header>
+
+        {(p.home.odds != null || p.away.odds != null) && (
+          <div className="match-odds-row" aria-label="Bookmaker odds">
+            <span className="match-odds-pill">{formatOdds(p.home.odds)}</span>
+            <span className="match-odds-source">odds</span>
+            <span className="match-odds-pill">{formatOdds(p.away.odds)}</span>
+          </div>
+        )}
+
+        {venueLine && (
+          <p className="match-venue muted">{venueLine}</p>
+        )}
 
         {(homeForm || awayForm) && (
           <div className="form-sparklines" aria-hidden="false">
@@ -123,6 +156,10 @@ export function MatchCard({
         <p className="pick">
           Pick: <strong>{winnerName}</strong> ({winnerPct}%)
         </p>
+
+        {p.confidenceBand && (
+          <ConfidenceBadge band={p.confidenceBand} oodFlag={p.oodFlag} />
+        )}
 
         {(() => {
           const status = consensusStatus(p.predictedWinner, p.alternatives);

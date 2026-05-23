@@ -73,7 +73,7 @@ jobs:
             --max-instances 2 \
             --cpu 1 \
             --memory 512Mi \
-            --concurrency 80 \
+            --concurrency 200 \
             --timeout 120 \
             --cpu-throttling \
             --port 8080 \
@@ -113,8 +113,13 @@ jobs:
             --region "${REGION}" \
             --image "${IMAGE}" \
             --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore,FANTASY_COACH_MODEL_PATH=/tmp/model.joblib,FANTASY_COACH_MODEL_GCS_URI=gs://${PROJECT_ID}-models/logistic/latest.joblib" \
+            --set-secrets "FANTASY_COACH_ODDS_API_KEY=odds-api-key:latest" \
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra#65 not applied yet)."
+          # --set-secrets injects the-odds-api.com key from Secret Manager so
+          # the precompute job can fetch NRL totals (over/under) lines for
+          # Betting Tips (#280). The IAM grant on the secret lives in
+          # platform-infra/projects/fantasy-coach/odds_api_secret.tf.
 
       - name: Update retrain Job image
         env:
@@ -133,6 +138,40 @@ jobs:
             --update-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore,FANTASY_COACH_MODEL_GCS_URI=gs://${PROJECT_ID}-models/logistic/latest.joblib" \
             --quiet || \
           echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#107 not applied yet)."
+
+      - name: Update watch-team-lists Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-watch-team-lists
+        # Provisioned by platform-infra fantasy-coach#267 (injury.tf). Same
+        # rotation pattern as precompute/retrain: TF owns Job shape (command,
+        # SA, resources) and ignore_changes-es image + env; this workflow
+        # owns the image tag + runtime env vars.
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#267 not applied yet)."
+
+      - name: Update scrape-injuries Job image
+        env:
+          PROJECT_ID: ${{ secrets.FANTASY_COACH_PROJECT_ID }}
+          JOB: fantasy-coach-scrape-injuries
+        # Provisioned by platform-infra fantasy-coach#267 (injury.tf). The
+        # Job is invoked manually with `--args=--season=...,--round=...`
+        # for now; Gemini parses NRL.com injury-list prose using the runtime
+        # SA's aiplatform.user grant.
+        run: |
+          gcloud run jobs update "${JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},STORAGE_BACKEND=firestore" \
+            --quiet || \
+          echo "Job '${JOB}' not found — skipping (platform-infra fantasy-coach#267 not applied yet)."
 
       # The external /healthz smoke test has been dropped: `gcloud auth
       # print-identity-token` doesn't work with WIF-federated credentials

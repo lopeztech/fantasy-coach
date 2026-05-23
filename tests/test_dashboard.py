@@ -389,3 +389,103 @@ def test_dashboard_current_round_none_when_no_matches(client: TestClient, tmp_pa
 
     assert resp.status_code == 200
     assert resp.json()["currentRound"] is None
+
+
+# ---------------------------------------------------------------------------
+# User-tip-driven untipped + accuracy (regression: previously read predictions)
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_untipped_excludes_user_tipped_matches(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """Once the user tips match 100, untippedMatchIds should drop it.
+    The predictions cache being populated must NOT collapse the list."""
+    matches = [
+        _make_match(100, round_=9, match_state="Upcoming"),
+        _make_match(101, round_=9, match_state="Upcoming", offset_seconds=1),
+        _make_match(102, round_=9, match_state="Upcoming", offset_seconds=2),
+    ]
+    mock_repo = MagicMock()
+    mock_repo.list_matches.return_value = matches
+    store = PredictionStore(path=tmp_path / "p.db")
+    # Predictions exist for all three — earlier this would have collapsed
+    # untippedMatchIds to []. The fix makes us read user tips instead.
+    store.put(2026, 9, [_make_pred(100), _make_pred(101), _make_pred(102)])
+
+    with (
+        patch("fantasy_coach.app._get_repo", return_value=mock_repo),
+        patch("fantasy_coach.app._get_store", return_value=store),
+        patch("fantasy_coach.app._fetch_user_tips", return_value={100: "home"}),
+    ):
+        resp = client.get("/me/dashboard?season=2026")
+
+    body = resp.json()
+    assert set(body["untippedMatchIds"]) == {101, 102}
+
+
+def test_dashboard_season_accuracy_uses_user_tips(client: TestClient, tmp_path: Path) -> None:
+    """Accuracy/correct/total must reflect the user's own tips, not the model's."""
+    matches = [
+        _make_match(1, round_=1, match_state="FullTime", home_score=20, away_score=10),
+        _make_match(
+            2, round_=1, match_state="FullTime", home_score=12, away_score=18, offset_seconds=1
+        ),
+        _make_match(
+            3, round_=2, match_state="FullTime", home_score=24, away_score=22, offset_seconds=2
+        ),
+        _make_match(4, round_=3, match_state="Upcoming", offset_seconds=3),
+    ]
+    mock_repo = MagicMock()
+    mock_repo.list_matches.return_value = matches
+    store = PredictionStore(path=tmp_path / "p.db")
+    # Model predicted home wins for everything — irrelevant to user accuracy.
+    store.put(2026, 1, [_make_pred(1, "home"), _make_pred(2, "home")])
+    store.put(2026, 2, [_make_pred(3, "home")])
+
+    user_tips = {
+        1: "home",  # correct (home won 20-10)
+        2: "home",  # wrong (away won 18-12)
+        3: "home",  # correct (home won 24-22)
+        # match 4 not yet tipped (and it's still Upcoming anyway)
+    }
+
+    with (
+        patch("fantasy_coach.app._get_repo", return_value=mock_repo),
+        patch("fantasy_coach.app._get_store", return_value=store),
+        patch("fantasy_coach.app._fetch_user_tips", return_value=user_tips),
+    ):
+        resp = client.get("/me/dashboard?season=2026")
+
+    body = resp.json()
+    assert body["totalTips"] == 3
+    assert body["correctTips"] == 2
+    assert body["seasonAccuracy"] == pytest.approx(2 / 3)
+
+
+def test_dashboard_no_user_tips_means_all_current_round_untipped(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """Previous bug: predictions populated → untippedMatchIds = []. Fix: every match untipped."""
+    matches = [
+        _make_match(50, round_=9, match_state="Upcoming"),
+        _make_match(51, round_=9, match_state="Upcoming", offset_seconds=1),
+    ]
+    mock_repo = MagicMock()
+    mock_repo.list_matches.return_value = matches
+    store = PredictionStore(path=tmp_path / "p.db")
+    # Predictions are populated for the whole round.
+    store.put(2026, 9, [_make_pred(50), _make_pred(51)])
+
+    with (
+        patch("fantasy_coach.app._get_repo", return_value=mock_repo),
+        patch("fantasy_coach.app._get_store", return_value=store),
+        patch("fantasy_coach.app._fetch_user_tips", return_value={}),
+    ):
+        resp = client.get("/me/dashboard?season=2026")
+
+    body = resp.json()
+    assert set(body["untippedMatchIds"]) == {50, 51}
+    assert body["totalTips"] == 0
+    assert body["correctTips"] == 0
+    assert body["seasonAccuracy"] is None

@@ -5,6 +5,7 @@ import os
 import pathlib
 import time
 from collections import deque
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -13,12 +14,20 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from fantasy_coach import __version__
+from fantasy_coach.betting.models import BettingTipsOut
+from fantasy_coach.betting.store import (
+    BettingTipsStore,
+    FirestoreBettingTipsStore,
+    get_betting_tips_store,
+)
 from fantasy_coach.config import get_repository
+from fantasy_coach.job_runs import JobRunStore
 from fantasy_coach.predictions import (
     FeatureContribution,
     FirestorePredictionStore,
     PredictionOut,
     PredictionStore,
+    compute_bayesian_uncertainty,
     compute_whatif_base,
     get_prediction_store,
 )
@@ -113,6 +122,58 @@ class DashboardOut(BaseModel):
     correctTips: int
 
 
+class JobRunChangeOut(BaseModel):
+    matchId: int
+    homeTeam: str
+    awayTeam: str
+    prevHomeProb: float | None
+    newHomeProb: float
+    delta: float
+    flipped: bool
+    triggerSignal: str | None
+    summary: str
+
+
+class JobRunSummaryOut(BaseModel):
+    flips: int
+    meanAbsDelta: float
+    maxAbsDelta: float
+
+
+class JobRunListItem(BaseModel):
+    id: str
+    startedAt: str
+    finishedAt: str | None
+    trigger: str
+    status: str
+    season: int
+    round: int
+    matchesProcessed: int
+    modelVersion: str
+    error: str | None
+    summary: JobRunSummaryOut
+
+
+class JobRunListOut(BaseModel):
+    runs: list[JobRunListItem]
+
+
+class JobRunDetail(JobRunListItem):
+    changes: list[JobRunChangeOut]
+
+
+class UncertaintyOut(BaseModel):
+    """Bayesian posterior predictive uncertainty for a single match (#144)."""
+
+    matchId: int  # noqa: N815
+    homeTeamId: int  # noqa: N815
+    awayTeamId: int  # noqa: N815
+    winProbability: float  # noqa: N815  posterior mean P(home wins)
+    margin80ci: list[int]  # noqa: N815  [lo, hi] 80% HDI integers
+    margin95ci: list[int]  # noqa: N815  [lo, hi] 95% HDI integers
+    source: str  # "bayesian" | "fallback"
+
+
 ALLOWED_ORIGINS_ENV = "FANTASY_COACH_ALLOWED_ORIGINS"
 DEFAULT_ALLOWED_ORIGINS = (
     "https://fantasy.lopezcloud.dev,http://localhost:5173,http://localhost:4173"
@@ -124,10 +185,31 @@ def _allowed_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
+def _prefetch_current_rounds() -> None:
+    """Warm the Firestore prediction cache on startup with the 2 most recent rounds.
+
+    Non-fatal: the regular per-request Firestore path still works on failure.
+    Only runs when STORAGE_BACKEND=firestore; SQLite dev is a no-op.
+    """
+    try:
+        store = _get_store()
+        if isinstance(store, FirestorePredictionStore):
+            store.prefetch_recent(n_rounds=2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("prefetch_current_rounds failed (non-fatal): %s", exc)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _prefetch_current_rounds()
+    yield
+
+
 app = FastAPI(
     title="Fantasy Coach",
     version=__version__,
     description="NRL match prediction API. All non-health endpoints require a Firebase ID token.",
+    lifespan=_lifespan,
 )
 
 # Enable Firebase token verification when a project ID is configured.
@@ -157,6 +239,8 @@ app.add_middleware(
 # Module-level singletons — created lazily on first use.
 _store: PredictionStore | FirestorePredictionStore | None = None
 _repo: Repository | None = None
+_job_run_store: JobRunStore | None = None
+_betting_tips_store: BettingTipsStore | FirestoreBettingTipsStore | None = None
 
 # In-process cache for team profile responses: key=(team_id, season), value=(timestamp, data)
 _PROFILE_CACHE_TTL = 60  # seconds
@@ -183,6 +267,64 @@ def _get_repo() -> Repository:
     if _repo is None:
         _repo = get_repository()
     return _repo
+
+
+def _get_betting_tips_store() -> BettingTipsStore | FirestoreBettingTipsStore:
+    global _betting_tips_store
+    if _betting_tips_store is None:
+        _betting_tips_store = get_betting_tips_store()
+    return _betting_tips_store
+
+
+def _get_job_run_store() -> JobRunStore | None:
+    """Return the audit-log store, or None when running on SQLite (local dev).
+
+    The job_runs collection is Firestore-only (#244 PR A) so we can't surface
+    it from a local sqlite dev server — the endpoints respond with an empty
+    list / 404 in that case.
+    """
+    global _job_run_store
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        return None
+    if _job_run_store is None:
+        _job_run_store = JobRunStore(project=os.getenv("FIREBASE_PROJECT_ID"))
+    return _job_run_store
+
+
+def _job_run_doc_to_list_item(doc: dict) -> dict:
+    """Map a Firestore doc (snake_case) to the camelCase API shape, no changes[]."""
+    summary = doc.get("summary") or {}
+    return {
+        "id": doc["id"],
+        "startedAt": doc.get("started_at", ""),
+        "finishedAt": doc.get("finished_at"),
+        "trigger": doc.get("trigger", "scheduled"),
+        "status": doc.get("status", "success"),
+        "season": doc.get("season", 0),
+        "round": doc.get("round", 0),
+        "matchesProcessed": doc.get("matches_processed", 0),
+        "modelVersion": doc.get("model_version", ""),
+        "error": doc.get("error"),
+        "summary": {
+            "flips": summary.get("flips", 0),
+            "meanAbsDelta": summary.get("mean_abs_delta", 0.0),
+            "maxAbsDelta": summary.get("max_abs_delta", 0.0),
+        },
+    }
+
+
+def _job_run_change_to_out(change: dict) -> dict:
+    return {
+        "matchId": change.get("match_id", 0),
+        "homeTeam": change.get("home_team", ""),
+        "awayTeam": change.get("away_team", ""),
+        "prevHomeProb": change.get("prev_home_prob"),
+        "newHomeProb": change.get("new_home_prob", 0.0),
+        "delta": change.get("delta", 0.0),
+        "flipped": bool(change.get("flipped", False)),
+        "triggerSignal": change.get("trigger_signal"),
+        "summary": change.get("summary", ""),
+    }
 
 
 def _annotate_results(
@@ -240,6 +382,100 @@ def get_predictions(
             ),
         )
     return _annotate_results(cached, season, round)
+
+
+@app.get(
+    "/betting-tips",
+    response_model=BettingTipsOut,
+    summary="Top betting tips for a season/round",
+    description=(
+        "Returns the precomputed 2-singles + 2-doubles + 2-trebles card for the "
+        "requested round. Tips combine cached model probabilities with bookmaker "
+        "odds (head-to-head from the nrl.com scrape; totals from the-odds-api "
+        "when configured). Computed twice a week by the Cloud Run Job; this "
+        "endpoint is a cache read only. Returns 503 with a retry hint when the "
+        "cache is empty. Picks are educational, not financial advice — gamble "
+        "responsibly."
+    ),
+)
+def get_betting_tips(
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+    round: int = Query(..., description="Round number, e.g. 7", alias="round"),
+) -> BettingTipsOut:
+    tips = _get_betting_tips_store().get(season, round)
+    if tips is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"No cached betting tips for season {season} round {round}. "
+                "The precompute job runs Tue 09:00 AEST and Thu 06:00 AEST. "
+                "Retry in a few minutes or trigger it manually with "
+                "`gcloud run jobs execute fantasy-coach-precompute`."
+            ),
+            headers={"Retry-After": "3600"},
+        )
+    return tips
+
+
+@app.get(
+    "/predictions/{match_id}/uncertainty",
+    response_model=UncertaintyOut,
+    summary="Bayesian posterior predictive uncertainty for a match",
+    description=(
+        "Returns the Bayesian hierarchical model's posterior predictive win probability "
+        "and 80%/95% margin HDI for the given match. Requires a saved Bayesian model "
+        "artefact at FANTASY_COACH_BAYESIAN_MODEL_PATH (or artifacts/bayesian.joblib). "
+        "Falls back to the stored XGBoost win probability and wide symmetric intervals "
+        "when the Bayesian model is unavailable."
+    ),
+)
+def get_match_uncertainty(
+    match_id: int,
+    season: int = Query(..., description="NRL season year, e.g. 2026"),
+) -> UncertaintyOut:
+    try:
+        matches = _get_repo().list_matches(season)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Match store unavailable: {exc}") from exc
+
+    match = next((m for m in matches if m.match_id == match_id), None)
+    if match is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Match {match_id} not found in season {season}.",
+        )
+
+    result = compute_bayesian_uncertainty(match.home.team_id, match.away.team_id)
+    if result is not None:
+        return UncertaintyOut(
+            matchId=match_id,
+            homeTeamId=match.home.team_id,
+            awayTeamId=match.away.team_id,
+            winProbability=result["win_probability"],
+            margin80ci=result["margin_80ci"],
+            margin95ci=result["margin_95ci"],
+            source="bayesian",
+        )
+
+    # Bayesian model unavailable — fall back to cached XGBoost prediction.
+    fallback_prob = 0.5
+    try:
+        stored = _get_store().get(season, match.round)
+        pred = next((p for p in stored if p.matchId == match_id), None)
+        if pred is not None:
+            fallback_prob = pred.homeWinProbability
+    except Exception:
+        pass
+
+    return UncertaintyOut(
+        matchId=match_id,
+        homeTeamId=match.home.team_id,
+        awayTeamId=match.away.team_id,
+        winProbability=fallback_prob,
+        margin80ci=[-15, 15],
+        margin95ci=[-25, 25],
+        source="fallback",
+    )
 
 
 @app.get(
@@ -774,43 +1010,35 @@ def get_dashboard(
     else:
         current_round = None
 
-    # Untipped = current-round matches that have no stored prediction.
+    # User's own tips for this season — keyed by match_id so we can
+    # diff against the fixture list and against actual results.
+    # Empty when uid is the dev fallback or when STORAGE_BACKEND != firestore
+    # (tips are only persisted client-side via the Firebase JS SDK).
+    user_tips = _fetch_user_tips(uid, season)
+
+    # Untipped = current-round matches the *user* hasn't picked yet.
+    # (Earlier this was wired to the prediction cache, which silently
+    # collapsed once the precompute job populated predictions.)
     untipped_match_ids: list[int] = []
     if current_round is not None:
         current_round_matches = [m for m in matches if m.round == current_round]
-        try:
-            preds = _get_store().get(season, current_round)
-            tipped_ids = {p.matchId for p in preds}
-        except Exception:
-            tipped_ids = set()
         untipped_match_ids = [
-            m.match_id for m in current_round_matches if m.match_id not in tipped_ids
+            m.match_id for m in current_round_matches if m.match_id not in user_tips
         ]
 
-    # Season-to-date tipping accuracy: compare stored predictions to FullTime results.
-    total_tips = 0
-    correct_tips = 0
-    completed = [
-        m
+    # Season-to-date tipping accuracy: compare *user tips* to FullTime results.
+    result_map: dict[int, str] = {
+        m.match_id: ("home" if m.home.score > m.away.score else "away")  # type: ignore[operator]
         for m in matches
         if m.match_state == "FullTime" and m.home.score is not None and m.away.score is not None
-    ]
-    completed_rounds = {m.round for m in completed}
-    for rnd in completed_rounds:
-        try:
-            preds = _get_store().get(season, rnd)
-        except Exception:
-            continue
-        result_map = {
-            m.match_id: ("home" if m.home.score > m.away.score else "away")  # type: ignore[operator]
-            for m in completed
-            if m.round == rnd
-        }
-        for p in preds:
-            if p.matchId in result_map:
-                total_tips += 1
-                if p.predictedWinner == result_map[p.matchId]:
-                    correct_tips += 1
+    }
+    total_tips = 0
+    correct_tips = 0
+    for mid, choice in user_tips.items():
+        if mid in result_map:
+            total_tips += 1
+            if choice == result_map[mid]:
+                correct_tips += 1
 
     season_accuracy = correct_tips / total_tips if total_tips > 0 else None
 
@@ -1106,6 +1334,53 @@ def get_whatif_prediction(
     return result
 
 
+@app.get(
+    "/job-runs",
+    response_model=JobRunListOut,
+    summary="List recent precompute job runs",
+    description=(
+        "Returns the most recent precompute Job invocations with their aggregate "
+        "summary (flips, mean/max absolute delta) but without the per-match "
+        "changes[] array. Use GET /job-runs/{run_id} for the detail view. "
+        "Empty list when running on local SQLite — the audit log is Firestore-only."
+    ),
+)
+def list_job_runs(
+    limit: int = Query(20, ge=1, le=100, description="Max number of runs to return."),
+) -> JobRunListOut:
+    store = _get_job_run_store()
+    if store is None:
+        return JobRunListOut(runs=[])
+    rows = store.list_recent(limit=limit)
+    return JobRunListOut(runs=[JobRunListItem(**_job_run_doc_to_list_item(r)) for r in rows])
+
+
+@app.get(
+    "/job-runs/{run_id}",
+    response_model=JobRunDetail,
+    summary="Get a single precompute job run with per-match change diffs",
+    description=(
+        "Returns the full job_runs doc, including the inline changes[] array. "
+        "Each change carries prev/new home win probability, delta, a flipped "
+        "flag, an optional trigger_signal label, and a deterministic one-line "
+        "human-readable summary."
+    ),
+)
+def get_job_run(run_id: str) -> JobRunDetail:
+    store = _get_job_run_store()
+    if store is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job-run audit log is unavailable on this backend.",
+        )
+    doc = store.get(run_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Job run {run_id} not found.")
+    list_item = _job_run_doc_to_list_item(doc)
+    changes = [JobRunChangeOut(**_job_run_change_to_out(c)) for c in doc.get("changes", [])]
+    return JobRunDetail(**list_item, changes=changes)
+
+
 _VENUES_CSV = pathlib.Path(__file__).parents[3] / "data" / "venues.csv"
 
 # Lazily populated teams cache: maps season → sorted TeamOption list.
@@ -1230,6 +1505,38 @@ def _make_invite_code() -> str:
     import string  # noqa: PLC0415
 
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def _fetch_user_tips(uid: str, season: int) -> dict[int, str]:
+    """Return ``{match_id: tip_choice}`` for this user/season from Firestore.
+
+    Tips live at ``users/{uid}/tips/{matchId}`` (written by the SPA via the
+    Firebase JS SDK). Returns ``{}`` when there's no real authenticated user,
+    when the storage backend isn't Firestore, or on any Firestore error —
+    callers should treat that as "no tips" rather than 5xx.
+    """
+    if uid == "__dev__":
+        return {}
+    if os.getenv("STORAGE_BACKEND", "sqlite").lower() != "firestore":
+        return {}
+    try:
+        db = _get_firestore_client()
+        tips_q = (
+            db.collection("users").document(uid).collection("tips").where("season", "==", season)
+        )
+        out: dict[int, str] = {}
+        for snap in tips_q.stream():
+            try:
+                mid = int(snap.id)
+            except (ValueError, TypeError):
+                continue
+            data = snap.to_dict() or {}
+            choice = data.get("tip")
+            if choice in ("home", "away"):
+                out[mid] = choice
+        return out
+    except Exception:
+        return {}
 
 
 @app.post(
@@ -1359,21 +1666,19 @@ def get_leaderboard(
     db = _get_firestore_client()
 
     if group_id:
-        # Collect UIDs in this group, then look up their stats.
+        # Collect UIDs in this group, then look up each member's stats doc by
+        # known path. The schema (match_sync._update_user_stats) writes stats
+        # to users/{uid}/stats/{season}, so a direct get_all is faster than a
+        # collection_group query and doesn't need a composite index.
         member_docs = db.collection("groups").document(group_id).collection("members").stream()
         member_uids = [d.id for d in member_docs]
         if not member_uids:
             return LeaderboardOut(season=season, groupId=group_id, entries=[])
-        stats_docs = []
-        # Firestore `in` operator supports up to 30 values; chunk if needed.
-        for i in range(0, len(member_uids), 30):
-            chunk = member_uids[i : i + 30]
-            q = (
-                db.collection_group("stats")
-                .where("season", "==", season)
-                .where("__name__", "in", chunk)
-            )
-            stats_docs.extend(q.stream())
+        refs = [
+            db.collection("users").document(uid).collection("stats").document(str(season))
+            for uid in member_uids
+        ]
+        stats_docs = [snap for snap in db.get_all(refs) if snap.exists]
     else:
         # Global top-50.
         stats_docs = list(

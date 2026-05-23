@@ -86,6 +86,8 @@ def _make_mock_model(prob: float = 0.70) -> MagicMock:
     model = MagicMock()
     model.predict_home_win_prob.return_value = np.array([prob])
     model.feature_names = FEATURE_NAMES
+    model.pipeline = None
+    model.estimator = None
     return model
 
 

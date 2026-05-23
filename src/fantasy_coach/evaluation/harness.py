@@ -119,6 +119,66 @@ def walk_forward_from_repo(
     return walk_forward(grouped, predictor_factory)
 
 
+def walk_forward_bayesian_coverage(
+    matches_by_round: Sequence[tuple[int, int, list[MatchRow]]],
+    predictor_factory: Callable[[], Predictor],
+) -> dict[str, float]:
+    """Walk-forward coverage evaluation for the Bayesian hierarchical model.
+
+    For each round, fits the predictor on prior history, then for every
+    non-draw completed match checks whether the actual home-minus-away margin
+    falls inside the 80% and 95% posterior predictive HDI.
+
+    The predictor must expose a ``predict_margin_hdi(match)`` method that
+    returns a dict with keys ``hdi_80_lo``, ``hdi_80_hi``, ``hdi_95_lo``,
+    ``hdi_95_hi`` (or None when insufficient history). ``BayesianPredictor``
+    satisfies this contract.
+
+    Returns a dict with keys ``n``, ``coverage_80``, ``coverage_95``.
+    Matches where ``predict_margin_hdi`` returns None are excluded.
+
+    Coverage targets (from #144): ≥ 0.78 for 80%-CI, ≥ 0.93 for 95%-CI.
+    """
+    predictor = predictor_factory()
+    predict_hdi = getattr(predictor, "predict_margin_hdi", None)
+    if predict_hdi is None:
+        raise TypeError(
+            f"{type(predictor).__name__} does not implement predict_margin_hdi(); "
+            "use BayesianPredictor."
+        )
+
+    history: list[MatchRow] = []
+    n = 0
+    in_80 = 0
+    in_95 = 0
+
+    for _season, _round, round_matches in matches_by_round:
+        rateable = [m for m in round_matches if _has_outcome(m)]
+        if not rateable:
+            continue
+
+        predictor.fit(history)
+        for match in rateable:
+            if match.home.score == match.away.score:
+                continue
+            hdi = predict_hdi(match)
+            if hdi is None:
+                continue
+            actual = (match.home.score or 0) - (match.away.score or 0)
+            n += 1
+            if hdi["hdi_80_lo"] <= actual <= hdi["hdi_80_hi"]:
+                in_80 += 1
+            if hdi["hdi_95_lo"] <= actual <= hdi["hdi_95_hi"]:
+                in_95 += 1
+        history.extend(rateable)
+
+    return {
+        "n": n,
+        "coverage_80": in_80 / n if n > 0 else 0.0,
+        "coverage_95": in_95 / n if n > 0 else 0.0,
+    }
+
+
 def _has_outcome(match: MatchRow) -> bool:
     return (
         match.match_state in {"FullTime", "FullTimeED"}

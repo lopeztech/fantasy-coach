@@ -54,13 +54,52 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
     "form_diff_pa_adjusted": -1,
     "player_strength_diff": 1,
     "odds_home_win_prob": 1,
+    "days_rest_diff": 1,
+    "home_days_rest": 1,
+    "away_days_rest": -1,
+    "short_turnaround_diff": 1,
     # Position-group matchup differentials (#210): positive diff = home stronger.
     "halves_strength_diff": 1,
     "forwards_strength_diff": 1,
     "hooker_strength_diff": 1,
     "outside_backs_strength_diff": 1,
     "halves_x_forwards_diff": 1,
+    # Calibrated EloMOV home-win probability (sigmoid of rating diff +
+    # per-team-per-venue HGA). Monotone +1 by definition: higher Elo
+    # probability ⇒ higher actual home win.
+    "elo_mov_home_win_prob": 1,
+    # Positive fatigue diff means the home team carries more recent load,
+    # so it should not improve home-win probability.
+    "team_fatigue_index_diff": -1,
+    "spine_fatigue_index_diff": -1,
+    "cumulative_origin_minutes_diff": -1,
 }
+
+
+NO_SIGNAL_FEATURE_SAMPLE_WEIGHT = 1e-9
+
+# These columns are intentionally still present in FEATURE_NAMES so trained
+# artefacts and serving code keep the same schema, but on the current baseline
+# they are either structural constants or placeholders whose backing data is
+# not wired/backfilled yet. With colsample_bytree≈0.5, allowing them to be
+# sampled like live features wastes split-search capacity in tiny walk-forward
+# fits. Give them near-zero column-sampling probability until they carry real
+# training signal; remove names from this set as the data is backfilled.
+NO_SIGNAL_COLUMN_SAMPLE_FEATURES: frozenset[str] = frozenset(
+    {
+        "is_home_field",
+        "wind_kph",
+        "temperature_c",
+        "missing_player_strength",
+        "odds_line_move_home_prob",
+        "odds_line_move_magnitude",
+        "missing_line_move",
+        "origin_callups_diff",
+        "is_test_window",
+        "weather_source",
+        "cumulative_origin_minutes_diff",
+    }
+)
 
 
 def _monotone_tuple() -> tuple[int, ...]:
@@ -74,6 +113,19 @@ def _monotone_tuple() -> tuple[int, ...]:
     if unknown:
         raise ValueError(f"MONOTONE_CONSTRAINTS has unknown features: {sorted(unknown)}")
     return tuple(MONOTONE_CONSTRAINTS.get(name, 0) for name in FEATURE_NAMES)
+
+
+def _feature_weights_tuple() -> tuple[float, ...]:
+    """Build XGBoost column-sampling weights aligned with ``FEATURE_NAMES``."""
+    unknown = set(NO_SIGNAL_COLUMN_SAMPLE_FEATURES) - set(FEATURE_NAMES)
+    if unknown:
+        raise ValueError(
+            f"NO_SIGNAL_COLUMN_SAMPLE_FEATURES has unknown features: {sorted(unknown)}"
+        )
+    return tuple(
+        NO_SIGNAL_FEATURE_SAMPLE_WEIGHT if name in NO_SIGNAL_COLUMN_SAMPLE_FEATURES else 1.0
+        for name in FEATURE_NAMES
+    )
 
 
 # Structural params — never tuned, always applied. Monotone constraints
@@ -96,6 +148,7 @@ _FIXED_PARAMS: dict[str, object] = {
     "verbosity": 0,
     "use_label_encoder": False,
     "monotone_constraints": _monotone_tuple(),
+    "feature_weights": _feature_weights_tuple(),
     # ``n_jobs=1`` makes XGBoost's OMP reductions deterministic *within*
     # a platform. It does NOT eliminate cross-platform drift — we
     # verified this empirically on #187: macOS (Apple Silicon NEON) and

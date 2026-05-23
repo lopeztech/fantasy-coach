@@ -87,7 +87,7 @@ don't drift.
 |------|-------|-----------|
 | `--memory` | `512Mi` | Observed p99 RSS < 100 MiB, so 256Mi would fit — but gen2 execution environment has a 512Mi minimum, enforced by `gcloud run deploy`. Kept at 512Mi rather than downgrade to gen1. |
 | `--cpu` | `1` | One request at a time fits well under one vCPU; the logistic predict is µs-scale. |
-| `--concurrency` | `80` | Cloud Run's default; pinned explicitly so TF/deploy can't silently drift. Revisit after we have real traffic; 200 may be viable for a mostly-I/O endpoint. |
+| `--concurrency` | `200` | FastAPI + Firestore is async I/O–bound; 200 in-flight per vCPU is safe. Raised from 80 (#261): higher concurrency means fewer instances during peak, reducing vCPU-second billing. Must match the Terraform `container_concurrency` when platform-infra is next applied. |
 | `--timeout` | `120` | Down from the 300s default. First request of a round does a live scrape of nrl.com (~1s/fixture × 8 fixtures + overhead), so we can't safely cut to the AC's 60s yet — drop once #65 lands and scrape is off-path. |
 | `--cpu-throttling` | on | Billable CPU only during requests; cold idle is free. |
 | `--min-instances` | `0` | Scale to zero when idle. |
@@ -193,6 +193,27 @@ build, push, and roll a revision — `roles/run.developer`,
 impersonate the runtime SA at deploy time).
 
 Both SA definitions live in platform-infra and are the source of truth.
+
+## Container image
+
+The `Dockerfile` is a **two-stage build** to keep the runtime image slim:
+
+| Stage | Base | What it does |
+|-------|------|-------------|
+| `builder` | `python:3.12-slim` | Runs `uv sync --no-dev`; installs all wheels into `/app/.venv` |
+| `runtime` | `python:3.12-slim` | Copies only the built venv + `src/`, `deploy/`, `assets/`, `artifacts/best_params.json` |
+
+**What is NOT in the runtime image:**
+- `tests/`, `docs/`, `web/`, `scripts/`, `reports/` (excluded by `.dockerignore`)
+- `data/` — SQLite files, backfill sidecars, odds xlsx (excluded by `.dockerignore`)
+- `artifacts/*.joblib` — trained model blobs; the runtime downloads them from GCS
+  on cold start via `FANTASY_COACH_MODEL_GCS_URI` (see Cold-start behaviour).
+- `pytest`, `ruff`, `pre-commit` — dev deps excluded by `uv sync --no-dev`
+
+**Local build**: `make docker-build` passes `DOCKER_BUILDKIT=1` automatically.
+
+**CI cache**: `deploy.yml` uses `--cache-from type=gha --cache-to type=gha,mode=max`
+so the dependency layer is reused across PR builds on the same dependency set.
 
 ## Cold-start behaviour
 
