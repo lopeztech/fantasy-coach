@@ -326,9 +326,7 @@ def test_feature_weights_tuple_downweights_no_signal_columns() -> None:
     weights = _feature_weights_tuple()
     for idx, name in enumerate(FEATURE_NAMES):
         expected = (
-            NO_SIGNAL_FEATURE_SAMPLE_WEIGHT
-            if name in NO_SIGNAL_COLUMN_SAMPLE_FEATURES
-            else 1.0
+            NO_SIGNAL_FEATURE_SAMPLE_WEIGHT if name in NO_SIGNAL_COLUMN_SAMPLE_FEATURES else 1.0
         )
         assert weights[idx] == pytest.approx(expected), f"{name} mismatched at index {idx}"
 
