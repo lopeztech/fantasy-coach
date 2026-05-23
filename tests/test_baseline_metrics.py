@@ -150,14 +150,34 @@ SEASONS = (2023, 2024, 2025, 2026)
 #   - logistic: −0.73pp accuracy (0.5564 → 0.5491), log_loss / brier worsen.
 #   - skellam: −0.14pp accuracy (0.5968 → 0.5954), log_loss / brier ~flat.
 #   - stacked: +0.43pp accuracy (0.5896 → 0.5939), log_loss/brier ~flat.
+# Fatigue state-ordering fix: `record()` now snapshots previous kickoff/venue
+# before updating `_last_played` / `_last_venue`, so cumulative fatigue measures
+# the rest/travel load before the completed match instead of the just-recorded
+# match. Production XGBoost improves across all three metrics:
+#   - xgboost: +0.43pp accuracy (0.5780 → 0.5824), log_loss −0.0045,
+#     brier −0.0021, ECE −0.0126.
+#   - logistic: −0.14pp accuracy, log_loss / brier worsen (linear model keeps
+#     struggling with tree-shaped roster/travel features).
+#   - skellam: −0.87pp accuracy, log_loss / brier essentially flat.
+#   - stacked: −0.43pp accuracy, log_loss / brier essentially flat; inherits
+#     the Skellam shift more than the XGBoost gain.
+# Spine-position fix: `key_player_trajectory_diff` and `spine_fatigue_index_diff`
+# now treat spine as halves + hooker + fullback, rather than all outside backs
+# (fullback + centres + wingers). Winner-pick impact after both fixes:
+#   - xgboost: accuracy unchanged at 0.5824; log_loss / brier worsen versus
+#     fatigue-only, but production winner accuracy still stays above the #252
+#     baseline.
+#   - logistic: +0.29pp accuracy versus fatigue-only, log_loss / brier ~flat.
+#   - skellam: +0.43pp accuracy versus fatigue-only, log_loss / brier ~flat.
+#   - stacked: +0.29pp accuracy and log_loss −0.0057 versus fatigue-only.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5491, "log_loss": 0.9364, "brier": 0.2939},
-    "xgboost": {"n": 692, "accuracy": 0.5780, "log_loss": 0.6898, "brier": 0.2466},
-    "skellam": {"n": 692, "accuracy": 0.5954, "log_loss": 0.6740, "brier": 0.2393},
-    "stacked": {"n": 692, "accuracy": 0.5939, "log_loss": 0.6827, "brier": 0.2439},
+    "logistic": {"n": 692, "accuracy": 0.5506, "log_loss": 0.9508, "brier": 0.2959},
+    "xgboost": {"n": 692, "accuracy": 0.5824, "log_loss": 0.6909, "brier": 0.2468},
+    "skellam": {"n": 692, "accuracy": 0.5910, "log_loss": 0.6738, "brier": 0.2394},
+    "stacked": {"n": 692, "accuracy": 0.5925, "log_loss": 0.6781, "brier": 0.2415},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {

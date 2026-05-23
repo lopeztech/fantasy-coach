@@ -295,6 +295,10 @@ POSITION_WEIGHTS: dict[str, float] = {
     "Interchange": 0.5,
 }
 
+SPINE_POSITIONS: frozenset[str] = (
+    POSITION_GROUPS["halves"] | POSITION_GROUPS["hooker"] | frozenset({"Fullback"})
+)
+
 # How many recent completed matches define a team's "regular XIII".
 KEY_ABSENCE_WINDOW = 5
 # A player needs to have started this many of the last KEY_ABSENCE_WINDOW
@@ -740,14 +744,11 @@ class FeatureBuilder:
         Returns 0.0 when no starters have sufficient stat history, which is the
         correct neutral value for early-season matches and debut appearances.
         """
-        _spine: frozenset[str] = (
-            POSITION_GROUPS["halves"] | POSITION_GROUPS["hooker"] | POSITION_GROUPS["outside_backs"]
-        )
         total = 0.0
         for p in players:
             if not p.is_on_field or p.position is None:
                 continue
-            if spine_only and p.position not in _spine:
+            if spine_only and p.position not in SPINE_POSITIONS:
                 continue
             hist = self._player_stat_history.get(p.player_id)
             if not hist or len(hist) < _PLAYER_TRAJ_RECENT:
@@ -974,6 +975,10 @@ class FeatureBuilder:
             return
         h_id, a_id = match.home.team_id, match.away.team_id
         h_score, a_score = int(match.home.score), int(match.away.score)
+        h_prev_played = self._last_played.get(h_id)
+        a_prev_played = self._last_played.get(a_id)
+        h_prev_venue = self._last_venue.get(h_id)
+        a_prev_venue = self._last_venue.get(a_id)
 
         # Opponent-adjusted form: compute baselines from pre-update windows,
         # then store adjusted scores. No leakage — _opp_*_window for both
@@ -1077,13 +1082,13 @@ class FeatureBuilder:
         # Update cumulative fatigue state (#252). Components per match:
         # travel_km/1000 + max(0, 7−days_rest) + 1.5×was_short_turnaround.
         h_prev_raw = (
-            (match.start_time - self._last_played[h_id]).total_seconds() / 86400.0
-            if h_id in self._last_played
+            (match.start_time - h_prev_played).total_seconds() / 86400.0
+            if h_prev_played is not None
             else None
         )
         a_prev_raw = (
-            (match.start_time - self._last_played[a_id]).total_seconds() / 86400.0
-            if a_id in self._last_played
+            (match.start_time - a_prev_played).total_seconds() / 86400.0
+            if a_prev_played is not None
             else None
         )
         h_days = h_prev_raw or DEFAULT_DAYS_REST
@@ -1091,8 +1096,8 @@ class FeatureBuilder:
         h_short = 1.0 if (h_prev_raw is not None and h_prev_raw < 6) else 0.0
         a_short = 1.0 if (a_prev_raw is not None and a_prev_raw < 6) else 0.0
 
-        h_travel = _venue_travel_km(self._last_venue.get(h_id), match.venue)
-        a_travel = _venue_travel_km(self._last_venue.get(a_id), match.venue)
+        h_travel = _venue_travel_km(h_prev_venue, match.venue)
+        a_travel = _venue_travel_km(a_prev_venue, match.venue)
 
         for team_id, days_rest, travel_km, is_short, players in (
             (h_id, h_days, h_travel, h_short, match.home.players),
@@ -1105,13 +1110,8 @@ class FeatureBuilder:
             decay = math.exp(-elapsed_days / _FATIGUE_DECAY_TAU)
             self._team_fatigue[team_id] = (match.start_time, prev_f * decay + component)
             # Spine-level fatigue — scale by fraction of spine starting
-            _spine_positions = (
-                POSITION_GROUPS["halves"]
-                | POSITION_GROUPS["hooker"]
-                | POSITION_GROUPS["outside_backs"]
-            )
             spine_starters = sum(
-                1 for p in players if p.is_on_field and p.position in _spine_positions
+                1 for p in players if p.is_on_field and p.position in SPINE_POSITIONS
             )
             spine_scale = spine_starters / 4.0  # 4 spine positions (HB, 5/8, Hkr, FB)
             spine_component = component * spine_scale

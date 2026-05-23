@@ -23,6 +23,7 @@ def _match(
     away_score: int,
     when: datetime,
     state: str = "FullTime",
+    venue: str | None = None,
 ) -> MatchRow:
     return MatchRow(
         match_id=match_id,
@@ -30,7 +31,7 @@ def _match(
         round=1,
         start_time=when,
         match_state=state,
-        venue=None,
+        venue=venue,
         venue_city=None,
         weather=None,
         home=TeamRow(
@@ -824,6 +825,38 @@ def test_improving_spine_produces_positive_key_trajectory() -> None:
     assert row["key_player_trajectory_diff"] > 0
 
 
+def test_winger_trajectory_does_not_count_as_key_spine_trajectory() -> None:
+    """Key trajectory is halves + hooker + fullback, not all outside backs."""
+    builder = FeatureBuilder()
+    winger_home = _player(1, "Winger")
+    winger_away = _player(2, "Winger")
+
+    for i in range(1, 7):
+        m = MatchRow(
+            match_id=i,
+            season=2025,
+            round=i,
+            start_time=datetime(2025, 3, 1, tzinfo=UTC) + timedelta(weeks=i - 1),
+            match_state="FullTime",
+            venue=None,
+            venue_city=None,
+            weather=None,
+            home=TeamRow(team_id=10, name="H", nick_name="H", score=20, players=[winger_home]),
+            away=TeamRow(team_id=20, name="A", nick_name="A", score=10, players=[winger_away]),
+            team_stats=[],
+            home_player_stats=[_make_player_stat(1, line_breaks=i * 2)],
+            away_player_stats=[_make_player_stat(2, line_breaks=1)],
+        )
+        builder.advance_season_if_needed(m)
+        builder.record(m)
+
+    query = _make_match_with_players([winger_home], [winger_away], match_id=7)
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+
+    assert row["player_form_trajectory_diff"] > 0
+    assert row["key_player_trajectory_diff"] == pytest.approx(0.0)
+
+
 # ---------------------------------------------------------------------------
 # Cumulative fatigue index features (#252)
 # ---------------------------------------------------------------------------
@@ -880,6 +913,103 @@ def test_fatigue_accumulates_after_matches() -> None:
     assert row["team_fatigue_index_diff"] > 0.0
 
 
+def test_fatigue_uses_previous_match_rest_and_venue() -> None:
+    """Fatigue load should reflect the travel/rest before the recorded match."""
+    base = datetime(2025, 3, 1, tzinfo=UTC)
+
+    def _fatigue_after_second_match(days_between: int) -> float:
+        builder = FeatureBuilder()
+        first = _match(
+            match_id=1,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=10,
+            when=base,
+            venue="Allianz Stadium",
+        )
+        second = _match(
+            match_id=2,
+            home_id=10,
+            away_id=20,
+            home_score=18,
+            away_score=12,
+            when=base + timedelta(days=days_between),
+            venue="Suncorp Stadium",
+        )
+        query = _match(
+            match_id=3,
+            home_id=10,
+            away_id=30,
+            home_score=0,
+            away_score=0,
+            when=second.start_time + timedelta(days=5),
+            venue="Suncorp Stadium",
+        )
+        for match in (first, second):
+            builder.advance_season_if_needed(match)
+            builder.record(match)
+        row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+        return row["team_fatigue_index_diff"]
+
+    normal_rest = _fatigue_after_second_match(7)
+    short_rest = _fatigue_after_second_match(5)
+
+    assert normal_rest > 0.0
+    assert short_rest > normal_rest
+
+
+def test_spine_fatigue_uses_four_spine_positions_only() -> None:
+    """Centres and wingers should not inflate spine fatigue above team fatigue."""
+    lineup = [
+        _player(1, "Fullback"),
+        _player(2, "Winger"),
+        _player(3, "Centre"),
+        _player(4, "Centre"),
+        _player(5, "Winger"),
+        _player(6, "Five-Eighth"),
+        _player(7, "Halfback"),
+        _player(8, "Prop"),
+        _player(9, "Hooker"),
+        _player(10, "Prop"),
+        _player(11, "2nd Row"),
+        _player(12, "2nd Row"),
+        _player(13, "Lock"),
+    ]
+    builder = FeatureBuilder()
+    base = datetime(2025, 3, 1, tzinfo=UTC)
+    for i, venue in enumerate(("Allianz Stadium", "Suncorp Stadium"), start=1):
+        match = MatchRow(
+            match_id=i,
+            season=2025,
+            round=i,
+            start_time=base + timedelta(days=(i - 1) * 5),
+            match_state="FullTime",
+            venue=venue,
+            venue_city=None,
+            weather=None,
+            home=TeamRow(team_id=10, name="H", nick_name="H", score=20, players=lineup),
+            away=TeamRow(team_id=20, name="A", nick_name="A", score=10, players=lineup),
+            team_stats=[],
+        )
+        builder.advance_season_if_needed(match)
+        builder.record(match)
+
+    query = _match(
+        match_id=3,
+        home_id=10,
+        away_id=30,
+        home_score=0,
+        away_score=0,
+        when=base + timedelta(days=10),
+        venue="Suncorp Stadium",
+    )
+    row = dict(zip(FEATURE_NAMES, builder.feature_row(query), strict=True))
+
+    assert row["team_fatigue_index_diff"] > 0.0
+    assert row["spine_fatigue_index_diff"] <= row["team_fatigue_index_diff"]
+
+
 def test_fatigue_decays_over_time() -> None:
     """Fatigue from an old match has less impact than one from a recent match."""
 
@@ -887,27 +1017,39 @@ def test_fatigue_decays_over_time() -> None:
     builder_old = FeatureBuilder()
     base = datetime(2025, 3, 1, tzinfo=UTC)
 
-    # Both builders: team 10 plays one heavy travel match.
+    # Both builders: team 10 plays one normal match, then one travel match
+    # whose completed load can decay before the query.
     for builder, when_offset in ((builder_recent, 7), (builder_old, 60)):
-        m = _match(
+        first = _match(
             match_id=1,
             home_id=10,
             away_id=20,
             home_score=20,
             away_score=10,
             when=base,
+            venue="Allianz Stadium",
         )
-        builder.advance_season_if_needed(m)
-        builder.record(m)
+        second = _match(
+            match_id=2,
+            home_id=10,
+            away_id=20,
+            home_score=20,
+            away_score=10,
+            when=base + timedelta(days=5),
+            venue="Suncorp Stadium",
+        )
+        for match in (first, second):
+            builder.advance_season_if_needed(match)
+            builder.record(match)
 
         # Query match is when_offset days after the travel match.
         query = _match(
-            match_id=2,
+            match_id=3,
             home_id=10,
             away_id=30,
             home_score=0,
             away_score=0,
-            when=base + timedelta(days=when_offset),
+            when=second.start_time + timedelta(days=when_offset),
         )
         builder.advance_season_if_needed(query)
 
@@ -921,7 +1063,7 @@ def test_fatigue_decays_over_time() -> None:
                     away_id=30,
                     home_score=0,
                     away_score=0,
-                    when=base + timedelta(days=7),
+                    when=base + timedelta(days=12),
                 )
             ),
             strict=True,
@@ -937,7 +1079,7 @@ def test_fatigue_decays_over_time() -> None:
                     away_id=30,
                     home_score=0,
                     away_score=0,
-                    when=base + timedelta(days=60),
+                    when=base + timedelta(days=65),
                 )
             ),
             strict=True,
