@@ -54,6 +54,10 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
     "form_diff_pa_adjusted": -1,
     "player_strength_diff": 1,
     "odds_home_win_prob": 1,
+    "days_rest_diff": 1,
+    "home_days_rest": 1,
+    "away_days_rest": -1,
+    "short_turnaround_diff": 1,
     # Position-group matchup differentials (#210): positive diff = home stronger.
     "halves_strength_diff": 1,
     "forwards_strength_diff": 1,
@@ -64,6 +68,11 @@ MONOTONE_CONSTRAINTS: dict[str, int] = {
     # per-team-per-venue HGA). Monotone +1 by definition: higher Elo
     # probability ⇒ higher actual home win.
     "elo_mov_home_win_prob": 1,
+    # Positive fatigue diff means the home team carries more recent load,
+    # so it should not improve home-win probability.
+    "team_fatigue_index_diff": -1,
+    "spine_fatigue_index_diff": -1,
+    "cumulative_origin_minutes_diff": -1,
 }
 
 

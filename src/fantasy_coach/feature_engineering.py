@@ -532,7 +532,11 @@ class FeatureBuilder:
         lb_a = _avg(self._team_line_breaks[a_id])
         runs_h = _avg(self._team_all_runs[h_id])
         runs_a = _avg(self._team_all_runs[a_id])
-        missing_ts = 1.0 if len(self._team_kick_metres[h_id]) == 0 else 0.0
+        missing_ts = (
+            0.0
+            if self._has_team_stats_history(h_id) and self._has_team_stats_history(a_id)
+            else 1.0
+        )
         is_neutral = self._is_neutral_venue(h_id, a_id, vkey, match.season)
         tv_hga = 0.0 if is_neutral else self._team_venue_hga_estimate(h_id, vkey)
 
@@ -725,6 +729,18 @@ class FeatureBuilder:
         elapsed_s = max(0.0, (at_time - prev_st).total_seconds() / 86400.0)
         spine_fat = prev_sf * math.exp(-elapsed_s / _FATIGUE_DECAY_TAU)
         return team_fat, spine_fat
+
+    def _has_team_stats_history(self, team_id: int) -> bool:
+        """True when all rolling team-stat inputs have at least one prior sample."""
+        return all(
+            len(window[team_id]) > 0
+            for window in (
+                self._team_kick_metres,
+                self._team_kick_return_metres,
+                self._team_line_breaks,
+                self._team_all_runs,
+            )
+        )
 
     def _cumulative_origin_minutes(self, players: list[PlayerRow], at_time: datetime) -> float:
         """Total inferred Origin/Test minutes for the named XIII in the last 28 days (#252).

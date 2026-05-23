@@ -170,14 +170,21 @@ SEASONS = (2023, 2024, 2025, 2026)
 #   - logistic: +0.29pp accuracy versus fatigue-only, log_loss / brier ~flat.
 #   - skellam: +0.43pp accuracy versus fatigue-only, log_loss / brier ~flat.
 #   - stacked: +0.29pp accuracy and log_loss −0.0057 versus fatigue-only.
+# XGBoost rest/fatigue monotone constraints: add hard directionality for
+# days-rest, short-turnaround, and cumulative fatigue columns. Higher rest for
+# home / lower rest for away should not hurt home; higher home fatigue should
+# not help home. Production XGBoost gains another +0.58pp accuracy
+# (0.5824 → 0.5882), brier/ECE improve, with a tiny log_loss tradeoff.
+# Stacked shifts down on accuracy versus the spine-only point but keeps
+# better log_loss / brier than the #252 baseline.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
     "logistic": {"n": 692, "accuracy": 0.5506, "log_loss": 0.9508, "brier": 0.2959},
-    "xgboost": {"n": 692, "accuracy": 0.5824, "log_loss": 0.6909, "brier": 0.2468},
+    "xgboost": {"n": 692, "accuracy": 0.5882, "log_loss": 0.6916, "brier": 0.2465},
     "skellam": {"n": 692, "accuracy": 0.5910, "log_loss": 0.6738, "brier": 0.2394},
-    "stacked": {"n": 692, "accuracy": 0.5925, "log_loss": 0.6781, "brier": 0.2415},
+    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6794, "brier": 0.2421},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
