@@ -42,15 +42,10 @@ DEFAULT_MODEL_PATH = "artifacts/logistic.joblib"
 DEFAULT_LOGISTIC_PATH = "artifacts/logistic.joblib"
 DEFAULT_PREDICTIONS_DB = "data/predictions.db"
 
-# Market-anchored shrinkage applied to the final home-win probability when the
-# bookmaker's de-vigged line is available for the match. Justification: the
-# #166 audit (docs/audits/player_strength_diff.md) measured 152 cases where
-# `player_strength_diff` and `odds_home_win_prob` disagreed on direction —
-# market won 56.6% vs PSD 43.4%. Anchoring the model 30% toward the market on
-# every priced match preserves direction on agreement (most common case) and
-# pulls disagreement cases toward the more-accurate signal. Tunable; raise if
-# we see persistent model-overrules-market regressions in production.
-MARKET_SHRINKAGE_WEIGHT = 0.3
+# The final home-win probability is a logit-space blend of the model output,
+# the EloMOV rating probability, and the de-vigged bookmaker line — weights
+# and walk-forward evidence live in ``fantasy_coach.models.blend``. This
+# supersedes the linear MARKET_SHRINKAGE_WEIGHT blend from #203.
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS predictions (
@@ -689,34 +684,52 @@ def _contribution_detail(feature: str, builder: Any, match: Any) -> dict[str, An
     return None
 
 
-def _apply_market_shrinkage(
+def _apply_probability_blend(
     prob: float, x: Any, feature_names: tuple[str, ...]
 ) -> tuple[float, float | None]:
-    """Blend the model's home-win probability with the bookmaker's implied prob.
+    """Blend the model's probability with EloMOV + bookmaker signals.
 
     Returns ``(final_prob, market_prob)`` where ``market_prob`` is None when
-    odds are unavailable for this match (in which case ``final_prob == prob``
-    and no shrinkage is applied). When odds are present, the blend is
-
-        final_prob = (1 - w) * prob + w * odds_home_win_prob
-
-    with ``w = MARKET_SHRINKAGE_WEIGHT``. See the constant's docstring for
-    why this exists.
+    odds are unavailable for this match. The blend is a fixed-weight convex
+    combination in logit space (see ``fantasy_coach.models.blend`` for the
+    weights and the walk-forward evidence behind them). Signals missing from
+    the feature row degrade gracefully: weights are renormalised over
+    whatever is present, and a row carrying neither signal returns ``prob``
+    unchanged.
     """
-    try:
-        odds_idx = feature_names.index("odds_home_win_prob")
-        missing_idx = feature_names.index("missing_odds")
-    except ValueError:
-        return prob, None
     import numpy as np  # noqa: PLC0415
 
+    from fantasy_coach.models.blend import blend_home_win_prob  # noqa: PLC0415
+
     raw = np.asarray(x, dtype=float).reshape(-1)
-    if len(raw) <= max(odds_idx, missing_idx):
+
+    def _col(name: str) -> float | None:
+        try:
+            idx = feature_names.index(name)
+        except ValueError:
+            return None
+        if idx >= len(raw):
+            return None
+        return float(raw[idx])
+
+    market: float | None = _col("odds_home_win_prob")
+    missing_odds = _col("missing_odds")
+    if missing_odds is None or missing_odds > 0.5:
+        market = None
+
+    # Both signals are sigmoid/de-vig outputs, strictly inside (0, 1) when
+    # genuinely populated — a value at or beyond the boundary means the row
+    # was built without that signal (e.g. what-if override rows), so treat
+    # it as absent rather than as an infinitely confident probability.
+    elo_mov = _col("elo_mov_home_win_prob")
+    if elo_mov is not None and not 0.0 < elo_mov < 1.0:
+        elo_mov = None
+    if market is not None and not 0.0 < market < 1.0:
+        market = None
+
+    if market is None and elo_mov is None:
         return prob, None
-    if raw[missing_idx] > 0.5:
-        return prob, None
-    market = float(raw[odds_idx])
-    blended = (1.0 - MARKET_SHRINKAGE_WEIGHT) * prob + MARKET_SHRINKAGE_WEIGHT * market
+    blended = blend_home_win_prob(prob, elo_mov, market)
     return round(blended, 4), market
 
 
@@ -1059,7 +1072,7 @@ def compute_predictions(
         wx_forecast = _wx_forecasts.get(match.match_id)
         x = np.asarray([builder.feature_row(match, weather_forecast=wx_forecast)], dtype=float)
         raw_prob = round(float(loaded.predict_home_win_prob(x)[0]), 4)
-        prob, _ = _apply_market_shrinkage(raw_prob, x, feature_names)
+        prob, _ = _apply_probability_blend(raw_prob, x, feature_names)
 
         # Build the three-way consensus alternatives (#140).
         logistic_pick: PickSummary | None = None

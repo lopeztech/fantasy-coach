@@ -453,7 +453,8 @@ def test_stacked_predictor_falls_back_when_history_too_small():
     from fantasy_coach.evaluation.predictors import StackedEnsemblePredictor
 
     rng = np.random.default_rng(1)
-    # 20 matches is below _STACK_MIN_HISTORY (40) — meta should be None.
+    # A single fit() call harvests no OOF rows (bases weren't fitted before
+    # it), so meta must be None regardless of history size.
     history = _synthetic_history(20, rng)
     predictor = StackedEnsemblePredictor()
     predictor.fit(history)
@@ -464,20 +465,24 @@ def test_stacked_predictor_falls_back_when_history_too_small():
     assert 0.0 <= p <= 1.0
 
 
-def test_stacked_predictor_fits_meta_when_history_large_enough():
+def test_stacked_predictor_fits_meta_after_walk_forward_oof_accumulates():
     from fantasy_coach.evaluation.predictors import StackedEnsemblePredictor
 
     rng = np.random.default_rng(3)
     history = _synthetic_history(80, rng)
     predictor = StackedEnsemblePredictor()
-    predictor.fit(history)
+    # Simulate the walk-forward harness: fit() per "round" with an extending
+    # history. Calls 2+ harvest the newly-completed matches as OOF rows
+    # (predicted by the previous call's bases), so after 80 matches the
+    # accumulated pool is 60 rows ≥ _STACK_MIN_OOF_ROWS and the meta fits.
+    for end in (20, 40, 60, 80):
+        predictor.fit(history[:end])
 
-    # With 80 matches (64 train / 16 val slice), the meta learner should fit.
-    # Either fit succeeded and returned a meta, or the kill switch fired
-    # (fallback_to_base set) — both are valid trained states.
     assert predictor._ensemble is not None
-    assert predictor._ensemble.mode == "stacked"
+    assert predictor._ensemble.mode == "logit_weighted"
     assert set(predictor._ensemble.base_model_names) == {"xgboost", "skellam", "elo_mov"}
+    # 60 harvested matches minus any random draws (excluded from meta rows).
+    assert 40 <= len(predictor._oof_y) <= 60
 
     future = _synthetic_history(1, np.random.default_rng(4))[0]
     p = predictor.predict_home_win_prob(future)
@@ -485,11 +490,9 @@ def test_stacked_predictor_fits_meta_when_history_large_enough():
 
 
 def test_stacked_predictor_refits_bases_on_full_history_for_inference():
-    """Meta sees predictions from bases trained on the 80 % train slice
-    only (OOF discipline), but at inference time we want the strongest
-    bases possible — so each base is refit on the full history after the
-    meta is trained. Verify base identity fingerprints change between
-    the meta-training fit and the final inference fit.
+    """OOF rows come from bases as fitted on strictly-prior history, but at
+    inference time we want the strongest bases possible — so each base is
+    refit on the full history at the end of every fit() call.
     """
     from fantasy_coach.evaluation.predictors import StackedEnsemblePredictor
 
@@ -510,3 +513,38 @@ def test_stacked_predictor_refits_bases_on_full_history_for_inference():
         # predict_home_win_prob on any completed match should succeed.
         p = base.predict_home_win_prob(history[0])
         assert 0.0 <= p <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# logit_weighted mode
+# ---------------------------------------------------------------------------
+
+
+def test_fit_ensemble_logit_weighted_recovers_dominant_base():
+    rng = np.random.default_rng(11)
+    n = 400
+    y = rng.integers(0, 2, size=n)
+    # Base 0 is informative; base 1 is noise around 0.5.
+    good = np.clip(0.5 + (y - 0.5) * 0.6 + rng.normal(0, 0.05, n), 0.02, 0.98)
+    noise = np.clip(rng.normal(0.5, 0.05, n), 0.02, 0.98)
+    probs = np.column_stack([good, noise])
+
+    model = fit_ensemble(probs, y, mode="logit_weighted", base_model_names=("good", "noise"))
+
+    assert model.mode == "logit_weighted"
+    assert model.weights is not None
+    if not model.use_fallback:
+        assert model.weights[0] > 0.8  # informative base dominates
+    out = model.predict_home_win_prob(probs)
+    assert out.shape == (n,)
+    assert np.all((out >= 0.0) & (out <= 1.0))
+
+
+def test_fit_ensemble_logit_weighted_predictions_bounded_at_extremes():
+    y = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0])
+    probs = np.column_stack([np.where(y == 1, 0.97, 0.03), np.where(y == 1, 0.9, 0.1)]).astype(
+        float
+    )
+    model = fit_ensemble(probs, y, mode="logit_weighted", base_model_names=("a", "b"))
+    out = model.predict_home_win_prob(np.array([[0.999999, 0.000001]]))
+    assert 0.0 <= float(out[0]) <= 1.0

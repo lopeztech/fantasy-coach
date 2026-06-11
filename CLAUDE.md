@@ -53,7 +53,7 @@ cache read. On miss, `/predictions` returns `503` with a retry hint.
 | `src/fantasy_coach/scraper.py` | Throttled nrl.com scrapers (`fetch_round`, `fetch_match_from_url`). See `docs/nrl-endpoints.md`. |
 | `src/fantasy_coach/features.py` | Extracts `MatchRow` from raw match JSON (no raw JSON is persisted). |
 | `src/fantasy_coach/feature_engineering.py` | `FeatureBuilder` + `build_training_frame` + `FEATURE_NAMES`. All features are home-minus-away, walk-forward, no leakage. |
-| `src/fantasy_coach/models/` | `elo.py`, `elo_mov.py` (default rater), `logistic.py`, `xgboost_model.py` (**production**), `skellam.py` (Poisson margin), `ensemble.py`, `calibration.py`, `player_ratings.py`, `rating_sweep.py`, `loader.py` (dispatches by `model_type`). |
+| `src/fantasy_coach/models/` | `elo.py`, `elo_mov.py` (default rater), `logistic.py`, `xgboost_model.py` (**production**), `skellam.py` (Poisson margin), `ensemble.py`, `blend.py` (production logit-space output blend), `calibration.py`, `player_ratings.py`, `rating_sweep.py`, `loader.py` (dispatches by `model_type`). |
 | `src/fantasy_coach/predictions.py` | `PredictionStore` (SQLite), `FirestorePredictionStore`, `compute_predictions`, `PredictionOut`, `_compute_contributions` (per-feature log-odds attribution). |
 | `src/fantasy_coach/storage/` | `Repository` interface, `SQLiteRepository`, `FirestoreRepository`, `schema.sql`, `team_list.py`. |
 | `src/fantasy_coach/commentary/` | Gemini-powered match-preview text + cache. |

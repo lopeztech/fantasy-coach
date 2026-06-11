@@ -9,6 +9,11 @@ To regenerate after a deliberate change:
   uv run python -m fantasy_coach backfill --season 2023 --db data/nrl.db
   uv run python -m fantasy_coach backfill --season 2024 --db data/nrl.db
   uv run python -m fantasy_coach backfill --season 2025 --db data/nrl.db
+  # IMPORTANT: re-merge closing lines for every season — a stale merge
+  # silently degrades the odds feature (see "Closing-line coverage fix"
+  # in docs/model.md; it cost 3.3pp of XGBoost accuracy once).
+  uv run python -m fantasy_coach merge-closing-lines --db data/nrl.db \
+      --xlsx data/odds/nrl.xlsx
   cp data/nrl.db tests/fixtures/baseline-nrl.db
   # then run this test, copy the printed metrics into EXPECTED, commit.
 """
@@ -20,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from fantasy_coach.evaluation import (
+    BlendedPredictor,
     EloMOVPredictor,
     EloPredictor,
     HomePickPredictor,
@@ -188,14 +194,32 @@ SEASONS = (2023, 2024, 2025, 2026)
 # the accuracy and proper-scoring-rule lift; the 2026 slice improves
 # materially (0.5357 → 0.6071 accuracy). Stacked accuracy is unchanged, with
 # a small log_loss / brier regression from the XGBoost base shift.
+#
+# Closing-line coverage fix + stacked rework + production logit blend
+# (2026-06, see docs/model.md). Three changes landed together:
+#   1. Baseline DB re-merged with the aussportsbetting xlsx — 2023 odds had
+#      never been merged (0 → 213 rows) and 2024/2025 were stale (~77 % →
+#      100 %). The odds feature is XGBoost's strongest, so xgboost jumps
+#      +3.3pp accuracy (0.5968 → 0.6301) with log_loss/brier improving;
+#      skellam and logistic also improve on all three. home / elo / elo_mov
+#      don't read odds and are unchanged.
+#   2. StackedEnsemblePredictor reworked: the per-round 20 %-tail LogReg
+#      meta is replaced by convex logit-space weights fit on OOF rows
+#      accumulated across walk-forward rounds. Stacked improves on all
+#      three metrics (0.5997 → 0.6113 accuracy on the enriched DB).
+#   3. New "blended" pin = production parity (XGBoost output blended with
+#      the elo_mov_home_win_prob + odds_home_win_prob features in logit
+#      space, models/blend.py). Best pinned row on every metric — this is
+#      what /predictions actually serves.
 EXPECTED = {
     "home": {"n": 692, "accuracy": 0.5650, "log_loss": 0.6851, "brier": 0.2460},
     "elo": {"n": 692, "accuracy": 0.6185, "log_loss": 0.6549, "brier": 0.2315},
     "elo_mov": {"n": 692, "accuracy": 0.6272, "log_loss": 0.6566, "brier": 0.2315},
-    "logistic": {"n": 692, "accuracy": 0.5506, "log_loss": 0.9508, "brier": 0.2959},
-    "xgboost": {"n": 692, "accuracy": 0.5968, "log_loss": 0.6889, "brier": 0.2451},
-    "skellam": {"n": 692, "accuracy": 0.5910, "log_loss": 0.6738, "brier": 0.2394},
-    "stacked": {"n": 692, "accuracy": 0.5896, "log_loss": 0.6814, "brier": 0.2431},
+    "logistic": {"n": 692, "accuracy": 0.5650, "log_loss": 0.9267, "brier": 0.2876},
+    "xgboost": {"n": 692, "accuracy": 0.6301, "log_loss": 0.6802, "brier": 0.2404},
+    "skellam": {"n": 692, "accuracy": 0.6098, "log_loss": 0.6625, "brier": 0.2341},
+    "stacked": {"n": 692, "accuracy": 0.6113, "log_loss": 0.6641, "brier": 0.2349},
+    "blended": {"n": 692, "accuracy": 0.6445, "log_loss": 0.6380, "brier": 0.2232},
 }
 
 PREDICTORS: dict[str, type[Predictor]] = {
@@ -206,6 +230,7 @@ PREDICTORS: dict[str, type[Predictor]] = {
     "xgboost": XGBoostPredictor,
     "skellam": SkellamPredictor,
     "stacked": StackedEnsemblePredictor,
+    "blended": BlendedPredictor,
 }
 
 # Per-predictor tolerance. sklearn-based predictors are bit-stable across
@@ -232,8 +257,10 @@ PREDICTORS: dict[str, type[Predictor]] = {
 # not.
 _TOL: dict[str, float] = {
     "xgboost": 3.5e-2,
-    # Stacked wraps XGBoost, so inherits the same cross-platform FP drift.
+    # Stacked and blended wrap XGBoost, so inherit the same cross-platform
+    # FP drift.
     "stacked": 3.5e-2,
+    "blended": 3.5e-2,
     "skellam": 5e-3,
 }
 _DEFAULT_TOL = 1e-3

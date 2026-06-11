@@ -5,6 +5,12 @@ Two modes:
 - ``weighted`` — convex combination ``p = Σ w_i · p_i`` with ``w_i ≥ 0`` and
   ``Σ w_i = 1``. Weights are fit by minimising log loss on a held-out
   validation slice via constrained L-BFGS-B.
+- ``logit_weighted`` — same convex-weight fit but applied to the base
+  probabilities' **log-odds**: ``p = σ(Σ w_i · logit(p_i))``. The correct
+  geometry for mixing probabilities — linear mixing systematically
+  under-weights confident bases near 0/1. Walk-forward comparison on the
+  2023–2026 baseline showed logit mixing beats probability mixing on
+  log-loss for every base combination tried.
 - ``stacked`` — sklearn ``LogisticRegression`` meta-learner over the base
   probabilities. More flexible (can learn to invert a miscalibrated base
   or weight interactions) but needs more validation data to not overfit.
@@ -40,7 +46,7 @@ from fantasy_coach.feature_engineering import FEATURE_NAMES
 if TYPE_CHECKING:
     from fantasy_coach.models.loader import Model
 
-EnsembleMode = Literal["weighted", "stacked"]
+EnsembleMode = Literal["weighted", "logit_weighted", "stacked"]
 
 # Minimum log-loss improvement (on the validation fold) over the best base
 # predictor before we trust the ensemble. Chosen to be well above the noise
@@ -55,6 +61,11 @@ _EPS = 1e-15
 def _log_loss(probs: np.ndarray, y: np.ndarray) -> float:
     p = np.clip(probs, _EPS, 1.0 - _EPS)
     return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    clipped = np.clip(p, 1e-6, 1.0 - 1e-6)
+    return np.log(clipped / (1.0 - clipped))
 
 
 @dataclass
@@ -100,6 +111,10 @@ class EnsembleModel:
         if self.mode == "weighted":
             assert self.weights is not None
             return np.clip(base_probs @ self.weights, 0.0, 1.0)
+        if self.mode == "logit_weighted":
+            assert self.weights is not None
+            z = _logit(base_probs) @ self.weights
+            return 1.0 / (1.0 + np.exp(-z))
         assert self.meta_learner is not None
         return self.meta_learner.predict_proba(base_probs)[:, 1]
 
@@ -139,6 +154,18 @@ def fit_ensemble(
     if mode == "weighted":
         weights = _fit_convex_weights(base_probs, y)
         ensemble_probs = base_probs @ weights
+        model = EnsembleModel(
+            mode=mode,
+            base_model_names=base_model_names,
+            weights=weights,
+            base_log_losses=base_losses,
+            best_base_name=best_base,
+            ensemble_log_loss=_log_loss(ensemble_probs, y),
+        )
+    elif mode == "logit_weighted":
+        weights = _fit_convex_logit_weights(base_probs, y)
+        z = _logit(base_probs) @ weights
+        ensemble_probs = 1.0 / (1.0 + np.exp(-z))
         model = EnsembleModel(
             mode=mode,
             base_model_names=base_model_names,
@@ -247,6 +274,28 @@ def _from_blob(blob: dict) -> LoadedEnsemble:
         ensemble=ensemble,
         base_models=bases,
     )
+
+
+def _fit_convex_logit_weights(base_probs: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Minimise log loss over the unit simplex, mixing in log-odds space."""
+    n_base = base_probs.shape[1]
+    w0 = np.full(n_base, 1.0 / n_base)
+    logits = _logit(base_probs)
+
+    def objective(w: np.ndarray) -> float:
+        clipped = np.clip(w, 0.0, None)
+        total = clipped.sum()
+        if total == 0.0:
+            return float("inf")
+        z = logits @ (clipped / total)
+        return _log_loss(1.0 / (1.0 + np.exp(-z)), y)
+
+    result = minimize(objective, w0, method="L-BFGS-B", bounds=[(0.0, 1.0)] * n_base)
+    clipped = np.clip(result.x, 0.0, None)
+    total = clipped.sum()
+    if total == 0.0:
+        return np.full(n_base, 1.0 / n_base)
+    return clipped / total
 
 
 def _fit_convex_weights(base_probs: np.ndarray, y: np.ndarray) -> np.ndarray:

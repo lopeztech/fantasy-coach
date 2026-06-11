@@ -21,7 +21,6 @@ from sklearn.preprocessing import StandardScaler
 from fantasy_coach.app import app
 from fantasy_coach.features import extract_match_features
 from fantasy_coach.predictions import (
-    MARKET_SHRINKAGE_WEIGHT,
     AlternativeModels,
     FeatureContribution,
     FirestorePredictionStore,
@@ -29,7 +28,7 @@ from fantasy_coach.predictions import (
     PredictionOut,
     PredictionStore,
     TeamInfo,
-    _apply_market_shrinkage,
+    _apply_probability_blend,
     _bookmaker_pick_summary,
     _compute_contributions,
     _ensure_model,
@@ -256,7 +255,7 @@ def test_compute_cache_miss_scrapes_and_stores(
     from fantasy_coach.feature_engineering import FEATURE_NAMES, FeatureBuilder
 
     feature_row = np.asarray([FeatureBuilder().feature_row(match)], dtype=float)
-    expected, _ = _apply_market_shrinkage(0.72, feature_row, FEATURE_NAMES)
+    expected, _ = _apply_probability_blend(0.72, feature_row, FEATURE_NAMES)
     assert p.homeWinProbability == expected
     assert p.predictedWinner == "home"
 
@@ -341,7 +340,7 @@ def test_compute_dispatches_ensemble_artifact_end_to_end(
     pb = base_b.pipeline.predict_proba(feature_row)[0, 1]
     raw_expected = round(float(weights[0] * pa + weights[1] * pb), 4)
     # Apply market shrinkage (#203) to mirror what compute_predictions does.
-    expected, _ = _apply_market_shrinkage(raw_expected, feature_row, FEATURE_NAMES)
+    expected, _ = _apply_probability_blend(raw_expected, feature_row, FEATURE_NAMES)
     assert pred.homeWinProbability == expected
 
 
@@ -787,7 +786,7 @@ def test_compute_force_bypasses_cache_and_rescrapes(
     from fantasy_coach.feature_engineering import FEATURE_NAMES, FeatureBuilder
 
     feature_row = np.asarray([FeatureBuilder().feature_row(match)], dtype=float)
-    expected, _ = _apply_market_shrinkage(0.42, feature_row, FEATURE_NAMES)
+    expected, _ = _apply_probability_blend(0.42, feature_row, FEATURE_NAMES)
     assert result[0].homeWinProbability == expected
     assert result[0].modelVersion != "stale"
 
@@ -1077,56 +1076,84 @@ def test_bookmaker_pick_summary_returns_none_for_unknown_feature_names() -> None
 
 
 # ---------------------------------------------------------------------------
-# _apply_market_shrinkage — final-prob blend with bookmaker line (#203)
+# _apply_probability_blend — logit-space blend with EloMOV + bookmaker line
 # ---------------------------------------------------------------------------
 
 
-def test_market_shrinkage_pulls_toward_market_when_odds_present() -> None:
+def test_blend_pulls_toward_market_when_odds_present() -> None:
     """R8 Tigers/Raiders pattern: model says 0.457, market says 0.613 → flip.
 
-    With w=0.3 the blended prob is 0.5038 — lands on the market's side of 0.5,
-    which is exactly the failure-mode fix this issue is addressing.
+    The market carries the largest blend weight, so the blended prob lands on
+    the market's side of 0.5 — the same failure-mode fix as #203, now as a
+    logit-space blend.
     """
     from fantasy_coach.feature_engineering import FEATURE_NAMES
+    from fantasy_coach.models.blend import blend_home_win_prob
 
     x = np.zeros((1, len(FEATURE_NAMES)))
     x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.613
     x[0, FEATURE_NAMES.index("missing_odds")] = 0.0
 
-    blended, market = _apply_market_shrinkage(0.457, x, FEATURE_NAMES)
+    blended, market = _apply_probability_blend(0.457, x, FEATURE_NAMES)
     assert market == pytest.approx(0.613)
-    assert blended == pytest.approx(
-        (1.0 - MARKET_SHRINKAGE_WEIGHT) * 0.457 + MARKET_SHRINKAGE_WEIGHT * 0.613, abs=1e-4
-    )
+    # elo_mov_home_win_prob is 0.0 in this row → treated as unpopulated.
+    assert blended == pytest.approx(blend_home_win_prob(0.457, None, 0.613), abs=1e-4)
     assert blended > 0.5  # flips the pick
 
 
-def test_market_shrinkage_noop_when_odds_missing() -> None:
+def test_blend_uses_elo_mov_when_populated() -> None:
     from fantasy_coach.feature_engineering import FEATURE_NAMES
+    from fantasy_coach.models.blend import blend_home_win_prob
+
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.613
+    x[0, FEATURE_NAMES.index("missing_odds")] = 0.0
+    x[0, FEATURE_NAMES.index("elo_mov_home_win_prob")] = 0.58
+
+    blended, market = _apply_probability_blend(0.457, x, FEATURE_NAMES)
+    assert market == pytest.approx(0.613)
+    assert blended == pytest.approx(blend_home_win_prob(0.457, 0.58, 0.613), abs=1e-4)
+
+
+def test_blend_falls_back_to_elo_mov_when_odds_missing() -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+    from fantasy_coach.models.blend import blend_home_win_prob
 
     x = np.zeros((1, len(FEATURE_NAMES)))
     x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.65
     x[0, FEATURE_NAMES.index("missing_odds")] = 1.0  # missing flag set
+    x[0, FEATURE_NAMES.index("elo_mov_home_win_prob")] = 0.55
 
-    blended, market = _apply_market_shrinkage(0.42, x, FEATURE_NAMES)
+    blended, market = _apply_probability_blend(0.42, x, FEATURE_NAMES)
     assert market is None
-    assert blended == 0.42
+    assert blended == pytest.approx(blend_home_win_prob(0.42, 0.55, None), abs=1e-4)
 
 
-def test_market_shrinkage_noop_when_feature_names_lack_odds_columns() -> None:
-    blended, market = _apply_market_shrinkage(0.6, np.zeros((1, 3)), ("a", "b", "c"))
+def test_blend_noop_when_no_signals_available() -> None:
+    from fantasy_coach.feature_engineering import FEATURE_NAMES
+
+    x = np.zeros((1, len(FEATURE_NAMES)))
+    x[0, FEATURE_NAMES.index("missing_odds")] = 1.0
+
+    blended, market = _apply_probability_blend(0.42, x, FEATURE_NAMES)
+    assert market is None
+    assert blended == 0.42  # elo_mov unpopulated (0.0) + no odds → raw prob
+
+
+def test_blend_noop_when_feature_names_lack_odds_columns() -> None:
+    blended, market = _apply_probability_blend(0.6, np.zeros((1, 3)), ("a", "b", "c"))
     assert market is None
     assert blended == 0.6
 
 
-def test_market_shrinkage_preserves_direction_when_model_and_market_agree() -> None:
+def test_blend_preserves_direction_when_model_and_market_agree() -> None:
     from fantasy_coach.feature_engineering import FEATURE_NAMES
 
     x = np.zeros((1, len(FEATURE_NAMES)))
     x[0, FEATURE_NAMES.index("odds_home_win_prob")] = 0.72
     x[0, FEATURE_NAMES.index("missing_odds")] = 0.0
 
-    blended, _ = _apply_market_shrinkage(0.68, x, FEATURE_NAMES)
+    blended, _ = _apply_probability_blend(0.68, x, FEATURE_NAMES)
     # Both > 0.5 → blend stays > 0.5; lands between the two inputs.
     assert 0.68 < blended < 0.72
 

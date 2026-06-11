@@ -7,6 +7,7 @@ from fantasy_coach.evaluation.harness import (
 from fantasy_coach.evaluation.metrics import accuracy, brier_score, ece, log_loss
 from fantasy_coach.evaluation.predictors import (
     BayesianPredictor,
+    BlendedPredictor,
     CalibratedLogisticPredictor,
     CalibratedXGBoostPredictor,
     EloMOVPredictor,
@@ -35,6 +36,7 @@ __all__ = [
     "Prediction",
     "Predictor",
     "SkellamPredictor",
+    "BlendedPredictor",
     "StackedEnsemblePredictor",
     "XGBoostPredictor",
     "accuracy",
