@@ -461,26 +461,21 @@ it for walk-forward evaluation.
 ### Evaluation status
 
 Glicko-2 is **implemented but not in the baseline metrics test** (`test_baseline_metrics.py`).
-The 2024–2025–2026 window (480 predictions, ~26 games/team/season) is too shallow
-for Glicko-2 to meaningfully differentiate from EloMOV:
 
-- Glicko-2's RD signal converges after ~20 matches per team per season;
-  with only 2 full seasons of history the RD is often still above 1.5 (not
-  much below the initial 2.0148), meaning the system is still largely uncertain.
-- The full Glicko-2 advantage — adaptive confidence intervals on win probabilities
-  that are wider for teams with volatile form — requires the 2023 backfill (#158)
-  to give the rater sufficient history to distinguish stable vs volatile teams.
+**Promotion gate result (run 2026-06-11, post-#158 backfill):** walk-forward
+on the 2023–2026 baseline (692 predictions):
 
-**Promotion gate (pending #158):** After the 2023 backfill lands, run:
-```bash
-uv run python -m fantasy_coach evaluate \
-    --model elo_mov --model glicko2 \
-    --seasons 2023,2024,2025,2026 \
-    --db tests/fixtures/baseline-nrl.db
-```
-If Glicko-2 beats EloMOV on log_loss by ≥ 0.5% on that deeper baseline,
-add it to `test_baseline_metrics.py` EXPECTED and consider promoting to
-replace EloMOV as the `FeatureBuilder` default rater.
+| Rater | Accuracy | Log-loss | Brier | ECE |
+|---|---|---|---|---|
+| EloMOV | **0.6272** | **0.6566** | **0.2315** | **0.0396** |
+| Glicko-2 | 0.6055 | 0.7524 | 0.2553 | 0.1381 |
+
+The gate required Glicko-2 to beat EloMOV log-loss by ≥ 0.5%; it instead
+regressed by 14.6%. **Gate fails decisively — EloMOV stays the default
+rater.** The high ECE suggests the RD-driven probability widening is
+miscalibrated on NRL-sized samples (17 teams, ~26 games/season); revisit
+only if a much deeper backfill (2019+) lands or the RD/volatility priors
+are re-tuned for short seasons.
 
 ## XGBoost model (#25)
 
@@ -769,55 +764,39 @@ to near-0 / near-1 win probabilities for extreme feature rows.
 replace EloMOV as the ensemble's primary signal; the margin and CI outputs
 are surfaced as optional fields on `PredictionOut` for display purposes only.
 
-## Stacked ensemble (#171)
+## Stacked ensemble (#171, reworked 2026-06)
 
 `StackedEnsemblePredictor` in `evaluation/predictors.py` combines
-XGBoost + Skellam + EloMOV through a logistic-regression meta-learner
-trained on out-of-fold base probabilities. Walk-forward flow per round:
+XGBoost + Skellam + EloMOV through a convex logit-space combiner trained
+on **accumulated walk-forward out-of-fold rows**.
 
-1. Split chronologically-sorted history 80 / 20.
-2. Fit each base on the 80 % slice → predict the 20 % slice → that's
-   the OOF probability matrix (n_val × 3).
-3. Fit the meta-learner via `fit_ensemble(mode="stacked")` on those
-   OOF probabilities + actual outcomes. Inherits the existing kill
-   switch from #56 (if meta doesn't beat the best base by 0.005
-   log-loss, fall back to the best base's raw prediction).
-4. Refit each base on the **full** history for inference so the
-   strongest possible bases feed into the meta.
+The original (#171) design split each round's history 80/20 and fit a
+LogReg meta-learner on the 20 % tail — a thin single-window sample that
+systematically diluted the strongest base (EloMOV). The rework exploits
+the harness contract: `fit(history)` is called per round on the *same*
+predictor instance with an extending history, so matches that are new
+since the previous call were predicted by bases trained strictly before
+them. Those are genuine OOF rows; the predictor accumulates them across
+the whole walk and refits the combiner (`fit_ensemble(mode=
+"logit_weighted")`, convex weights over base log-odds) on the full pool
+each round — hundreds of rows by season's end instead of a few dozen.
+Bases are refit on the full history at the end of every `fit()` for
+inference. Below 40 accumulated OOF rows the predictor returns the
+EloMOV base unchanged.
 
-### Ablation — 2024+2025+2026 baseline, 480 predictions
+Logit-space mixing matters: probability-space convex mixing
+systematically under-weights confident bases near 0/1. On the 2023–2026
+offline combiner study, the logit variant beat probability mixing on
+log-loss for every base combination tried.
 
-| Model | accuracy | log-loss | brier |
-|---|--:|--:|--:|
-| home | 0.5646 | 0.6852 | 0.2460 |
-| elo | 0.5833 | 0.6628 | 0.2353 |
-| **EloMOV** | **0.6125** | 0.6668 | 0.2366 |
-| logistic | 0.5604 | 0.8269 | 0.2751 |
-| XGBoost (prod) | 0.5729 | 0.7079 | 0.2515 |
-| Skellam | 0.5708 | 0.7097 | 0.2529 |
-| **Stacked** | 0.5854 | **0.6807** | **0.2423** |
+### Results — 2023–2026 baseline, 692 predictions, full odds coverage
 
-Stacked **beats XGBoost on all three metrics** (+1.25pp accuracy,
-−3.8 % log-loss, −3.7 % brier) — the AC's promotion-gate criterion is
-met. **EloMOV still wins on accuracy** (0.6125 vs 0.5854) because the
-meta-learner's regularisation on the thin 20 %-tail val slice dilutes
-EloMOV's signal; with a larger holdout (deeper history post-#158
-backfill) the meta should learn to upweight EloMOV.
-
-**Decision:** stacked is made available as a backup predictor via
-`StackedEnsemblePredictor` but the production artefact stays XGBoost.
-Promotion to production is a separate decision pending either (a) a
-larger training set that lets the meta upweight EloMOV properly, or
-(b) an explicit business call to trade accuracy for better calibration.
-The `stacked` pin lives in `test_baseline_metrics.py` so any regression
-trips CI.
-
-**Production-artefact limitation:** the current stacked flow persists
-XGBoost + Skellam cleanly (both have joblib serialisation) but EloMOV
-doesn't have an artefact shape yet. Walk-forward evaluation uses an
-in-memory EloMOV that replays the match history; a production
-`train-stacked` CLI would need a small EloMOV serialiser first.
-Filed as a follow-up if/when we decide to promote.
+See `test_baseline_metrics.py` EXPECTED for the authoritative pinned
+numbers (this rework + the closing-line coverage fix landed together).
+Versus the old design on the same data the rework improves the stacked
+row on all three metrics, and the new `blended` production-parity
+predictor (see "Production probability blend" below) is the strongest
+pinned row overall.
 
 ## Position-pair matchup features (#210)
 
@@ -846,43 +825,94 @@ stronger = monotonically higher home-win probability.
 
 Walk-forward ablation pending retrain with new feature schema.
 
-## Player-strength cap + market shrinkage (#203)
+## Player-strength cap (#203)
 
-Two production-layer guards added after R8 2026 went 0/3, one of which
-(Tigers v Raiders) was the exact PSD-overrules-market failure mode flagged
-in #166. Both are off-the-shelf safety nets, not modelling changes — they
-sit at the feature-input and prediction-output boundaries respectively, so
-the underlying XGBoost / stacked / logistic model code is untouched.
+Production-layer guard added after R8 2026 went 0/3 (the Tigers v Raiders
+PSD-overrules-market failure mode flagged in #166):
 
-1. **`PLAYER_STRENGTH_DIFF_CAP = 1000.0`** in
-   `src/fantasy_coach/feature_engineering.py`. The audit measured
-   `std≈1988` and 82.5 % of holdout rows with `|PSD| > 500`. Capping at
-   `±1000` (~½σ) bounds extreme-value leverage without losing direction.
-   Applied uniformly at training and inference, so saved artefacts and
-   live predictions see the same distribution. The cap only affects the
-   long tails (~20 % of rows in the audit's holdout); most predictions are
-   unchanged.
+**`PLAYER_STRENGTH_DIFF_CAP = 1000.0`** in
+`src/fantasy_coach/feature_engineering.py`. The audit measured
+`std≈1988` and 82.5 % of holdout rows with `|PSD| > 500`. Capping at
+`±1000` (~½σ) bounds extreme-value leverage without losing direction.
+Applied uniformly at training and inference, so saved artefacts and
+live predictions see the same distribution. The cap only affects the
+long tails (~20 % of rows in the audit's holdout); most predictions are
+unchanged.
 
-2. **`MARKET_SHRINKAGE_WEIGHT = 0.3`** in
-   `src/fantasy_coach/predictions.py`. After the model emits its raw
-   home-win probability, when `odds_home_win_prob` is present (i.e.
-   `missing_odds == 0.0`), the final probability is
+#203 also introduced a linear output-layer market shrink
+(`MARKET_SHRINKAGE_WEIGHT = 0.3`); that has been superseded by the
+logit-space probability blend below.
 
-       final_prob = 0.7 · model_prob + 0.3 · odds_home_win_prob
+## Closing-line coverage fix (2026-06)
 
-   `w = 0.3` is justified by the audit's Q4 result: in the 152 cases where
-   PSD and the market disagreed on direction, the market won 56.6 % vs
-   PSD's 43.4 %. Anchoring 30 % toward the market preserves direction on
-   agreement (the common case) and pulls disagreement cases toward the
-   more-accurate signal. Live R8 example: model = 0.457, market = 0.613,
-   blended = 0.504 — flips Tigers/Raiders from away to home, the correct
-   side. Tunable; raise if persistent model-overrules-market regressions
-   re-appear in production.
+The aussportsbetting xlsx has closing lines for **every NRL season back to
+2009**, but the baseline DB's `merge-closing-lines` runs were stale: 2023
+had never been merged at all, and 2024/2025 sat at ~77 % from an older
+canonicalisation pass. Re-running the merge brought every completed match
+in the 2023–2026 baseline to full coverage (213/213 per completed season;
+2026 covers all completed rounds):
 
-The shrinkage is intentionally output-layer rather than baked into the
-model so the stored `contributions` array still reflects what the model
-itself "thought" — the UI shows the raw model attribution, with the blend
-documented as a separate post-processing step in this section.
+| Season | Before | After |
+|---|---|---|
+| 2023 | 0/213 | 213/213 |
+| 2024 | 164/213 | 213/213 |
+| 2025 | 166/213 | 213/213 |
+| 2026 (completed) | 43/56 | 56/56 |
+
+Since `odds_home_win_prob` is XGBoost's single strongest feature, the data
+fix alone moved walk-forward XGBoost accuracy 0.5968 → 0.6301 (+3.3 pp)
+with log-loss and brier both improving. Skellam improved on all three
+metrics too. **When refreshing the baseline fixture, always re-run
+`merge-closing-lines` for every season before copying the DB into
+`tests/fixtures/`** — the docstring in `test_baseline_metrics.py` includes
+the step.
+
+The same merge was applied to `data/nrl.db` and synced to the production
+Firestore `matches` collection so the weekly retrain (#107) trains on the
+same coverage.
+
+## Production probability blend (logit space)
+
+`models/blend.py` defines the output layer applied by
+`_apply_probability_blend` in `predictions.py` after the primary model
+emits its raw probability:
+
+    final = σ( 0.24·logit(p_model) + 0.36·logit(p_elo_mov) + 0.40·logit(p_market) )
+
+- `p_model` — the loaded artefact's output (XGBoost in production).
+- `p_elo_mov` — the `elo_mov_home_win_prob` feature already present in the
+  prediction-time feature row.
+- `p_market` — the `odds_home_win_prob` feature (absent when
+  `missing_odds` is set, or out of (0, 1) — both treated as missing).
+
+Missing signals renormalise the remaining weights (no market → model 0.4 /
+EloMOV 0.6; nothing available → raw model probability). Logit space is the
+correct mixing geometry: linear blending under-weights confident signals
+near 0/1.
+
+**Evidence** (offline combiner study over walk-forward base probabilities,
+2023–2026 baseline, n=692, full closing-line coverage): fixed logit-space
+weights beat every per-round-refit meta-learner tried (convex weights,
+LogReg meta, market-augmented stacking), and the optimum is flat across
+market weights 0.3–0.6 (accuracy 0.643–0.646, log-loss 0.634–0.641), so
+the chosen point is not a knife-edge fit:
+
+| Output layer | Accuracy | Log-loss | Brier |
+|---|---|---|---|
+| Raw XGBoost | 0.6301 | 0.6802 | 0.2404 |
+| Old: linear 0.3 market shrink | 0.6431 | 0.6534 | 0.2298 |
+| **New: logit blend (0.24/0.36/0.40)** | **0.6445** | **0.6380** | **0.2232** |
+| Pure closing line (reference) | 0.6445 | 0.6311 | 0.2199 |
+
+The blend is pinned in `test_baseline_metrics.py` as the `blended`
+predictor (production parity), so a regression in the *served* probability
+trips CI even when the raw model is unchanged. The stored `contributions`
+array still reflects the raw model attribution; the blend remains a
+documented post-processing step.
+
+Caveat: historical evaluation uses **closing** lines, while the Tue/Thu
+precompute sees odds days before kickoff — live blend inputs are slightly
+noisier than the backtest's. The EloMOV leg is unaffected.
 
 ## Retraining cadence & drift (#107)
 
@@ -1031,6 +1061,34 @@ report with mean CLV per model and a cumulative CLV curve table.
 equal positive PnL on a small sample — both are reported side by side.
 Statistical significance requires ≥ 400 predictions; Wald-test p < 0.05
 is the criterion used to declare a model "statistically edge-positive".
+
+### Betting-tip evidence (2026-06, full closing-line coverage, n=692)
+
+Walk-forward backtest of flat-stake betting on each predictor's pick at the
+closing line, plus value-filtered betting (only bet when
+`p_model × decimal_odds − 1 > threshold`):
+
+| Strategy | n bets | Hit rate | Flat ROI |
+|---|--:|--:|--:|
+| Blended pick, every match | 692 | — | −6.4 % |
+| Raw XGBoost pick, every match | 692 | — | −2.0 % |
+| Raw XGBoost, edge > 0 only | 299 | 0.518 | +0.5 % |
+| **Raw XGBoost, edge > 5 %** | **242** | **0.529** | **+7.1 %** |
+| Raw XGBoost, edge > 10 % | 195 | 0.497 | +7.3 % |
+
+Two practical conclusions baked into how the product should present tips:
+
+1. **Winner picks and probabilities come from the blend** — it has the best
+   accuracy (0.6445) and calibration (ECE 0.028) of anything we run. But
+   because it anchors 40 % to the market, betting its pick at market odds
+   pays the vig with little disagreement left to exploit — it is not a
+   staking signal.
+2. **Value flags should come from the raw model's edge vs the market.**
+   The +7.1 % ROI at the 5 % edge threshold is *suggestive, not proven*
+   (SE ≈ 6.4 % at n=242, t ≈ 1.1 — well short of Wald p < 0.05), and the
+   backtest bets at closing prices the Tue/Thu precompute can't actually
+   get. Treat the edge flag as "the model sees value here", never as a
+   profitability promise.
 
 ## Prediction uncertainty (#146)
 

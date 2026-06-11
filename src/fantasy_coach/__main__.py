@@ -15,9 +15,14 @@ from fantasy_coach.backfill import (
 )
 from fantasy_coach.bookmaker import BookmakerPredictor, load_closing_lines
 from fantasy_coach.evaluation import (
+    BlendedPredictor,
+    EloMOVPredictor,
     EloPredictor,
     HomePickPredictor,
     LogisticPredictor,
+    SkellamPredictor,
+    StackedEnsemblePredictor,
+    XGBoostPredictor,
 )
 from fantasy_coach.evaluation.harness import walk_forward_from_repo
 from fantasy_coach.evaluation.report import write_markdown
@@ -28,7 +33,12 @@ from fantasy_coach.storage import SQLiteRepository
 _BUILTIN_PREDICTORS = {
     "home": HomePickPredictor,
     "elo": EloPredictor,
+    "elo_mov": EloMOVPredictor,
     "logistic": LogisticPredictor,
+    "xgboost": XGBoostPredictor,
+    "skellam": SkellamPredictor,
+    "stacked": StackedEnsemblePredictor,
+    "blended": BlendedPredictor,
 }
 # `bookmaker` is appended at parse time so users see it in --help even
 # though it requires a separate --closing-lines argument.

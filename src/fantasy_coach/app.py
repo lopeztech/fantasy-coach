@@ -1290,7 +1290,7 @@ def get_whatif_prediction(
     from fantasy_coach.predictions import (  # noqa: PLC0415
         DEFAULT_MODEL_PATH,
         MODEL_PATH_ENV,
-        _apply_market_shrinkage,
+        _apply_probability_blend,
         _compute_contributions,
     )
 
@@ -1319,7 +1319,7 @@ def get_whatif_prediction(
         x_overridden[0, feature_names.index("missing_weather")] = 0.0
 
     raw_prob = round(float(loaded.predict_home_win_prob(x_overridden)[0]), 4)
-    new_prob, _ = _apply_market_shrinkage(raw_prob, x_overridden, feature_names)
+    new_prob, _ = _apply_probability_blend(raw_prob, x_overridden, feature_names)
 
     contribs = _compute_contributions(loaded, x_overridden)
 

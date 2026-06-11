@@ -534,34 +534,35 @@ class SkellamPredictor:
 # ---------------------------------------------------------------------------
 
 
-# Below this many completed matches in history, we can't reliably fit the
-# meta-learner (too few out-of-fold predictions). Bases still get fit on
-# the full history so the predictor degrades gracefully to a plain average
-# of base probabilities.
-_STACK_MIN_HISTORY = 40
-
-# Chronological split used to produce out-of-fold base-model predictions.
-# First 80 % → base training; last 20 % → base predict + meta fit. Bigger
-# than a single-fold k-fold because our XGBoost fit is expensive and
-# walk-forward already refits the predictor per round.
-_STACK_TRAIN_FRACTION = 0.8
+# Below this many accumulated out-of-fold rows, the convex-weight fit is
+# too noisy to trust; predictions fall back to the EloMOV base (the
+# strongest standalone base on the walk-forward baseline).
+_STACK_MIN_OOF_ROWS = 40
 
 
 class StackedEnsemblePredictor:
-    """Walk-forward stacking over XGBoost + Skellam + EloMOV (#171).
+    """Walk-forward stacking over XGBoost + Skellam + EloMOV (#171, reworked).
+
+    The original design refit the meta-learner per round on a synthetic 20 %
+    chronological tail slice — a thin, single-window sample that diluted the
+    strongest base (EloMOV). The rework exploits the walk-forward harness
+    contract instead: ``fit(history)`` is called once per round on the same
+    predictor instance with an extending history, so the matches that are
+    *new* since the previous call were predicted by bases trained strictly
+    before them. Those predictions are genuine out-of-fold rows and are
+    accumulated across the whole walk; by season's end the meta-combiner
+    trains on hundreds of OOF rows instead of a few dozen.
 
     Per ``fit(history)``:
-    1. Chronologically split history 80/20.
-    2. Train each base on the 80 % slice, predict the 20 % slice — gives
-       clean out-of-fold base probabilities for meta training.
-    3. Fit the meta-learner (``fit_ensemble`` with ``mode="stacked"``) on
-       those (n_val × 3) probabilities plus the 20 % slice's outcomes.
-    4. Refit each base on the full history so inference sees the
-       strongest bases possible.
+    1. Harvest OOF rows: for each newly-completed match, record the base
+       probabilities predicted by the **previous** round's bases.
+    2. Refit each base on the full history for inference (and for the next
+       round's OOF harvest).
+    3. Refit the meta-combiner (``fit_ensemble`` with
+       ``mode="logit_weighted"``) on all accumulated OOF rows.
 
-    When history is < ``_STACK_MIN_HISTORY``, meta is unset and
-    ``predict_home_win_prob`` falls back to a plain mean of base
-    probabilities — safer than picking one base arbitrarily.
+    Below ``_STACK_MIN_OOF_ROWS`` OOF rows, predictions fall back to the
+    EloMOV base.
     """
 
     name = "stacked"
@@ -579,6 +580,10 @@ class StackedEnsemblePredictor:
             "elo_mov": EloMOVPredictor(),
         }
         self._ensemble: EnsembleModel | None = None
+        self._oof_probs: list[list[float]] = []
+        self._oof_y: list[int] = []
+        self._seen_match_ids: set[int] = set()
+        self._bases_fitted = False
 
     def _base_names(self) -> tuple[str, ...]:
         return tuple(self._bases.keys())
@@ -588,55 +593,90 @@ class StackedEnsemblePredictor:
             [m for m in history if m.home.score is not None and m.away.score is not None],
             key=lambda m: (m.start_time, m.match_id),
         )
+        new = [m for m in completed if m.match_id not in self._seen_match_ids]
 
-        # Always fit bases on the full completed history — inference always
-        # goes through them. Meta is the only thing that needs the OOF split.
-        def _refit_all_on(slice_: list[MatchRow]) -> None:
-            for base in self._bases.values():
-                base.fit(slice_)
+        # Step 1: harvest OOF rows. The bases are still fitted on the
+        # previous call's history, which strictly precedes the new matches.
+        if self._bases_fitted:
+            for m in new:
+                home_score = int(m.home.score)  # type: ignore[arg-type]
+                away_score = int(m.away.score)  # type: ignore[arg-type]
+                if home_score == away_score:
+                    continue  # draws are excluded from binary meta training
+                self._oof_probs.append(
+                    [self._bases[n].predict_home_win_prob(m) for n in self._base_names()]
+                )
+                self._oof_y.append(1 if home_score > away_score else 0)
+        self._seen_match_ids.update(m.match_id for m in new)
 
-        if len(completed) < _STACK_MIN_HISTORY:
+        # Step 2: refit bases on the full history for inference.
+        for base in self._bases.values():
+            base.fit(completed)
+        self._bases_fitted = True
+
+        # Step 3: refit the meta-combiner on all accumulated OOF rows.
+        y = np.asarray(self._oof_y, dtype=int)
+        if len(y) >= _STACK_MIN_OOF_ROWS and 0 < int(y.sum()) < len(y):
+            self._ensemble = fit_ensemble(
+                np.asarray(self._oof_probs, dtype=float),
+                y,
+                mode="logit_weighted",
+                base_model_names=self._base_names(),
+            )
+        else:
             self._ensemble = None
-            _refit_all_on(completed)
-            return
-
-        split = int(len(completed) * _STACK_TRAIN_FRACTION)
-        train_slice = completed[:split]
-        val_slice = completed[split:]
-
-        # Step 1–2: bases trained on first 80 %, predict last 20 %.
-        _refit_all_on(train_slice)
-        base_names = self._base_names()
-        val_probs = np.zeros((len(val_slice), len(base_names)), dtype=float)
-        for col, name in enumerate(base_names):
-            base = self._bases[name]
-            for row, match in enumerate(val_slice):
-                val_probs[row, col] = base.predict_home_win_prob(match)
-        val_y = np.asarray(
-            [1 if (m.home.score or 0) > (m.away.score or 0) else 0 for m in val_slice],
-            dtype=int,
-        )
-
-        # Step 3: fit the meta-learner on OOF base probs.
-        self._ensemble = fit_ensemble(
-            val_probs,
-            val_y,
-            mode="stacked",
-            base_model_names=base_names,
-        )
-
-        # Step 4: refit bases on full history for inference.
-        _refit_all_on(completed)
 
     def predict_home_win_prob(self, match: MatchRow) -> float:
-        base_names = self._base_names()
+        if self._ensemble is None:
+            return self._bases["elo_mov"].predict_home_win_prob(match)
         probs = np.asarray(
-            [[self._bases[n].predict_home_win_prob(match) for n in base_names]],
+            [[self._bases[n].predict_home_win_prob(match) for n in self._base_names()]],
             dtype=float,
         )
-        if self._ensemble is None:
-            return float(probs.mean())
         return float(self._ensemble.predict_home_win_prob(probs)[0])
+
+
+class BlendedPredictor:
+    """Production-parity predictor: XGBoost blended with EloMOV + market.
+
+    Mirrors the serving path exactly: the primary model's probability is
+    combined with the ``elo_mov_home_win_prob`` and ``odds_home_win_prob``
+    features through ``models.blend.blend_home_win_prob`` (fixed logit-space
+    weights). Pinning this in the baseline-metrics test means walk-forward
+    regressions in the *served* probability — not just the raw model — trip
+    CI.
+    """
+
+    name = "blended"
+
+    def __init__(self) -> None:
+        self._xgb = XGBoostPredictor()
+        self._inference_builder = FeatureBuilder()
+
+    def fit(self, history: Sequence[MatchRow]) -> None:
+        self._xgb.fit(history)
+        self._inference_builder = FeatureBuilder()
+        for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
+            if match.home.score is None or match.away.score is None:
+                continue
+            self._inference_builder.advance_season_if_needed(match)
+            self._inference_builder.record(match)
+
+    def predict_home_win_prob(self, match: MatchRow) -> float:
+        from fantasy_coach.feature_engineering import FEATURE_NAMES  # noqa: PLC0415
+        from fantasy_coach.models.blend import blend_home_win_prob  # noqa: PLC0415
+
+        model_prob = self._xgb.predict_home_win_prob(match)
+        row = self._inference_builder.feature_row(match)
+
+        def _signal(name: str) -> float | None:
+            value = float(row[FEATURE_NAMES.index(name)])
+            return value if 0.0 < value < 1.0 else None
+
+        market = _signal("odds_home_win_prob")
+        if float(row[FEATURE_NAMES.index("missing_odds")]) > 0.5:
+            market = None
+        return blend_home_win_prob(model_prob, _signal("elo_mov_home_win_prob"), market)
 
 
 class BayesianPredictor:
