@@ -1087,3 +1087,181 @@ def test_fatigue_decays_over_time() -> None:
     )
     # Fatigue from 7 days ago > fatigue from 60 days ago.
     assert row_recent["team_fatigue_index_diff"] > row_old["team_fatigue_index_diff"]
+
+
+# ---------------------------------------------------------------------------
+# Injury severity feature (#269)
+# ---------------------------------------------------------------------------
+
+
+def _injury_row(builder, match):
+    """Return the match's feature row as a {name: value} dict."""
+    return dict(zip(FEATURE_NAMES, builder.feature_row(match), strict=True))
+
+
+def _report(player_id, team_id, status, *, season=2025, round=1):
+    from fantasy_coach.injury import InjuryReport
+
+    return InjuryReport(
+        player_id=player_id,
+        season=season,
+        round=round,
+        team_id=team_id,
+        status=status,
+        weeks_out=None,
+        body_part=None,
+        source="test",
+        scraped_at=datetime(2025, 2, 25, tzinfo=UTC),
+    )
+
+
+def test_injury_features_neutral_without_index() -> None:
+    from fantasy_coach.feature_engineering import FeatureBuilder
+
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    row = _injury_row(FeatureBuilder(), match)
+    assert row["injury_severity_diff"] == 0.0
+    assert row["missing_injury_data"] == 1.0
+
+
+def test_injury_severity_status_weighted_and_binary() -> None:
+    from fantasy_coach.feature_engineering import FeatureBuilder, InjuryIndex
+    from fantasy_coach.injury import InjuryStatus
+
+    # Positions unknown (players never recorded) ⇒ weight 1.0 each. Home has one
+    # OUT (1.0), away one TEST (0.5). Severity is a count — weeks_out ignored.
+    idx = InjuryIndex.from_records(
+        [_report(101, 10, InjuryStatus.OUT), _report(201, 20, InjuryStatus.TEST)]
+    )
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    row = _injury_row(FeatureBuilder(injury_index=idx), match)
+    assert row["injury_severity_diff"] == pytest.approx(0.5)
+    assert row["missing_injury_data"] == 0.0
+
+
+def test_injury_severity_ignores_weeks_out() -> None:
+    from fantasy_coach.feature_engineering import FeatureBuilder, InjuryIndex
+    from fantasy_coach.injury import InjuryReport, InjuryStatus
+
+    def out(pid, team, weeks):
+        return InjuryReport(
+            player_id=pid,
+            season=2025,
+            round=1,
+            team_id=team,
+            status=InjuryStatus.OUT,
+            weeks_out=weeks,
+            body_part=None,
+            source="t",
+            scraped_at=datetime(2025, 2, 25, tzinfo=UTC),
+        )
+
+    # Same player count, wildly different weeks_out → identical severity.
+    short = InjuryIndex.from_records([out(101, 10, 1)])
+    long = InjuryIndex.from_records([out(101, 10, 26)])
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    s = _injury_row(FeatureBuilder(injury_index=short), match)["injury_severity_diff"]
+    long_ = _injury_row(FeatureBuilder(injury_index=long), match)["injury_severity_diff"]
+    assert s == pytest.approx(long_)
+
+
+def test_injury_severity_position_weighted() -> None:
+    from fantasy_coach.feature_engineering import (
+        POSITION_WEIGHTS,
+        FeatureBuilder,
+        InjuryIndex,
+    )
+    from fantasy_coach.injury import InjuryStatus
+
+    # Teach the builder that player 101 is a Halfback by recording a prior match
+    # where they started there, then rule them OUT in a later round.
+    prior = _make_match_with_players(
+        [_player(101, "Halfback"), _player(102, "Prop")],
+        [_player(201, "Hooker"), _player(202, "Lock")],
+        match_id=1,
+    )
+    idx = InjuryIndex.from_records([_report(101, 10, InjuryStatus.OUT, round=2)])
+    later = MatchRow(
+        match_id=2,
+        season=2025,
+        round=2,
+        start_time=datetime(2025, 3, 10, tzinfo=UTC),
+        match_state="Upcoming",
+        venue=None,
+        venue_city=None,
+        weather=None,
+        home=TeamRow(
+            team_id=10, name="H", nick_name="H", score=None, players=[_player(102, "Prop")]
+        ),
+        away=TeamRow(
+            team_id=20, name="A", nick_name="A", score=None, players=[_player(201, "Hooker")]
+        ),
+        team_stats=[],
+    )
+    fb = FeatureBuilder(injury_index=idx)
+    fb.record(prior)  # learns player 101's Halfback position walk-forward
+    row = _injury_row(fb, later)
+    # Halfback weight (3.0) >> the default 1.0 for an unknown player.
+    assert row["injury_severity_diff"] == pytest.approx(POSITION_WEIGHTS["Halfback"])
+
+
+def test_missing_injury_data_zero_for_scraped_quiet_week() -> None:
+    from fantasy_coach.feature_engineering import FeatureBuilder, InjuryIndex
+    from fantasy_coach.injury import InjuryStatus
+
+    # The round was scraped (a report exists for some other team), but neither
+    # of these two teams has an injury — that's data, not a gap.
+    idx = InjuryIndex.from_records([_report(999, 30, InjuryStatus.OUT)])
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    row = _injury_row(FeatureBuilder(injury_index=idx), match)
+    assert row["missing_injury_data"] == 0.0
+    assert row["injury_severity_diff"] == 0.0
+
+
+def test_injury_severity_diff_is_capped() -> None:
+    from fantasy_coach.feature_engineering import (
+        INJURY_SEVERITY_DIFF_CAP,
+        FeatureBuilder,
+        InjuryIndex,
+    )
+    from fantasy_coach.injury import InjuryStatus
+
+    # 60 unknown-position OUT players on the home side ⇒ raw severity 60,
+    # clamped to the cap.
+    idx = InjuryIndex.from_records([_report(1000 + i, 10, InjuryStatus.OUT) for i in range(60)])
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    row = _injury_row(FeatureBuilder(injury_index=idx), match)
+    assert row["injury_severity_diff"] == pytest.approx(INJURY_SEVERITY_DIFF_CAP)
+
+
+def test_returning_status_carries_no_severity() -> None:
+    from fantasy_coach.feature_engineering import FeatureBuilder, InjuryIndex
+    from fantasy_coach.injury import InjuryStatus
+
+    # RETURNING is excluded from severity (its rust hypothesis didn't hold in
+    # the #269 ablation), but the round still counts as scraped.
+    idx = InjuryIndex.from_records([_report(101, 10, InjuryStatus.RETURNING)])
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    row = _injury_row(FeatureBuilder(injury_index=idx), match)
+    assert row["injury_severity_diff"] == 0.0
+    assert row["missing_injury_data"] == 0.0
+
+
+def test_active_injury_index_context_applies_to_bare_builder() -> None:
+    from fantasy_coach.feature_engineering import (
+        FeatureBuilder,
+        InjuryIndex,
+        active_injury_index,
+    )
+    from fantasy_coach.injury import InjuryStatus
+
+    idx = InjuryIndex.from_records([_report(101, 10, InjuryStatus.OUT)])
+    match = _make_match_with_players([_player(1, "Halfback")], [_player(2, "Prop")])
+    # A FeatureBuilder() constructed with no explicit index picks up the active one.
+    with active_injury_index(idx):
+        row = _injury_row(FeatureBuilder(), match)
+    assert row["injury_severity_diff"] == pytest.approx(1.0)
+    # Outside the context the fallback is gone again.
+    row_after = _injury_row(FeatureBuilder(), match)
+    assert row_after["injury_severity_diff"] == 0.0
+    assert row_after["missing_injury_data"] == 1.0

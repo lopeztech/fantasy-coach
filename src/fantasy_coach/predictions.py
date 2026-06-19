@@ -871,10 +871,33 @@ def _confidence_band(spread: float, ood_similarity: float) -> str:
     return "low"
 
 
-def _build_inference_state(history: list[MatchRow]) -> Any:
+def _load_injury_index(injury_repo: Any, season: int, round_: int) -> Any:
+    """Build an ``InjuryIndex`` for the round being predicted.
+
+    Only the target round's reports matter at inference — historical matches
+    are ``record()``-ed for walk-forward state but never feature-rowed, so
+    their injury data is never read. Returns ``None`` (⇒ neutral injury
+    features, missing_injury_data=1.0) when no injury repo is wired or the
+    lookup fails, so a Firestore hiccup degrades gracefully rather than
+    breaking the whole precompute.
+    """
+    if injury_repo is None:
+        return None
+    from fantasy_coach.feature_engineering import InjuryIndex  # noqa: PLC0415
+
+    try:
+        reports = injury_repo.list_reports(season=season, round=round_)
+    except Exception:
+        logger.exception("injury index: list_reports failed for %d r%d", season, round_)
+        return None
+    logger.info("injury index: %d reports for %d r%d", len(reports), season, round_)
+    return InjuryIndex.from_records(reports)
+
+
+def _build_inference_state(history: list[MatchRow], injury_index: Any = None) -> Any:
     from fantasy_coach.feature_engineering import FeatureBuilder  # noqa: PLC0415
 
-    builder = FeatureBuilder()
+    builder = FeatureBuilder(injury_index=injury_index)
     for match in sorted(history, key=lambda m: (m.start_time, m.match_id)):
         if match.home.score is None or match.away.score is None:
             continue
@@ -961,6 +984,7 @@ def compute_predictions(
     force: bool = False,
     team_list_repo: Any = None,
     weather_forecasts: dict[int, Any] | None = None,
+    injury_repo: Any = None,
 ) -> list[PredictionOut]:
     """Return predictions for season/round; compute and cache them on miss.
 
@@ -1052,7 +1076,8 @@ def compute_predictions(
             if m.season < season or (m.season == season and m.round < round_):
                 history.append(m)
 
-    builder = _build_inference_state(history)
+    injury_index = _load_injury_index(injury_repo, season, round_)
+    builder = _build_inference_state(history, injury_index)
 
     import numpy as np  # noqa: PLC0415
 

@@ -31,7 +31,8 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict, deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -39,6 +40,7 @@ import numpy as np
 
 from fantasy_coach.bookmaker.lines import devig_two_way
 from fantasy_coach.features import MatchRow, PlayerMatchStat, PlayerRow, TeamStat
+from fantasy_coach.injury import InjuryReport, InjuryStatus
 from fantasy_coach.models.elo import Elo
 from fantasy_coach.models.elo_mov import EloMOV
 from fantasy_coach.models.player_ratings import POSITION_GROUPS, PlayerRatings
@@ -265,6 +267,31 @@ FEATURE_NAMES = (
     "team_fatigue_index_diff",
     "spine_fatigue_index_diff",
     "cumulative_origin_minutes_diff",
+    # Structured injury intelligence (#208 / #269). Sourced from the scraped
+    # weekly NRL injury list (``injury_reports``) rather than the match team
+    # list, so it captures *health status* the binary in-or-out availability
+    # features (``key_absence_diff`` / ``player_strength_diff``) cannot.
+    #
+    # injury_severity_diff: per team, a position-weighted *count* of currently
+    #   listed players (Σ ``status_weight × POSITION_WEIGHTS[pos]`` over the
+    #   team's active reports — OUT/SUSPENDED full weight, TEST half, 21-man
+    #   quarter; RETURNING excluded). Home minus away, clamped to
+    #   ±INJURY_SEVERITY_DIFF_CAP. Deliberately ignores the source's
+    #   ``weeks_out`` estimate: a #269 ablation showed the (noisy, Gemini-
+    #   parsed) duration *worsened* log-loss/Brier, while the binary count
+    #   improved accuracy, log-loss, and Brier together.
+    # missing_injury_data: 1.0 when no injury list was available for this
+    #   (season, round) — mirrors the ``missing_*`` pattern so the model
+    #   learns a separate intercept for "no injury signal" rather than reading
+    #   a quiet week as a zeroed-out one.
+    #
+    # The returning-player and late-withdrawal signals #269 also proposed are
+    # deferred: the same ablation found returning-count net-harmful (the "rust"
+    # hypothesis didn't hold) and late-withdrawals carry no historical training
+    # signal (the kickoff-hour watcher only runs live). Their data is still
+    # collected for a future revisit.
+    "injury_severity_diff",
+    "missing_injury_data",
 )
 
 # Plain-English rationale in docs/model.md. These are expert-prior weights:
@@ -281,6 +308,23 @@ FEATURE_NAMES = (
 # the same audit showed loses head-to-head with the market 43.4% vs 56.6%.
 # 1000 ≈ ½σ; preserves the directional signal while bounding leverage.
 PLAYER_STRENGTH_DIFF_CAP = 1000.0
+
+# Injury-severity status weights (#269). A confirmed OUT or a suspension costs
+# the full availability of the player; a fitness TEST is a coin-flip so it
+# carries half; a 21-man-squad listing is a fringe selection so a quarter.
+# RETURNING is 0.0 — it isn't an absence, and a #269 ablation found a
+# returning-player count net-harmful, so it doesn't feed severity.
+INJURY_STATUS_WEIGHTS: dict[InjuryStatus, float] = {
+    InjuryStatus.OUT: 1.0,
+    InjuryStatus.SUSPENDED: 1.0,
+    InjuryStatus.TEST: 0.5,
+    InjuryStatus.SQUAD_21: 0.25,
+    InjuryStatus.RETURNING: 0.0,
+}
+# Bound |injury_severity_diff| so a pile-up of injuries on one side can't
+# dominate the model — mirrors player_strength_diff's cap. A position-weighted
+# count rarely approaches this; it only guards pathological scrapes.
+INJURY_SEVERITY_DIFF_CAP = 50.0
 
 POSITION_WEIGHTS: dict[str, float] = {
     "Halfback": 3.0,
@@ -366,6 +410,69 @@ class TrainingFrame:
     feature_names: tuple[str, ...] = FEATURE_NAMES
 
 
+# Process-level "active" injury index (#269). The walk-forward evaluation
+# harness and the training CLIs build hundreds of FeatureBuilder instances
+# nested deep inside predictor classes that only receive match lists, never a
+# repo. Threading the index through every one is impractical, so the CLI entry
+# points set it here for the duration of a run and FeatureBuilder falls back to
+# it when no index is passed explicitly. A *single* static index over all
+# scraped reports is leakage-safe for walk-forward: scoring round R only ever
+# looks up (season, R, team) keys, whose reports were scraped before round R's
+# kickoff — later rounds' reports sit in the index but are never read for R.
+# Defaults to None (neutral injury features), so tests and library callers are
+# unaffected.
+_ACTIVE_INJURY_INDEX: InjuryIndex | None = None
+
+
+def set_active_injury_index(index: InjuryIndex | None) -> None:
+    """Set the process-level injury index FeatureBuilder falls back to."""
+    global _ACTIVE_INJURY_INDEX
+    _ACTIVE_INJURY_INDEX = index
+
+
+@contextmanager
+def active_injury_index(index: InjuryIndex | None) -> Iterator[None]:
+    """Scope an active injury index to a ``with`` block, restoring the prior one."""
+    global _ACTIVE_INJURY_INDEX
+    prev = _ACTIVE_INJURY_INDEX
+    _ACTIVE_INJURY_INDEX = index
+    try:
+        yield
+    finally:
+        _ACTIVE_INJURY_INDEX = prev
+
+
+@dataclass(frozen=True)
+class InjuryIndex:
+    """Pre-loaded lookup of scraped injury reports for feature building.
+
+    The injury feature pulls from the scraped ``injury_reports`` store, which
+    lives outside the walk-forward match history — so, unlike Elo or rolling
+    form, it can't be rebuilt incrementally in ``record()``; it has to be
+    supplied. This index is built once and handed to ``FeatureBuilder``.
+
+    - ``reports`` is keyed by ``(season, round, team_id)``.
+    - ``rounds_with_data`` is the set of ``(season, round)`` for which an
+      injury list was actually scraped, so the feature can tell a genuinely
+      quiet week (data present, no injuries) apart from a missing one.
+
+    When a ``FeatureBuilder`` has no index, the injury features emit neutral
+    0.0 with ``missing_injury_data = 1.0``.
+    """
+
+    reports: dict[tuple[int, int, int], list[InjuryReport]]
+    rounds_with_data: frozenset[tuple[int, int]]
+
+    @classmethod
+    def from_records(cls, reports: Iterable[InjuryReport]) -> InjuryIndex:
+        by_team: dict[tuple[int, int, int], list[InjuryReport]] = defaultdict(list)
+        rounds: set[tuple[int, int]] = set()
+        for r in reports:
+            by_team[(r.season, r.round, r.team_id)].append(r)
+            rounds.add((r.season, r.round))
+        return cls(reports=dict(by_team), rounds_with_data=frozenset(rounds))
+
+
 class FeatureBuilder:
     """Stateful per-match feature computation.
 
@@ -379,7 +486,14 @@ class FeatureBuilder:
         elo: Elo | None = None,
         *,
         player_ratings: PlayerRatings | None = None,
+        injury_index: InjuryIndex | None = None,
     ) -> None:
+        # Scraped injury intelligence (#269). Optional: falls back to the
+        # process-level active index (set by the training/eval CLIs) and is
+        # None ⇒ the injury features emit neutral 0.0 with
+        # missing_injury_data=1.0. Not rebuilt in record() — it's external
+        # data, supplied at construction.
+        self.injury_index = injury_index if injury_index is not None else _ACTIVE_INJURY_INDEX
         # EloMOV promoted over plain Elo in #106: +2.36pp accuracy on the
         # 2024–2025 walk-forward baseline (plain Elo still available via Elo()).
         self.elo = elo or EloMOV()
@@ -584,6 +698,20 @@ class FeatureBuilder:
         origin_min_h = self._cumulative_origin_minutes(match.home.players, match.start_time)
         origin_min_a = self._cumulative_origin_minutes(match.away.players, match.start_time)
 
+        # Structured injury severity feature (#269).
+        inj_sev_h = self._injury_severity(match.season, match.round, h_id)
+        inj_sev_a = self._injury_severity(match.season, match.round, a_id)
+        injury_severity_diff = max(
+            -INJURY_SEVERITY_DIFF_CAP, min(INJURY_SEVERITY_DIFF_CAP, inj_sev_h - inj_sev_a)
+        )
+        # 1.0 only when the week's injury list was genuinely unavailable — a
+        # scraped week with no injuries for these teams still counts as data.
+        has_injury_data = (
+            self.injury_index is not None
+            and (match.season, match.round) in self.injury_index.rounds_with_data
+        )
+        missing_injury_data = 0.0 if has_injury_data else 1.0
+
         return [
             elo_diff,
             form_pf_h - form_pf_a,
@@ -649,7 +777,35 @@ class FeatureBuilder:
             fat_h - fat_a,
             sfat_h - sfat_a,
             origin_min_h - origin_min_a,
+            injury_severity_diff,
+            missing_injury_data,
         ]
+
+    def _injury_severity(self, season: int, round_: int, team_id: int) -> float:
+        """Position-weighted *count* of a team's currently-listed players.
+
+        Σ ``status_weight × POSITION_WEIGHTS[pos]`` over the team's active
+        injury reports for the round, excluding RETURNING. Binary on purpose —
+        the source's ``weeks_out`` estimate is dropped (a #269 ablation showed
+        it hurt calibration). The injured player's position is resolved from
+        the walk-forward ``player_ratings`` book (their most-common starting
+        slot), defaulting to weight 1.0 when unknown. 0.0 when no index is set
+        or the team has no reports for the round.
+        """
+        idx = self.injury_index
+        if idx is None:
+            return 0.0
+        reports = idx.reports.get((season, round_, team_id))
+        if not reports:
+            return 0.0
+        severity = 0.0
+        for r in reports:
+            status_weight = INJURY_STATUS_WEIGHTS.get(r.status, 0.0)
+            if status_weight == 0.0:  # RETURNING / unknown
+                continue
+            pos = self.player_ratings.position(r.player_id)
+            severity += status_weight * POSITION_WEIGHTS.get(pos or "", 1.0)
+        return severity
 
     def _ladder_features(
         self, round_: int, h_id: int, a_id: int
@@ -1154,11 +1310,15 @@ def build_training_frame(
     *,
     elo: Elo | None = None,
     drop_draws: bool = True,
+    injury_index: InjuryIndex | None = None,
 ) -> TrainingFrame:
     """Compute features for every completed match in chronological order.
 
     Draws are dropped by default — logistic regression wants binary targets
     and NRL has very few draws, so excluding them is cleaner than relabelling.
+
+    ``injury_index`` supplies the scraped injury / late-withdrawal data for the
+    #269 features; ``None`` leaves them neutral (missing_injury_data=1.0).
     """
 
     completed = sorted(
@@ -1166,7 +1326,7 @@ def build_training_frame(
         key=lambda m: (m.start_time, m.match_id),
     )
 
-    builder = FeatureBuilder(elo=elo)
+    builder = FeatureBuilder(elo=elo, injury_index=injury_index)
     rows: list[list[float]] = []
     targets: list[int] = []
     match_ids: list[int] = []
