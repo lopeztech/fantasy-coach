@@ -423,9 +423,58 @@ so the logistic can learn to down-weight the adjusted versions when they are noi
 - **Bookmaker odds** — high-signal but not a feature we can train on
   historically (odds drop out of the fixtures payload after kickoff). See
   issues #13 (benchmark vs closing lines) and #26 (live odds feature).
-- **Team-list / injury status** — issues #24 (parsing) and #27 (modelling).
 - **Player-level stats** — kept out of the baseline. Will come in once
   XGBoost (#25) makes nonlinear interactions worth modelling.
+
+(Team-list availability shipped under #27 as `key_absence_diff` /
+`player_strength_diff`; structured injury *health* status shipped under #269 —
+see "Injury severity feature" below.)
+
+### Injury severity feature (#208 / #269)
+
+The availability features (`key_absence_diff`, `player_strength_diff`) only know
+whether a player is on the team list — binary in-or-out. The injury feature adds
+*health status* the team list can't express, sourced from the scraped weekly NRL
+injury list (`injury_reports`) — parsed from prose by Gemini and backfilled
+historically via the Wayback Machine (#268), which lives outside the walk-forward
+match history.
+
+| Feature | Definition | Why |
+|---------|-----------|-----|
+| `injury_severity_diff` | Per team, a **position-weighted count** of currently-listed players: Σ `status_weight × POSITION_WEIGHTS[pos]` over active reports (OUT/SUSPENDED 1.0, TEST 0.5, 21-man-squad 0.25; RETURNING excluded). The injured player's position comes from the walk-forward `player_ratings` book. Home − away, clamped to ±`INJURY_SEVERITY_DIFF_CAP` (50). | Carrying multiple injured spine players is a real strength signal the team list misses (an injured player named on the list still counts as "available" there). |
+| `missing_injury_data` | 1.0 when no injury list was scraped for this `(season, round)`. | Mirrors the other `missing_*` flags so the model learns a separate intercept for "no injury signal" rather than reading a quiet week as a zeroed-out one. A scraped week with no injuries for these teams is **not** missing. |
+
+**Why a count, not a severity × duration.** #269 originally specified
+`Σ status_weight × weeks_out` plus a returning-player count and a late-withdrawal
+count. A walk-forward ablation (2024–2025, `scripts/ab_injury_backtest.py`) killed
+all three:
+
+- The full 4-feature set **degraded** the model (−1.4pp accuracy, +0.008 log-loss).
+- The Gemini-estimated `weeks_out` was the culprit — dropping it (a binary count)
+  flipped the result to net-positive. The returning count was net-harmful (the
+  "rust" hypothesis didn't hold) and `late_withdrawal_diff` is ~always 0.0
+  historically (the kickoff-hour watcher only runs live), so both were cut.
+- Final position-weighted binary severity: **+0.7pp accuracy, −0.0016 log-loss,
+  −0.0008 Brier** — net-positive on all three, clearing #208's acceptance gate.
+
+The returning and late-withdrawal data is still collected (`injury_reports`
+RETURNING rows; the `watch-team-lists` watcher's `late_team_changes`) for a future
+revisit once live late-change history accumulates.
+
+**Plumbing.** The data is supplied to `FeatureBuilder` via an `InjuryIndex`
+(keyed by `(season, round, team_id)`). Because the evaluation harness and training
+CLIs build `FeatureBuilder` instances deep inside predictor classes that never see
+a repo, the index is set as a process-level "active" index for the duration of a
+`train-xgboost` / `evaluate` run (`active_injury_index(...)`);
+`compute_predictions` instead passes it explicitly for the round being served. A
+*single* static index over all scraped reports is leakage-safe for walk-forward:
+scoring round R only reads `(season, R, team)` keys, whose reports were scraped
+before R's kickoff. When no index is set the features are neutral
+(`missing_injury_data = 1.0`), so the default/library path is unchanged.
+
+**Retrain.** These two names are appended to `FEATURE_NAMES`, which bumps the
+`load_model` schema check — the production XGBoost artefact must be retrained and
+re-uploaded to GCS (per the "retrain when FEATURE_NAMES changes" rule).
 
 ## Glicko-2 rating system (#162)
 

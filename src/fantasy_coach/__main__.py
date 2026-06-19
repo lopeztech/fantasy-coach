@@ -658,6 +658,28 @@ def _run_train_logistic(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_injury_index_for_seasons(conn: Any, seasons: list[int]) -> Any:
+    """Build an InjuryIndex from the SQLite injury store for the given seasons.
+
+    Returns None on any failure (⇒ neutral injury features) so training/eval
+    never hard-fails just because the injury tables are empty or absent.
+    """
+    from fantasy_coach.feature_engineering import InjuryIndex  # noqa: PLC0415
+    from fantasy_coach.storage.injury import SQLiteInjuryReportRepository  # noqa: PLC0415
+
+    try:
+        repo = SQLiteInjuryReportRepository(conn)
+        reports: list[Any] = []
+        for s in seasons:
+            reports.extend(repo.list_reports(season=s))
+        if not reports:
+            return None
+        return InjuryIndex.from_records(reports)
+    except Exception as exc:  # noqa: BLE001
+        print(f"injury index unavailable ({exc}); training with neutral injury features")
+        return None
+
+
 def _run_train_xgboost(args: argparse.Namespace) -> int:
     """Train XGBoost + write artefact at the same joblib shape as logistic.
 
@@ -665,6 +687,7 @@ def _run_train_xgboost(args: argparse.Namespace) -> int:
     artefacts at the GCS path the Job pulls from is the only step needed
     to promote XGBoost to production (#136).
     """
+    from fantasy_coach.feature_engineering import active_injury_index  # noqa: PLC0415
     from fantasy_coach.models.xgboost_model import (  # noqa: PLC0415
         save_model as save_xgb,
     )
@@ -677,12 +700,17 @@ def _run_train_xgboost(args: argparse.Namespace) -> int:
         matches = []
         for season in args.season:
             matches.extend(repo.list_matches(season))
+        # Build the injury index from the same DB before closing the connection.
+        injury_index = _load_injury_index_for_seasons(repo._conn, list(args.season))
     finally:
         repo.close()
 
-    frame = build_training_frame(matches)
-    result = train_xgboost(frame, test_fraction=args.test_fraction)
+    with active_injury_index(injury_index):
+        frame = build_training_frame(matches)
+        result = train_xgboost(frame, test_fraction=args.test_fraction)
     save_xgb(result, args.out)
+    if injury_index is not None:
+        print(f"injury index active: {len(injury_index.rounds_with_data)} rounds with reports")
 
     print(
         f"Trained on {result.n_train} matches, tested on {result.n_test}. "
@@ -718,11 +746,17 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         else:
             factories[name] = _BUILTIN_PREDICTORS[name]
 
+    from fantasy_coach.feature_engineering import active_injury_index  # noqa: PLC0415
+
     repo = SQLiteRepository(args.db)
     try:
+        injury_index = _load_injury_index_for_seasons(repo._conn, seasons)
+        if injury_index is not None:
+            print(f"injury index active: {len(injury_index.rounds_with_data)} rounds with reports")
         results = []
-        for model_name in args.model:
-            results.append(walk_forward_from_repo(repo, seasons, factories[model_name]))
+        with active_injury_index(injury_index):
+            for model_name in args.model:
+                results.append(walk_forward_from_repo(repo, seasons, factories[model_name]))
 
         clv_reports = None
         if args.profit:
@@ -903,6 +937,18 @@ def _run_precompute(args: argparse.Namespace) -> int:
         conn = getattr(repo, "_conn", None)
         team_list_repo = SQLiteTeamListRepository(conn) if conn is not None else None
 
+    # Injury feed for the #269 severity feature. Same backend switch as team
+    # lists. Non-fatal on wiring failure — compute_predictions treats a None
+    # repo as "no injury data" (missing_injury_data=1.0).
+    from fantasy_coach.storage.injury import get_injury_report_repository  # noqa: PLC0415
+
+    _inj_conn = getattr(repo, "_conn", None)
+    try:
+        injury_repo: Any = get_injury_report_repository(sqlite_conn=_inj_conn)
+    except Exception as _inj_e:  # noqa: BLE001
+        print(f"injury repo unavailable ({_inj_e}); predictions will set missing_injury_data=1")
+        injury_repo = None
+
     # Start RSS sampler and cProfile when --profile / FANTASY_COACH_PROFILE=1.
     _rss_stop = None
     _profiler = None
@@ -937,6 +983,7 @@ def _run_precompute(args: argparse.Namespace) -> int:
             force=not args.no_force,
             team_list_repo=team_list_repo,
             weather_forecasts=weather_forecasts,
+            injury_repo=injury_repo,
         )
         # Refresh any previously-scraped matches whose outcomes should be
         # known by now but weren't captured — the precompute flow only
