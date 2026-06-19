@@ -902,6 +902,59 @@ def _rss_sampler(stop_event) -> None:  # type: ignore[type-arg]
     print(f"[profile] final peak RSS: {peak_mib} MiB")
 
 
+def _scrape_round_injuries_into(repo: Any, injury_repo: Any, season: int, round_: int) -> None:
+    """Best-effort scrape of the round's NRL injury list into ``injury_repo``.
+
+    Folded into precompute (#269) so the injury_severity feature has fresh data
+    every scheduled run without a separate Cloud Run schedule. Fully non-fatal:
+    a missing late-mail article (not published yet), no Gemini access, or a
+    parse failure just leaves the round's reports absent (⇒ missing_injury_data
+    =1.0), exactly as before. Skipped when no injury repo is wired.
+    """
+    import os  # noqa: PLC0415
+
+    if injury_repo is None:
+        return
+    project = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        print("precompute: no Gemini project (FIREBASE_PROJECT_ID); skipping injury scrape.")
+        return
+    try:
+        from fantasy_coach.commentary.client import GeminiClient  # noqa: PLC0415
+        from fantasy_coach.injury_scraper import (  # noqa: PLC0415
+            GeminiInjuryListParser,
+            HttpInjuryListSource,
+            build_player_index,
+            discover_injury_list_url,
+            scrape_injury_list,
+        )
+
+        url = discover_injury_list_url(season, round_)
+        if url is None:
+            print(f"precompute: no injury-list article found for {season} r{round_} (yet).")
+            return
+        # Include the prior season in the name index so trade-window moves resolve.
+        import contextlib  # noqa: PLC0415
+
+        matches: list[Any] = []
+        for s in (season - 1, season):
+            with contextlib.suppress(Exception):
+                matches.extend(repo.list_matches(s))
+        reports = scrape_injury_list(
+            url=url,
+            season=season,
+            round=round_,
+            source=HttpInjuryListSource(),
+            parser=GeminiInjuryListParser(client=GeminiClient(project=project)),
+            player_index=build_player_index(matches),
+        )
+        for report in reports:
+            injury_repo.record_report(report)
+        print(f"precompute: scraped {len(reports)} injury reports for {season} r{round_}.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"precompute: injury scrape failed (non-fatal): {exc}")
+
+
 def _run_precompute(args: argparse.Namespace) -> int:
     import os  # noqa: PLC0415
     from datetime import UTC, datetime  # noqa: PLC0415
@@ -948,6 +1001,10 @@ def _run_precompute(args: argparse.Namespace) -> int:
     except Exception as _inj_e:  # noqa: BLE001
         print(f"injury repo unavailable ({_inj_e}); predictions will set missing_injury_data=1")
         injury_repo = None
+
+    # Scrape this round's injury list so the severity feature has fresh data
+    # (#269). Non-fatal — see _scrape_round_injuries_into.
+    _scrape_round_injuries_into(repo, injury_repo, season, round_)
 
     # Start RSS sampler and cProfile when --profile / FANTASY_COACH_PROFILE=1.
     _rss_stop = None
