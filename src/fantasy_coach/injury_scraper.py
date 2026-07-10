@@ -306,6 +306,52 @@ def build_player_index(matches: list[Any]) -> PlayerIndex:
     return PlayerIndex(by_full_name=by_full_name, team_id_by_name=team_id_by_name)
 
 
+def fetch_round_team_lists(
+    season: int,
+    round_: int,
+    *,
+    fetch_round_fn: Any = None,
+    fetch_match_fn: Any = None,
+) -> list[Any]:
+    """Fetch this round's per-match team lists as ``MatchRow`` objects.
+
+    The player index for injury-name resolution is otherwise built only from
+    *prior* matches, so a genuine first-gamer — named in this round's 22 but
+    absent from match history — can't be resolved when the late-mail mentions
+    them, and their report is silently dropped. Seeding the index with the
+    round's named squads closes that gap.
+
+    Pure read: nothing is persisted here (the prediction pass re-scrapes and
+    upserts). Individual fetch/parse failures are logged and skipped so one bad
+    fixture doesn't sink the whole index.
+    """
+    from fantasy_coach.features import extract_match_features  # noqa: PLC0415
+    from fantasy_coach.scraper import fetch_match_from_url, fetch_round  # noqa: PLC0415
+
+    fetch_round_fn = fetch_round_fn or fetch_round
+    fetch_match_fn = fetch_match_fn or fetch_match_from_url
+
+    payload = fetch_round_fn(season, round_)
+    fixtures = (payload or {}).get("fixtures") or []
+    rows: list[Any] = []
+    for fixture in fixtures:
+        url = fixture.get("matchCentreUrl")
+        if not url:
+            continue
+        try:
+            raw = fetch_match_fn(url)
+        except Exception:  # noqa: BLE001
+            logger.warning("injury_scraper: failed to fetch team list from %s", url)
+            continue
+        if raw is None:
+            continue
+        try:
+            rows.append(extract_match_features(raw))
+        except Exception:  # noqa: BLE001
+            logger.warning("injury_scraper: failed to parse team list from %s", url)
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Materialisation — Gemini rows → InjuryReport[]
 # ---------------------------------------------------------------------------
