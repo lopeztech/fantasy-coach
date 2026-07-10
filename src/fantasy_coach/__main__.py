@@ -926,6 +926,7 @@ def _scrape_round_injuries_into(repo: Any, injury_repo: Any, season: int, round_
             HttpInjuryListSource,
             build_player_index,
             discover_injury_list_url,
+            fetch_round_team_lists,
             scrape_injury_list,
         )
 
@@ -940,6 +941,11 @@ def _scrape_round_injuries_into(repo: Any, injury_repo: Any, season: int, round_
         for s in (season - 1, season):
             with contextlib.suppress(Exception):
                 matches.extend(repo.list_matches(s))
+        # Also seed with this round's named squads so a genuine first-gamer —
+        # named in the 22 but absent from prior-match history — resolves when
+        # the late-mail mentions them. Non-fatal; falls back to prior matches.
+        with contextlib.suppress(Exception):
+            matches.extend(fetch_round_team_lists(season, round_))
         reports = scrape_injury_list(
             url=url,
             season=season,

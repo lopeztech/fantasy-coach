@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
@@ -17,9 +19,12 @@ from fantasy_coach.injury_scraper import (
     _parse_gemini_json,
     build_player_index,
     discover_injury_list_url,
+    fetch_round_team_lists,
     scrape_injury_list,
     strip_html_to_text,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 # ---------------------------------------------------------------------------
 # strip_html_to_text
@@ -503,3 +508,62 @@ def test_discover_ignores_team_list_articles_for_same_round() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     url = discover_injury_list_url(2026, 3, client=client)
     assert url == "https://www.nrl.com/news/2026/03/11/nrl-late-mail-round-3/"
+
+
+# ---------------------------------------------------------------------------
+# fetch_round_team_lists — seed the index with this round's named squads
+# ---------------------------------------------------------------------------
+
+
+def _load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES / name).read_text())
+
+
+def test_fetch_round_team_lists_returns_current_round_squads() -> None:
+    """Each fixture's match payload is parsed into a MatchRow the index can
+    consume, so this round's squads seed injury-name resolution."""
+    raw = _load_fixture("match-2026-rd8-wests-tigers-v-raiders.json")
+
+    def fake_fetch_round(season: int, round_: int) -> dict:
+        return {"fixtures": [{"matchCentreUrl": "/draw/.../wests-tigers-v-raiders/"}]}
+
+    def fake_fetch_match(url: str) -> dict:
+        return raw
+
+    rows = fetch_round_team_lists(
+        2026, 8, fetch_round_fn=fake_fetch_round, fetch_match_fn=fake_fetch_match
+    )
+    assert len(rows) == 1
+    assert rows[0].match_id == 20261110810
+    # The returned rows feed straight into the index builder without error.
+    build_player_index(rows)
+
+
+def test_fetch_round_team_lists_skips_failed_fixtures() -> None:
+    """One bad fixture (fetch error / None payload) is skipped, not fatal."""
+
+    def fake_fetch_round(season: int, round_: int) -> dict:
+        return {
+            "fixtures": [
+                {"matchCentreUrl": "/draw/a/"},
+                {},  # no matchCentreUrl
+                {"matchCentreUrl": "/draw/b/"},
+            ]
+        }
+
+    def fake_fetch_match(url: str) -> dict | None:
+        if url == "/draw/a/":
+            raise httpx.ConnectError("boom")
+        return None  # /draw/b/ yields no payload
+
+    rows = fetch_round_team_lists(
+        2026, 8, fetch_round_fn=fake_fetch_round, fetch_match_fn=fake_fetch_match
+    )
+    assert rows == []
+
+
+def test_fetch_round_team_lists_handles_empty_round() -> None:
+    rows = fetch_round_team_lists(
+        2026, 99, fetch_round_fn=lambda s, r: None, fetch_match_fn=lambda u: None
+    )
+    assert rows == []
