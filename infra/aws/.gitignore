@@ -4,14 +4,12 @@
 *.tfplan
 tfplan
 
-# Main config state is REMOTE (S3) — never a local file here.
+# State files are never committed. The main config's state is REMOTE (S3);
+# the bootstrap config's state is LOCAL but stays untracked — this repo is
+# public, and state carries the account id + resource ARNs. Bootstrap rarely
+# changes and its resources are trivially re-imported if the local file is lost.
 terraform.tfstate
 terraform.tfstate.*
-
-# Exception: the bootstrap config uses committed LOCAL state by design (it
-# creates the very backend the rest of the config uses). Keep it tracked.
-!bootstrap/terraform.tfstate
-!bootstrap/terraform.tfstate.backup
 
 # Do commit the dependency lock files so provider versions are reproducible.
 !**/.terraform.lock.hcl
