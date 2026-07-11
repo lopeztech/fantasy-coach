@@ -213,9 +213,11 @@ def test_ensure_model_downloads_from_gcs(tmp_path: Path, monkeypatch: pytest.Mon
 
 @pytest.mark.parametrize(
     "bad_uri",
-    ["s3://nope/path", "gs://just-bucket", "gs:///no-bucket/path"],
+    # s3:// is a *valid* scheme now (#292); only unsupported schemes or a
+    # missing bucket/key are rejected.
+    ["http://nope/path", "gs://just-bucket", "gs:///no-bucket/path"],
 )
-def test_ensure_model_rejects_malformed_gcs_uri(
+def test_ensure_model_rejects_malformed_uri(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_uri: str
 ) -> None:
     monkeypatch.setenv("FANTASY_COACH_MODEL_GCS_URI", bad_uri)

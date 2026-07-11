@@ -16,6 +16,7 @@ dependencies = [
     "joblib>=1.4",
     "google-cloud-firestore>=2.19",
     "google-cloud-storage>=2.18",
+    "boto3>=1.34",
     "firebase-admin>=6.5",
     "google-auth>=2.30",
     "xgboost>=3.2.0",

@@ -27,12 +27,17 @@ from typing import Any
 from pydantic import BaseModel
 
 from fantasy_coach.features import MatchRow, extract_match_features
+from fantasy_coach.object_store import download_object
 from fantasy_coach.scraper import fetch_match_from_url, fetch_round
 
 logger = logging.getLogger(__name__)
 
 PREDICTIONS_DB_ENV = "FANTASY_COACH_PREDICTIONS_DB_PATH"
 MODEL_PATH_ENV = "FANTASY_COACH_MODEL_PATH"
+# Canonical, cloud-agnostic model URI (gs:// or s3://). MODEL_GCS_URI_ENV is
+# kept as a fallback so the GCP precompute Job keeps working unchanged during
+# the AWS migration (#292).
+MODEL_URI_ENV = "FANTASY_COACH_MODEL_URI"
 MODEL_GCS_URI_ENV = "FANTASY_COACH_MODEL_GCS_URI"
 LOGISTIC_PATH_ENV = "FANTASY_COACH_LOGISTIC_PATH"
 LOGISTIC_GCS_URI_ENV = "FANTASY_COACH_LOGISTIC_GCS_URI"
@@ -443,32 +448,23 @@ def _ensure_model(path: Path) -> None:
 
     The container image ships without a ``.joblib`` (training requires
     historical data the image doesn't carry). In production, the precompute
-    Job sets ``FANTASY_COACH_MODEL_GCS_URI=gs://.../latest.joblib`` and this
-    function streams the blob to ``path`` on first miss. Subsequent calls
-    inside the same container short-circuit on the local file.
+    Job sets ``FANTASY_COACH_MODEL_URI=gs://.../latest.joblib`` (or the legacy
+    ``FANTASY_COACH_MODEL_GCS_URI``, or an ``s3://`` URI post-migration) and
+    this function streams the object to ``path`` on first miss. Subsequent
+    calls inside the same container short-circuit on the local file.
 
-    Raises ``FileNotFoundError`` if the file is missing and no GCS URI is
+    Raises ``FileNotFoundError`` if the file is missing and no URI is
     configured — the pre-#93 behaviour local dev relies on.
     """
     if path.exists():
         return
 
-    gcs_uri = os.getenv(MODEL_GCS_URI_ENV)
-    if not gcs_uri:
+    uri = os.getenv(MODEL_URI_ENV) or os.getenv(MODEL_GCS_URI_ENV)
+    if not uri:
         raise FileNotFoundError(path)
 
-    if not gcs_uri.startswith("gs://"):
-        raise ValueError(f"{MODEL_GCS_URI_ENV} must start with gs:// (got {gcs_uri!r})")
-    bucket_name, _, blob_name = gcs_uri.removeprefix("gs://").partition("/")
-    if not bucket_name or not blob_name:
-        raise ValueError(f"{MODEL_GCS_URI_ENV} must be gs://<bucket>/<object> (got {gcs_uri!r})")
-
-    from google.cloud import storage  # noqa: PLC0415
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("Downloading model from %s to %s", gcs_uri, path)
-    client = storage.Client()
-    client.bucket(bucket_name).blob(blob_name).download_to_filename(str(path))
+    logger.info("Downloading model from %s to %s", uri, path)
+    download_object(uri, path)
 
 
 def _model_version(path: Path) -> str:
@@ -768,22 +764,15 @@ def _try_load_secondary_model(path: Path, gcs_uri_env: str) -> Any | None:
     """
     try:
         if not path.exists():
-            gcs_uri = os.getenv(gcs_uri_env)
-            if not gcs_uri:
+            uri = os.getenv(gcs_uri_env)
+            if not uri:
                 return None
-            if not gcs_uri.startswith("gs://"):
-                logger.warning("Secondary model GCS URI malformed: %s", gcs_uri)
+            try:
+                logger.info("Downloading secondary model from %s to %s", uri, path)
+                download_object(uri, path)
+            except ValueError as exc:
+                logger.warning("Secondary model URI malformed: %s (%s)", uri, exc)
                 return None
-            bucket_name, _, blob_name = gcs_uri.removeprefix("gs://").partition("/")
-            if not bucket_name or not blob_name:
-                logger.warning("Secondary model GCS URI malformed: %s", gcs_uri)
-                return None
-            from google.cloud import storage as gcs  # noqa: PLC0415
-
-            path.parent.mkdir(parents=True, exist_ok=True)
-            logger.info("Downloading secondary model from %s to %s", gcs_uri, path)
-            client = gcs.Client()
-            client.bucket(bucket_name).blob(blob_name).download_to_filename(str(path))
         from fantasy_coach.models.loader import load_model  # noqa: PLC0415
 
         return load_model(path)

@@ -7,3 +7,8 @@ output "github_actions_role_arn" {
   description = "Role ARN for GitHub Actions to assume via OIDC (set as a repo variable for the deploy workflow)."
   value       = aws_iam_role.github_actions_deploy.arn
 }
+
+output "models_bucket" {
+  description = "S3 bucket holding the model artefact (set FANTASY_COACH_MODEL_URI=s3://<bucket>/logistic/latest.joblib)."
+  value       = aws_s3_bucket.models.id
+}

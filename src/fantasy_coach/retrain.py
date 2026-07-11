@@ -271,14 +271,11 @@ def default_drift_writer(report: DriftReport) -> None:
 
 
 def default_gcs_uploader(local_path: Path, gcs_uri: str) -> None:
-    """Upload ``local_path`` to the object at ``gcs_uri`` (gs://bucket/object)."""
-    if not gcs_uri.startswith("gs://"):
-        raise ValueError(f"gcs_uri must start with gs:// (got {gcs_uri!r})")
-    bucket_name, _, blob_name = gcs_uri.removeprefix("gs://").partition("/")
-    if not bucket_name or not blob_name:
-        raise ValueError(f"gcs_uri must be gs://<bucket>/<blob> (got {gcs_uri!r})")
+    """Upload ``local_path`` to ``gcs_uri`` (``gs://`` or ``s3://`` bucket/object).
 
-    from google.cloud import storage  # noqa: PLC0415
+    Name kept for back-compat; scheme dispatch lives in ``object_store`` so the
+    same promote path works against GCS or S3 during the AWS migration (#292).
+    """
+    from fantasy_coach.object_store import upload_object  # noqa: PLC0415
 
-    client = storage.Client()
-    client.bucket(bucket_name).blob(blob_name).upload_from_filename(str(local_path))
+    upload_object(local_path, gcs_uri)

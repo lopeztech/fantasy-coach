@@ -331,7 +331,7 @@ def test_run_retrain_blocks_and_opens_issue(tmp_path: Path, many_matches: list[M
 def test_default_gcs_uploader_rejects_bad_uri(tmp_path: Path):
     p = tmp_path / "x.joblib"
     p.write_bytes(b"ok")
-    with pytest.raises(ValueError, match="must start with gs://"):
-        default_gcs_uploader(p, "s3://not-gcs/x")
-    with pytest.raises(ValueError, match="gs://<bucket>/<blob>"):
+    with pytest.raises(ValueError, match="unsupported object URI"):
+        default_gcs_uploader(p, "http://not-cloud/x")
+    with pytest.raises(ValueError, match="must be gs://<bucket>/<object>"):
         default_gcs_uploader(p, "gs://bucket-only")
