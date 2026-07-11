@@ -36,19 +36,22 @@ account-level GitHub OIDC provider.
 # 0. Authenticate to AWS (SSO or access keys) — `aws sts get-caller-identity`
 #    must succeed first.
 
-# 1. Bootstrap the backend + OIDC provider (local state, committed).
+# 1. Bootstrap the backend + OIDC provider (local state — gitignored).
+#    Bootstrap vars all default (region/name_prefix/github_org), so no -var-file.
+export AWS_PROFILE=fantasy-coach
 cd infra/aws/bootstrap
 terraform init
-terraform apply -var-file=../environments/prod.tfvars
+terraform apply
 
 # 2. Point the main config at the bucket bootstrap just made, then init/apply.
+#    account_id is passed on the CLI (not committed — public repo).
 cd ..
 terraform init \
   -backend-config="bucket=$(terraform -chdir=bootstrap output -raw state_bucket)" \
   -backend-config="key=fantasy-coach/prod/terraform.tfstate" \
   -backend-config="region=ap-southeast-2" \
   -backend-config="dynamodb_table=$(terraform -chdir=bootstrap output -raw lock_table)"
-terraform apply -var-file=environments/prod.tfvars
+terraform apply -var-file=environments/prod.tfvars -var="account_id=<12-digit-id>"
 ```
 
 After the first bootstrap, day-to-day work is just `terraform` in `infra/aws/`;
@@ -66,8 +69,10 @@ OIDC token (`permissions: id-token: write`) and assumes the role defined in
 `iam_github_oidc.tf`, whose trust policy is scoped to this repo. No long-lived
 access keys in GitHub secrets.
 
-## Not applied yet
+## Status: applied (account `913105848713`, `ap-southeast-2`)
 
-This is the Phase 0 skeleton. Applying is gated on:
-- an AWS account + working local credentials (`aws sts get-caller-identity`),
-- the account id + region wired into `environments/prod.tfvars`.
+Phase 0 is live. Standing resources: S3 state bucket + DynamoDB lock, GitHub
+OIDC provider, ECR repo `fantasy-coach/api`, and the
+`fantasy-coach-github-actions-deploy` role. The role ARN + ECR URL are exposed
+as `terraform output` and feed the AWS deploy workflow when it lands (a later
+phase).
