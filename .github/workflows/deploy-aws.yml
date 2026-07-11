@@ -1,0 +1,70 @@
+name: Build and push to ECR
+
+# AWS half of the GCP→AWS migration (#292). For now this builds the container
+# image and pushes it to ECR — the AWS analog of the "Build and push image"
+# step in deploy.yml. There's no service/job deploy step yet: nothing on AWS
+# consumes the image until Phase 2 (API → Lambda) lands. Running it now proves
+# the keyless OIDC path end-to-end and keeps ECR current.
+#
+# Auth is keyless via OIDC (mirrors the GCP WIF pattern in deploy.yml): the job
+# requests an OIDC token (`id-token: write`) and assumes the deploy role stood
+# up in infra/aws/iam_github_oidc.tf. The role's trust policy is scoped to this
+# repo's `main` ref, so only push-to-main / dispatch-from-main can assume it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/deploy-aws.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ecr-push
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # keyless OIDC auth to AWS
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: fantasy-coach/api
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Role ARN embeds the account id; kept in a repo variable rather than
+          # committed, since this repo is public.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          # Tag `sha-<short>` to match the ECR lifecycle rule (keeps the last 20
+          # images with the `sha` prefix). The repo is IMMUTABLE — no `latest`.
+          IMAGE="${REGISTRY}/${ECR_REPOSITORY}:sha-${GITHUB_SHA::7}"
+          docker buildx build \
+            --platform linux/amd64 \
+            -t "$IMAGE" \
+            --push \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            .
+          echo "Pushed ${IMAGE}"
+          echo "### Pushed \`${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
