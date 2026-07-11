@@ -1,0 +1,17 @@
+# Terraform working dirs + plan artifacts. Provider plugins and cached state
+# are machine-local; never commit them.
+**/.terraform/
+*.tfplan
+tfplan
+
+# Main config state is REMOTE (S3) — never a local file here.
+terraform.tfstate
+terraform.tfstate.*
+
+# Exception: the bootstrap config uses committed LOCAL state by design (it
+# creates the very backend the rest of the config uses). Keep it tracked.
+!bootstrap/terraform.tfstate
+!bootstrap/terraform.tfstate.backup
+
+# Do commit the dependency lock files so provider versions are reproducible.
+!**/.terraform.lock.hcl
