@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.7
+# AWS Lambda container image for the API (#292 Phase 2). Distinct from the
+# Cloud Run Dockerfile (uvicorn server): the Lambda base image ships the
+# Runtime Interface Client, and deps + code live under ${LAMBDA_TASK_ROOT}
+# so the handler is importable. The GCP image is unchanged during migration.
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /bin/uv
+
+ENV UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+# Resolve runtime deps from the lockfile and install them INTO the task root
+# (Lambda adds ${LAMBDA_TASK_ROOT} to sys.path). --no-emit-project excludes the
+# project itself — the source is copied in directly below.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
+    && uv pip install --no-cache --target "${LAMBDA_TASK_ROOT}" -r /tmp/requirements.txt
+
+# App source + the tuned-params file the model loader references.
+COPY src/fantasy_coach/ "${LAMBDA_TASK_ROOT}/fantasy_coach/"
+COPY artifacts/best_params.json "${LAMBDA_TASK_ROOT}/artifacts/best_params.json"
+
+# Mangum ASGI handler (src/fantasy_coach/lambda_app.py).
+CMD ["fantasy_coach.lambda_app.handler"]

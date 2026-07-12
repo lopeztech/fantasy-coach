@@ -9,6 +9,7 @@ authors = [{ name = "Josh Lopez" }]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "mangum>=0.17",
     "httpx>=0.27",
     "pydantic>=2.9",
     "numpy>=2.0",
