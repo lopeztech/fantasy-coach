@@ -1,10 +1,9 @@
 name: Build and push to ECR
 
-# AWS half of the GCP→AWS migration (#292). For now this builds the container
-# image and pushes it to ECR — the AWS analog of the "Build and push image"
-# step in deploy.yml. There's no service/job deploy step yet: nothing on AWS
-# consumes the image until Phase 2 (API → Lambda) lands. Running it now proves
-# the keyless OIDC path end-to-end and keeps ECR current.
+# AWS half of the GCP→AWS migration (#292). Builds the Lambda container image
+# (Dockerfile.lambda) and pushes it to ECR. The Lambda function that consumes
+# it is wired in Phase 2b (Lambda + API Gateway TF); until then a green build
+# still proves the image assembles and exercises the keyless OIDC push path.
 #
 # Auth is keyless via OIDC (mirrors the GCP WIF pattern in deploy.yml): the job
 # requests an OIDC token (`id-token: write`) and assumes the deploy role stood
@@ -16,7 +15,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
-      - "Dockerfile"
+      - "Dockerfile.lambda"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/deploy-aws.yml"
@@ -61,6 +60,7 @@ jobs:
           IMAGE="${REGISTRY}/${ECR_REPOSITORY}:sha-${GITHUB_SHA::7}"
           docker buildx build \
             --platform linux/amd64 \
+            -f Dockerfile.lambda \
             -t "$IMAGE" \
             --push \
             --cache-from type=gha \
